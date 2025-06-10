@@ -1,0 +1,24 @@
+{
+  "files.associations": {
+    "lvgl.h": "c",
+    "stdarg.h": "c",
+    "lv_indev.h": "c",
+    "lv_timer.h": "c",
+    "unordered_map": "cpp",
+    "fstream": "cpp",
+    "istream": "cpp",
+    "numeric": "cpp",
+    "ostream": "cpp",
+    "sstream": "cpp",
+    "chrono": "cpp",
+    "array": "cpp",
+    "deque": "cpp",
+    "list": "cpp",
+    "string": "cpp",
+    "vector": "cpp",
+    "string_view": "cpp",
+    "format": "cpp",
+    "initializer_list": "cpp",
+    "span": "cpp"
+  }
+}
