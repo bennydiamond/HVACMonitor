@@ -267,6 +267,13 @@ void process_packet(String packet) {
             );
             break;
         }
+        case RSP_SPS30_CLEAN: {
+            // Format: c<ret_status>    
+            char payload_cstr[payload.length() + 1];
+            strcpy(payload_cstr, payload.c_str());
+            char* token = strtok(payload_cstr, ","); if (!token) return; int ret_status = atoi(token);
+            logger.debugf("SPS30 Manual Fan Cleaning: Status=%d", ret_status);
+        }
         case RSP_SGP40_TEST: {
             // Format: g<ret_status>,<raw_value>
             char payload_cstr[payload.length() + 1];

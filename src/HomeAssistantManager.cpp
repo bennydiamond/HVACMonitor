@@ -42,6 +42,7 @@ HomeAssistantManager::HomeAssistantManager() :
     _currentSensor("current", HASensor::PrecisionP2),
     _sensorStackResetCauseSensor("nano_reset_cause"),
     _getSps30InfoButton("get_sps30_info"),
+    _Sps30ManualCleanButton("sps30_manual_clean"),
     _getSgp40SelftestButton("get_sgp40_selftest")
 {
     _instance = this;
@@ -227,10 +228,15 @@ void HomeAssistantManager::init(LGFX* tft, IUIUpdater* uiUpdater, ConfigManager*
     _rebootSensorStackButton.setEntityCategory(entity_category_config);
     _rebootSensorStackButton.onCommand(onRebootSensorStackCommand);
 
-    _getSps30InfoButton.setName("Get SPS30 Info");
+    _getSps30InfoButton.setName("SPS30 Get Info");
     _getSps30InfoButton.setIcon("mdi:information");
     _getSps30InfoButton.setEntityCategory(entity_category_diagnostic);
     _getSps30InfoButton.onCommand(onGetSps30InfoCommand);
+
+    _Sps30ManualCleanButton.setName("SPS30 Manual Fan Clean");
+    _Sps30ManualCleanButton.setIcon("mdi:fan-alert");
+    _Sps30ManualCleanButton.setEntityCategory(entity_category_diagnostic);
+    _Sps30ManualCleanButton.onCommand(onGetSps30ManualCleanCommand);
 
     _getSgp40SelftestButton.setName("SGP40 Self-Test");
     _getSgp40SelftestButton.setIcon("mdi:information");
@@ -440,6 +446,11 @@ void HomeAssistantManager::onRebootSensorStackCommand(HAButton* sender) {
 void HomeAssistantManager::onGetSps30InfoCommand(HAButton* sender) {
     logger.info("Get SPS30 Info command sent to SensorStack from Home Assistant.");
     send_command_to_nano(CMD_GET_SPS30_INFO);
+}
+
+void HomeAssistantManager::onGetSps30ManualCleanCommand(HAButton* sender) {
+    logger.info("Get SPS30 Manual Fan Cleaning request sent to SensorStack from Home Assistant.");
+    send_command_to_nano(CMD_SPS30_CLEAN);
 }
 
 void HomeAssistantManager::onGetSgp40SelftestCommand(HAButton* sender) {
