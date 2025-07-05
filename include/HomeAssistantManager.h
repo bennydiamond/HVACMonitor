@@ -74,6 +74,7 @@ private:
     HASensor _currentSensor;
     HASensor _sensorStackResetCauseSensor;
     HAButton _getSps30InfoButton;
+    HAButton _Sps30ManualCleanButton;
     HAButton _getSgp40SelftestButton;
 
     // State tracking for publishing
@@ -103,6 +104,7 @@ private:
     static void onRebootCommand(HAButton* sender);
     static void onRebootSensorStackCommand(HAButton* sender);
     static void onGetSps30InfoCommand(HAButton* sender);
+    static void onGetSps30ManualCleanCommand(HAButton* sender);
     static void onGetSgp40SelftestCommand(HAButton* sender);
     
     // Static pointer to the class instance for callbacks

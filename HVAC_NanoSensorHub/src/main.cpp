@@ -22,12 +22,14 @@
 #define CMD_BROADCAST_SENSORS 'S'
 #define CMD_GET_VERSION       'V'
 #define CMD_GET_HEALTH        'H'
-#define RSP_VERSION           'v'
+#define RSP_HEALTH            'h' // Overall health status response
 #define CMD_ACK_HEALTH        'A' // Acknowledge Health Status
+#define RSP_VERSION           'v'
 #define CMD_REBOOT            'R' // Request Nano Reboot
-#define RSP_HEALTH            'h'
 #define CMD_GET_SPS30_INFO    'P' // Request SPS30 info
 #define RSP_SPS30_INFO        'p' // Response with SPS30 info
+#define CMD_SPS30_CLEAN       'C' // Request manual SPS30 fan cleaning
+#define RSP_SPS30_CLEAN       'c' // ACK for fan cleaning command
 #define CMD_SGP40_TEST        'G' // Request SGP40 test
 #define RSP_SGP40_TEST        'g' // Response with SGP40 test result
 
@@ -486,6 +488,14 @@ void process_command(const char* buffer) {
             ret_fan_days, (unsigned long)fan_interval_days,
             ret_status, (unsigned long)status_reg
         );
+        checksum = calculate_checksum(response_buffer);
+        Serial.print('<'); Serial.print(response_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
+        break;
+    }
+    case CMD_SPS30_CLEAN: {
+        // Trigger manual fan cleaning
+        int16_t ret_clean = sps30_start_manual_fan_cleaning();
+        sprintf(response_buffer, "%c%d", RSP_SPS30_CLEAN, ret_clean);
         checksum = calculate_checksum(response_buffer);
         Serial.print('<'); Serial.print(response_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
         break;
