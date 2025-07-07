@@ -76,6 +76,7 @@ private:
     HAButton _getSps30InfoButton;
     HAButton _Sps30ManualCleanButton;
     HAButton _getSgp40SelftestButton;
+    HASelect _logLevelSelect;
 
     // State tracking for publishing
     float _lastPublishedPressure, _lastPublishedTemp, _lastPublishedHumi, _lastPublishedCo2;
@@ -106,6 +107,8 @@ private:
     static void onGetSps30InfoCommand(HAButton* sender);
     static void onGetSps30ManualCleanCommand(HAButton* sender);
     static void onGetSgp40SelftestCommand(HAButton* sender);
+    static void onLogLevelCommand(int8_t index, HASelect* sender);
+
     
     // Static pointer to the class instance for callbacks
     static HomeAssistantManager* _instance;

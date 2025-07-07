@@ -1,7 +1,7 @@
 #include "ConfigManager.h"
-#include "Logger.h"
 
 // --- Define Keys ---
+const char* ConfigManager::KEY_LOG_LEVEL = "log_level";
 const char* ConfigManager::KEY_HIGH_PRESSURE = "p_high_thresh";
 const char* ConfigManager::KEY_FAN_ON = "fan_on_thresh";
 const char* ConfigManager::KEY_FAN_OFF = "fan_off_thresh";
@@ -25,6 +25,7 @@ const char* ConfigManager::KEY_PM10_DANGER = "pm10_danger_ui";
 
 
 // --- Define Default Values ---
+const AppLogLevel ConfigManager::DEFAULT_LOG_LEVEL = APP_LOG_INFO;
 const float ConfigManager::DEFAULT_HIGH_PRESSURE_THRESHOLD = 150.0f;
 const float ConfigManager::DEFAULT_FAN_ON_CURRENT_THRESHOLD = 1.0f;
 const float ConfigManager::DEFAULT_FAN_OFF_CURRENT_THRESHOLD = 0.1f;
@@ -51,6 +52,7 @@ void ConfigManager::init() {
     if (!preferences.begin("hvac-config", false)) {
         logger.error("Failed to initialize NVS for ConfigManager. Using default values.");
         // Manually set defaults if NVS fails to open
+        logLevel = DEFAULT_LOG_LEVEL;
         highPressureThreshold = DEFAULT_HIGH_PRESSURE_THRESHOLD;
         fanOnCurrentThreshold = DEFAULT_FAN_ON_CURRENT_THRESHOLD;
         fanOffCurrentThreshold = DEFAULT_FAN_OFF_CURRENT_THRESHOLD;
@@ -73,6 +75,7 @@ void ConfigManager::init() {
         pm10DangerThreshold = DEFAULT_PM10_DANGER_THRESHOLD;
         return;
     }
+    logLevel = static_cast<AppLogLevel>(preferences.getUChar(KEY_LOG_LEVEL, DEFAULT_LOG_LEVEL));
 
     logger.info("ConfigManager initializing and loading values from NVS...");
 
@@ -107,6 +110,12 @@ void ConfigManager::init() {
                 pressureLowThreshold, pressureMidThreshold, cpmWarnThreshold, cpmDangerThreshold, co2WarnThreshold, co2DangerThreshold, vocWarnThreshold, vocDangerThreshold);
     logger.debugf("Loaded PM Config: PM1(W%d,D%d), PM2.5(W%d,D%d), PM4(W%d,D%d), PM10(W%d,D%d)",
                 pm1WarnThreshold, pm1DangerThreshold, pm25WarnThreshold, pm25DangerThreshold, pm4WarnThreshold, pm4DangerThreshold, pm10WarnThreshold, pm10DangerThreshold);
+}
+
+AppLogLevel ConfigManager::getLogLevel() { return logLevel; }
+void ConfigManager::setLogLevel(AppLogLevel level) {
+    logLevel = level;
+    preferences.putUChar(KEY_LOG_LEVEL, level);
 }
 
 // --- Physical Sensor Getters ---

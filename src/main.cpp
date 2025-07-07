@@ -306,20 +306,22 @@ void setup_wifi() {
 }
 
 void setup() {
-    Serial.begin(9600);
-    delay(1000);
-    configManager.init();
-
-    String reset_reason = get_reset_reason_string();
     logger.info("--- System Booting ---");
+    Serial.begin(9600);
+    configManager.init();
+    logger.init(haManager.getMqtt());
+    logger.setLogLevel(configManager.getLogLevel());
+    delay(500);
+    
+    String reset_reason = get_reset_reason_string();
     logger.infof("Firmware Version: %s", FIRMWARE_VERSION);
     logger.infof("Reset Reason: %s", reset_reason.c_str());
-
+    
     tft.init(); tft.setRotation(1); tft.setBrightness(255); tft.fillScreen(TFT_BLACK);
     logger.info("TFT display initialized.");
     touch.begin();
     logger.info("Touch controller initialized.");
-
+    
     IUIManager& uiManager = UI::getInstance();
     IUIUpdater& uiUpdater = UI::getInstance();
     uiManager.init(&tft, &touch, &configManager);
@@ -327,11 +329,10 @@ void setup() {
     uiUpdater.set_initial_debug_info(FIRMWARE_VERSION, reset_reason.c_str());
     logger.info("UI singleton initialized.");
     lv_timer_handler();
-
+    
     setup_wifi();
     haManager.init(&tft, &uiUpdater, &configManager, FIRMWARE_VERSION);
     webServerManager.init(FIRMWARE_VERSION);
-    logger.init(haManager.getMqtt());
     otaManager.init();
 }
 

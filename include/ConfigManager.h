@@ -1,10 +1,14 @@
 #pragma once
 
 #include <Preferences.h>
+#include "Logger.h"
 
 class ConfigManager {
 public:
     void init();
+
+    AppLogLevel getLogLevel();
+    void setLogLevel(AppLogLevel level);
 
     // --- Getters for physical sensor thresholds ---
     float getHighPressureThreshold();
@@ -60,12 +64,14 @@ private:
     Preferences preferences;
 
     // In-memory cache
+    AppLogLevel logLevel;
     float highPressureThreshold, fanOnCurrentThreshold, fanOffCurrentThreshold, fanHighCurrentThreshold;
     float pressureLowThreshold, pressureMidThreshold;
     int cpmWarnThreshold, cpmDangerThreshold, co2WarnThreshold, co2DangerThreshold, vocWarnThreshold, vocDangerThreshold;
     int pm1WarnThreshold, pm1DangerThreshold, pm25WarnThreshold, pm25DangerThreshold, pm4WarnThreshold, pm4DangerThreshold, pm10WarnThreshold, pm10DangerThreshold;
-
+    
     // NVS Keys
+    static const char* KEY_LOG_LEVEL;
     static const char* KEY_HIGH_PRESSURE;
     static const char* KEY_FAN_ON;
     static const char* KEY_FAN_OFF;
@@ -86,8 +92,9 @@ private:
     static const char* KEY_PM4_DANGER;
     static const char* KEY_PM10_WARN;
     static const char* KEY_PM10_DANGER;
-
+    
     // Default values
+    static const AppLogLevel DEFAULT_LOG_LEVEL;
     static const float DEFAULT_HIGH_PRESSURE_THRESHOLD;
     static const float DEFAULT_FAN_ON_CURRENT_THRESHOLD;
     static const float DEFAULT_FAN_OFF_CURRENT_THRESHOLD;
