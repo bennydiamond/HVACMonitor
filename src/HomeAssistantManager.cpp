@@ -5,6 +5,7 @@
 #include "secrets.h" 
 #include "Logger.h"
 #include "NanoCommands.h"
+#include "ConfigManager.h"
 
 const unsigned long FORCE_PUBLISH_INTERVAL_MS = 20000;
 const unsigned long SENSOR_EXPIRE_TIMEOUT_S = 30;
@@ -43,9 +44,11 @@ HomeAssistantManager::HomeAssistantManager() :
     _sensorStackResetCauseSensor("nano_reset_cause"),
     _getSps30InfoButton("get_sps30_info"),
     _Sps30ManualCleanButton("sps30_manual_clean"),
-    _getSgp40SelftestButton("get_sgp40_selftest")
+    _getSgp40SelftestButton("get_sgp40_selftest"),
+    _logLevelSelect("log_level")
 {
     _instance = this;
+
     // Initialize state tracking variables
     _lastPublishedPressure = -9999.0f;
     _lastPublishedCpm = -1;
@@ -242,6 +245,13 @@ void HomeAssistantManager::init(LGFX* tft, IUIUpdater* uiUpdater, ConfigManager*
     _getSgp40SelftestButton.setIcon("mdi:information");
     _getSgp40SelftestButton.setEntityCategory(entity_category_diagnostic);
     _getSgp40SelftestButton.onCommand(onGetSgp40SelftestCommand);
+
+    _logLevelSelect.setName("Log Level");
+    _logLevelSelect.setIcon("mdi:message-text");
+    _logLevelSelect.setEntityCategory(entity_category_config);
+    _logLevelSelect.setOptions("Debug;Info;Warning;Error"); // must match order of AppLogLevel enum
+    _logLevelSelect.onCommand(onLogLevelCommand);
+    _logLevelSelect.setCurrentState(_config->getLogLevel());
 
     _device.enableSharedAvailability();
     _device.enableLastWill();
@@ -456,6 +466,14 @@ void HomeAssistantManager::onGetSps30ManualCleanCommand(HAButton* sender) {
 void HomeAssistantManager::onGetSgp40SelftestCommand(HAButton* sender) {
     logger.info("SGP40 Self-Test command sent to SensorStack from Home Assistant.");
     send_command_to_nano(CMD_SGP40_TEST);
+}
+
+void HomeAssistantManager::onLogLevelCommand(int8_t index, HASelect* sender) {
+    if (!_instance) return;
+    AppLogLevel level = static_cast<AppLogLevel>(index);
+    _instance->_config->setLogLevel(level);
+    logger.setLogLevel(level);
+    sender->setState(index);
 }
 
 void HomeAssistantManager::resetSensorStackUptimePublishTime() {

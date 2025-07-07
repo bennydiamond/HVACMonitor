@@ -11,7 +11,7 @@
 
 Logger logger; // Define the global logger instance
 
-Logger::Logger() : _isLogging(false), _syslogServerReachable(false), _lastPingTime(0) {
+Logger::Logger() : _isLogging(false), _syslogServerReachable(false), _lastPingTime(0), _currentLogLevel(APP_LOG_INFO) {
     // Constructor
 }
 
@@ -56,8 +56,14 @@ void Logger::loop() {
     }
 }
 
+void Logger::setLogLevel(AppLogLevel level) 
+{ 
+    infof("Setting Log Level \"%s\" -> \"%s\"", _getLogLevelString(_currentLogLevel), _getLogLevelString(level));
+    _currentLogLevel = level; 
+}
+
 void Logger::log(AppLogLevel level, const char* message) {
-    if (_isLogging) { return; }
+    if (level < _currentLogLevel || _isLogging) { return; }
     _isLogging = true;
 
     // 1. Always send to Serial

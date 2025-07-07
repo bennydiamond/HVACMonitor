@@ -33,6 +33,10 @@ public:
     Logger();
     void init(HAMqtt* mqtt);
     void loop(); // Method to be called in the main loop to handle queue flushing
+    
+    void setLogLevel(AppLogLevel level);
+    AppLogLevel getLogLevel() const { return _currentLogLevel; }
+
     void log(AppLogLevel level, const char* message);
     void logf(AppLogLevel level, const char* format, ...);
 
@@ -51,6 +55,7 @@ private:
     WiFiUDP _udpClient;
     Syslog* _syslog = nullptr;
     HAMqtt* _mqtt = nullptr;
+    AppLogLevel _currentLogLevel = APP_LOG_INFO; // Default to INFO
     bool _isLogging = false; // Re-entrancy guard
     bool _syslogServerReachable = false; // Flag to indicate if the syslog server is reachable
     unsigned long _lastPingTime = 0; // Timer for ping checks
