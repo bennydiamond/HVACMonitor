@@ -67,7 +67,7 @@ void Logger::log(AppLogLevel level, const char* message) {
     _isLogging = true;
 
     // 1. Always send to Serial
-    Serial.printf("[%s] %s\n", _getLogLevelString(level), message);
+    //Serial.printf("[%s] %s\n", _getLogLevelString(level), message);
 
     // 2. Always try to send to MQTT if connected
     if (_mqtt != nullptr && _mqtt->isConnected()) {
@@ -105,7 +105,7 @@ void Logger::_queueLog(AppLogLevel level, const char* message) {
         LogEntry entry = {level, message};
         _logQueue.push_back(entry);
     } else {
-        Serial.println("[WARNING] Log queue is full. Discarding oldest message.");
+        //Serial.println("[WARNING] Log queue is full. Discarding oldest message.");
         _logQueue.erase(_logQueue.begin());
         LogEntry entry = {level, message};
         _logQueue.push_back(entry);

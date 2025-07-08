@@ -14,6 +14,8 @@
 #define RSP_SPS30_CLEAN       'c' // ACK for fan cleaning command
 #define CMD_SGP40_TEST        'G' // Request SGP40 test
 #define RSP_SGP40_TEST        'g' // Response with SGP40 test result
+#define CMD_GET_SCD30_INFO    'D' // Request SCD30 info
+#define RSP_SCD30_INFO        'd' // Response with SCD30 info
 
 // Function to send a command to the Nano, defined in main.cpp
 void send_command_to_nano(char cmd);
