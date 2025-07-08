@@ -47,7 +47,8 @@ HomeAssistantManager::HomeAssistantManager() :
     _getSgp40SelftestButton("get_sgp40_selftest"),
     _logLevelSelect("log_level"),
     _scd30AutoCalSwitch("scd30_autocal"),
-    _scd30ForceCalNumber("scd30_forcecal", HANumber::PrecisionP0)
+    _scd30ForceCalNumber("scd30_forcecal", HANumber::PrecisionP0),
+    _esp32FreeRamSensor("esp32_free_ram", HASensor::PrecisionP0)
 {
     _instance = this;
 
@@ -150,7 +151,7 @@ void HomeAssistantManager::init(LGFX* tft, IUIUpdater* uiUpdater, ConfigManager*
     _backlight.onStateCommand(onStateCommand);
     _backlight.onBrightnessCommand(onBrightnessCommand);
     
-    _sensorStatus.setName("Sensor Stack Connection");
+    _sensorStatus.setName("SensorStack Connection");
     _sensorStatus.setDeviceClass("connectivity");
     _sensorStatus.setEntityCategory(entity_category_diagnostic);
     
@@ -200,25 +201,25 @@ void HomeAssistantManager::init(LGFX* tft, IUIUpdater* uiUpdater, ConfigManager*
     _voc_index_sensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
     _voc_index_sensor.setIcon("mdi:lungs");
     
-    _sensorStackUptimeSensor.setName("Sensor Stack Uptime");
+    _sensorStackUptimeSensor.setName("SensorStack Uptime");
     _sensorStackUptimeSensor.setIcon("mdi:timer-sand");
     _sensorStackUptimeSensor.setUnitOfMeasurement("s");
     _sensorStackUptimeSensor.setEntityCategory(entity_category_diagnostic);
     _sensorStackUptimeSensor.setValue(static_cast<uint32_t>(0)); // Initialize to 0
 
-    _sensorStackVersionSensor.setName("Sensor Stack Firmware Version");
+    _sensorStackVersionSensor.setName("SensorStack Firmware Version");
     _sensorStackVersionSensor.setIcon("mdi:chip");
     _sensorStackVersionSensor.setEntityCategory(entity_category_diagnostic);
     _sensorStackVersionSensor.setValue(nullptr); // Set to unavailable on boot
 
-    _sensorStackFreeRamSensor.setName("Sensor Stack Free RAM");
+    _sensorStackFreeRamSensor.setName("SensorStack Free RAM");
     _sensorStackFreeRamSensor.setIcon("mdi:memory");
     _sensorStackFreeRamSensor.setUnitOfMeasurement("B");
     _sensorStackFreeRamSensor.setEntityCategory(entity_category_diagnostic);
     // Set expire time to > 2x the poll interval (30s * 2 + 5s buffer)
     _sensorStackFreeRamSensor.setExpireAfter(65);
 
-    _sensorStackResetCauseSensor.setName("Nano Reset Cause");
+    _sensorStackResetCauseSensor.setName("SensorStack Reset Cause");
     _sensorStackResetCauseSensor.setIcon("mdi:restart-alert");
     _sensorStackResetCauseSensor.setEntityCategory(entity_category_diagnostic);
     _sensorStackResetCauseSensor.setExpireAfter(65);
@@ -228,7 +229,7 @@ void HomeAssistantManager::init(LGFX* tft, IUIUpdater* uiUpdater, ConfigManager*
     _rebootButton.setEntityCategory(entity_category_config);
     _rebootButton.onCommand(onRebootCommand);
 
-    _rebootSensorStackButton.setName("Reboot Sensor");
+    _rebootSensorStackButton.setName("SensorStack Reboot");
     _rebootSensorStackButton.setIcon("mdi:restart-alert");
     _rebootSensorStackButton.setEntityCategory(entity_category_config);
     _rebootSensorStackButton.onCommand(onRebootSensorStackCommand);
@@ -268,6 +269,11 @@ void HomeAssistantManager::init(LGFX* tft, IUIUpdater* uiUpdater, ConfigManager*
     _scd30ForceCalNumber.setMax(2000);
     _scd30ForceCalNumber.setStep(1);
     _scd30ForceCalNumber.onCommand(onScd30ForceCalCommand);
+
+    _esp32FreeRamSensor.setName("ESP32 Free RAM");
+    _esp32FreeRamSensor.setIcon("mdi:memory");
+    _esp32FreeRamSensor.setUnitOfMeasurement("B");
+    _esp32FreeRamSensor.setEntityCategory(entity_category_diagnostic);
 
     _device.enableSharedAvailability();
     _device.enableLastWill();
@@ -566,4 +572,8 @@ void HomeAssistantManager::onScd30ForceCalCommand(HANumeric number, HANumber* se
 
 void HomeAssistantManager::updateScd30ForceCalValue(uint16_t value) {
     _scd30ForceCalNumber.setState(value);
+}
+
+void HomeAssistantManager::publishEsp32FreeRam(uint32_t free_ram) {
+    _esp32FreeRamSensor.setValue(free_ram, true);
 }

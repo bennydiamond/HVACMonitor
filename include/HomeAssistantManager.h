@@ -40,6 +40,7 @@ public:
     void publishNanoResetCause(const char* cause);
     void updateScd30AutoCalState(bool state);
     void updateScd30ForceCalValue(uint16_t value);
+    void publishEsp32FreeRam(uint32_t free_ram);
 
 private:
     // Pointers to external hardware/UI classes
@@ -81,6 +82,7 @@ private:
     HASelect _logLevelSelect;
     HASwitch _scd30AutoCalSwitch;
     HANumber _scd30ForceCalNumber;
+    HASensorNumber _esp32FreeRamSensor;
 
     // State tracking for publishing
     float _lastPublishedPressure, _lastPublishedTemp, _lastPublishedHumi, _lastPublishedCo2;
