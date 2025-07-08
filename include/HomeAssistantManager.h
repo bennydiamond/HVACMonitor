@@ -41,6 +41,7 @@ public:
     void updateScd30AutoCalState(bool state);
     void updateScd30ForceCalValue(uint16_t value);
     void publishEsp32FreeRam(uint32_t free_ram);
+    void publishEsp32Uptime(uint32_t uptime_seconds);
 
 private:
     // Pointers to external hardware/UI classes
@@ -83,6 +84,7 @@ private:
     HASwitch _scd30AutoCalSwitch;
     HANumber _scd30ForceCalNumber;
     HASensorNumber _esp32FreeRamSensor;
+    HASensorNumber _esp32UptimeSensor;
 
     // State tracking for publishing
     float _lastPublishedPressure, _lastPublishedTemp, _lastPublishedHumi, _lastPublishedCo2;
