@@ -33,6 +33,10 @@
 #define RSP_SGP40_TEST        'g' // Response with SGP40 test result
 #define CMD_GET_SCD30_INFO    'D' // Request SCD30 info
 #define RSP_SCD30_INFO        'd' // Response with SCD30 info
+#define CMD_SET_SCD30_AUTOCAL 'T' // Set SCD30 AutoCalibration
+#define RSP_SCD30_AUTOCAL     't' // Response with SCD30 AutoCalibration result
+#define CMD_SET_SCD30_FORCECAL 'F' // Set SCD30 Forced Recalibration
+#define RSP_SCD30_FORCECAL     'f' // Response with SCD30 Forced Recalibration result
 
 // --- Pin Definitions ---
 #define PRESSURE_SENSOR_PIN A0
@@ -440,7 +444,7 @@ void process_command(const char* buffer) {
   uint32_t uint32_val = 0;
   uint8_t uint8_val1 = 0, uint8_val2 = 0;
   int16_t int_val = 0;
-  uint16_t uint_val = 0;
+  uint16_t uint_val = 0, uint_val2 = 0;
 
   switch (command) {
     case CMD_GET_VERSION:
@@ -542,6 +546,41 @@ void process_command(const char* buffer) {
         int_val = scd30_sensor.readFirmwareVersion(uint8_val1, uint8_val2);
         sprintf(pos, ",%X,%X,%X", int_val, uint8_val1, uint8_val2);
         
+        checksum = calculate_checksum(response_buffer);
+        Serial.print('<'); Serial.print(response_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
+        break;
+    }
+    case CMD_SET_SCD30_AUTOCAL: {
+        // Extract the state parameter (0 or 1)
+        uint_val = (data_len > 1 && buffer[1] == '1');
+        
+        // Set auto calibration
+        int_val = scd30_sensor.activateAutoCalibration(uint_val);
+        
+        // Read back the actual state
+        uint_val2 = scd30_sensor.getAutoCalibrationStatus(uint_val);
+        
+        // Response: a<set_result>,<read_result>,<actual_state>
+        sprintf(response_buffer, "%c%X,%X,%X", RSP_SCD30_AUTOCAL, int_val, uint_val2, uint_val);
+        checksum = calculate_checksum(response_buffer);
+        Serial.print('<'); Serial.print(response_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
+        break;
+    }
+    case CMD_SET_SCD30_FORCECAL: {
+        // Extract the ppm value parameter
+        uint_val = 0;
+        if (data_len > 1) {
+            uint_val = atoi(&buffer[1]);
+        }
+        
+        // Set forced recalibration
+        int_val = scd30_sensor.forceRecalibration(uint_val);
+        
+        // Read back the actual value
+        uint_val2 = scd30_sensor.getForceRecalibrationStatus(uint_val);
+        
+        // Response: f<set_result>,<read_result>,<actual_value>
+        sprintf(response_buffer, "%c%X,%X,%X", RSP_SCD30_FORCECAL, int_val, uint_val2, uint_val);
         checksum = calculate_checksum(response_buffer);
         Serial.print('<'); Serial.print(response_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
         break;

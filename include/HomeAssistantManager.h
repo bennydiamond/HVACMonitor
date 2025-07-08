@@ -27,7 +27,7 @@ public:
     void publishFanStatus(bool is_on); // Renamed from publishNanoVersion
     void publishSensorStackVersion(const char* version); // Renamed from publishNanoVersion
     void setSensorStackVersionUnavailable(); // Renamed from setNanoVersionUnavailable
-    void publishSensorStackUptime(unsigned long uptime_seconds, bool force = false);
+    void publishSensorStackUptime(uint32_t uptime_seconds, bool force = false);
     void publishSensorStackFreeRam(uint16_t free_ram);
     void resetSensorStackUptimePublishTime();
     
@@ -38,6 +38,8 @@ public:
     bool isMqttConnected();
 
     void publishNanoResetCause(const char* cause);
+    void updateScd30AutoCalState(bool state);
+    void updateScd30ForceCalValue(uint16_t value);
 
 private:
     // Pointers to external hardware/UI classes
@@ -77,6 +79,8 @@ private:
     HAButton _Sps30ManualCleanButton;
     HAButton _getSgp40SelftestButton;
     HASelect _logLevelSelect;
+    HASwitch _scd30AutoCalSwitch;
+    HANumber _scd30ForceCalNumber;
 
     // State tracking for publishing
     float _lastPublishedPressure, _lastPublishedTemp, _lastPublishedHumi, _lastPublishedCo2;
@@ -108,6 +112,8 @@ private:
     static void onGetSps30ManualCleanCommand(HAButton* sender);
     static void onGetSgp40SelftestCommand(HAButton* sender);
     static void onLogLevelCommand(int8_t index, HASelect* sender);
+    static void onScd30AutoCalCommand(bool state, HASwitch* sender);
+    static void onScd30ForceCalCommand(HANumeric number, HANumber* sender);
 
     
     // Static pointer to the class instance for callbacks
