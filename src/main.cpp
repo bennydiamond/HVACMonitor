@@ -25,8 +25,16 @@ const int DEBUG_UPDATE_INTERVAL_MS = 5000;
 const int HEALTH_CHECK_INTERVAL_MS = 30000;
 const int NANO_PACKET_TIMEOUT_MS = 7000;
 const int HEALTH_RESPONSE_TIMEOUT_MS = 500;
+const int SCD30_INFO_INTERVAL_MS = 20000; // Request SCD30 info every 20 seconds
 const unsigned long ROLLING_AVERAGE_WINDOW_MS = 30 * 60 * 1000;
 const size_t MAX_AVG_SAMPLES = 1024;
+
+enum InitCommand { CMD_NONE, CMD_VERSION, CMD_HEALTH, CMD_SPS30_INFO, CMD_SCD30_INFO };
+InitCommand pending_init_commands[] = {CMD_VERSION, CMD_HEALTH, CMD_SPS30_INFO, CMD_SCD30_INFO, CMD_NONE};
+bool init_sequence_active = false;
+int current_init_command_index = 0;
+unsigned long last_init_command_time = 0;
+const int INIT_COMMAND_TIMEOUT_MS = 1000;
 
 unsigned long last_wifi_check_time = 0;
 unsigned long last_health_check_time = 0;
@@ -34,6 +42,7 @@ unsigned long last_debug_update_time = 0;
 unsigned long last_sensor_data_time = 0;
 unsigned long last_health_request_time = 0;
 unsigned long nano_boot_millis = 0;
+unsigned long last_scd30_info_time = 0;
 bool is_sensor_module_connected = false;
 bool health_request_pending = false;
 static bool first_health_packet_received = false;
@@ -150,10 +159,8 @@ void process_packet(String packet) {
         is_sensor_module_connected = true;
         nano_boot_millis = millis();
         logger.info("Sensor module connection established.");
-        send_command_to_nano(CMD_GET_VERSION);
-        delay(100);
-        send_command_to_nano(CMD_GET_HEALTH);
-        delay(100);
+        init_sequence_active = true;
+        current_init_command_index = 0;
     }
 
     IUIUpdater& uiUpdater = UI::getInstance();
@@ -214,6 +221,9 @@ void process_packet(String packet) {
         }
         case RSP_VERSION: {
             haManager.publishSensorStackVersion(payload.c_str());
+            if (init_sequence_active && pending_init_commands[current_init_command_index] == CMD_VERSION) {
+                current_init_command_index++;
+            }
             break;
         }
         case RSP_HEALTH: {
@@ -224,6 +234,7 @@ void process_packet(String packet) {
             token = strtok(NULL, ","); uint8_t nano_reset_cause = 0; if (token) nano_reset_cause = atoi(token);
             const char* reset_cause_str = nano_reset_cause_to_string(nano_reset_cause);
 
+            logger.debugf("Nano Health: FirstTimeFlag=%d, FreeRAM=%d bytes, ResetCause=%s", first_time_flag, nano_free_ram, reset_cause_str);
             if (first_time_flag == 0 || !first_health_packet_received) {
                 logger.infof("Sensor Stack Health: Flag=%d, FreeRAM=%d bytes, ResetCause=%s", first_time_flag, nano_free_ram, reset_cause_str);
                 first_health_packet_received = true;
@@ -242,6 +253,9 @@ void process_packet(String packet) {
             }
             if (health_request_pending) {
                 health_request_pending = false;
+            }
+            if (init_sequence_active && pending_init_commands[current_init_command_index] == CMD_HEALTH) {
+                current_init_command_index++;
             }
             break;
         }
@@ -265,6 +279,9 @@ void process_packet(String packet) {
                 ret_fan_days, fan_days,
                 ret_status, status_reg
             );
+            if (init_sequence_active && pending_init_commands[current_init_command_index] == CMD_SPS30_INFO) {
+                current_init_command_index++;
+            }
             break;
         }
         case RSP_SPS30_CLEAN: {
@@ -284,9 +301,61 @@ void process_packet(String packet) {
             logger.debugf("SGP40 Test Result: Status=%d, RawValue=0x%04X", ret_status, raw_value);
             break;
         }
+        case RSP_SCD30_INFO: {
+            char payload_cstr[payload.length() + 1];
+            strcpy(payload_cstr, payload.c_str());
+
+            auto parse_hex_u16 = [](const char* token) -> uint16_t {
+                return static_cast<uint16_t>(strtol(token, nullptr, 16));
+            };
+
+            auto parse_hex_s16 = [](const char* token) -> int16_t {
+                return static_cast<int16_t>(static_cast<uint16_t>(strtol(token, nullptr, 16)));
+            };
+
+            char* token;
+
+            token = strtok(payload_cstr, ","); int16_t ret_interval = parse_hex_s16(token);
+            token = strtok(NULL, ",");        uint16_t measurement_interval = parse_hex_u16(token);
+            token = strtok(NULL, ",");        int16_t ret_auto_cal = parse_hex_s16(token);
+            token = strtok(NULL, ",");        uint16_t auto_calibration = parse_hex_u16(token);
+            token = strtok(NULL, ",");        int16_t ret_forced_cal = parse_hex_s16(token);
+            token = strtok(NULL, ",");        uint16_t forced_recalibration_value = parse_hex_u16(token);
+            token = strtok(NULL, ",");        int16_t ret_temp_offset = parse_hex_s16(token);
+            token = strtok(NULL, ",");        uint16_t temperature_offset = parse_hex_u16(token);
+            token = strtok(NULL, ",");        int16_t ret_altitude = parse_hex_s16(token);
+            token = strtok(NULL, ",");        uint16_t altitude_compensation = parse_hex_u16(token);
+            token = strtok(NULL, ",");        int16_t ret_firmware = parse_hex_s16(token);
+            token = strtok(NULL, ",");        uint8_t fw_major = parse_hex_u16(token);
+            token = strtok(NULL, ",");        uint8_t fw_minor = parse_hex_u16(token);
+
+            logger.debugf(
+                "SCD30 Info: "
+                "MeasurementInterval(ret=%d): %u, "
+                "AutoCalibration(ret=%d): %s, "
+                "ForcedRecalibrationValue(ret=%d): %u, "
+                "TemperatureOffset(ret=%d): %u, "
+                "AltitudeCompensation(ret=%d): %u, "
+                "FwVersion(ret=%d): %u.%u",
+                ret_interval, measurement_interval,
+                ret_auto_cal, auto_calibration ? "ON" : "OFF",
+                ret_forced_cal, forced_recalibration_value,
+                ret_temp_offset, temperature_offset,
+                ret_altitude, altitude_compensation,
+                ret_firmware, fw_major, fw_minor
+            );
+            if (init_sequence_active && pending_init_commands[current_init_command_index] == CMD_SCD30_INFO) {
+                current_init_command_index++;
+            }
+            break;
+        }
         default:
             logger.warningf("Unknown command from Nano: %c", cmd);
             break;
+    }
+
+    if (init_sequence_active && pending_init_commands[current_init_command_index] == CMD_NONE) {
+        init_sequence_active = false;
     }
 }
 
@@ -338,18 +407,32 @@ void setup() {
 
 void loop() {
     logger.loop();
+    static bool valid_packet_start_received = false;
 
     while (Serial.available() > 0) {
         char incoming_char = Serial.read();
-        if (incoming_char == '<') {
+        
+        // Skip carriage return and line feed characters
+        if (incoming_char == '\r' || incoming_char == '\n') {
+            continue;
+        }
+        
+        if (valid_packet_start_received == false && incoming_char == '<') {
             serial_buffer = "";
-        } else if (incoming_char == '>') {
+            valid_packet_start_received = true;
+        } else if (valid_packet_start_received && incoming_char == '>') {
             if (serial_buffer.length() > 0) {
                 process_packet("<" + serial_buffer + ">");
             }
             serial_buffer = "";
-        } else if (serial_buffer.length() < 255) {
+            valid_packet_start_received = false;
+            break;
+        } else if (valid_packet_start_received && serial_buffer.length() < 255) {
             serial_buffer += incoming_char;
+        } else {
+            logger.warningf("Invalid character received: %c", incoming_char);
+            serial_buffer = "";
+            valid_packet_start_received = false; // Reset state on invalid char
         }
     }
 
@@ -405,6 +488,30 @@ void loop() {
             uiUpdaterTimeout.clearSensorReadings();
         }
     }
+
+    if (init_sequence_active && is_sensor_module_connected) {
+        if (pending_init_commands[current_init_command_index] == CMD_NONE) {
+            init_sequence_active = false;
+        } else if (millis() - last_init_command_time > INIT_COMMAND_TIMEOUT_MS) {
+            char cmd_to_send = 0;
+            switch (pending_init_commands[current_init_command_index]) {
+                case CMD_VERSION: cmd_to_send = CMD_GET_VERSION; break;
+                case CMD_HEALTH: cmd_to_send = CMD_GET_HEALTH; break;
+                case CMD_SPS30_INFO: cmd_to_send = CMD_GET_SPS30_INFO; break;
+                case CMD_SCD30_INFO: cmd_to_send = CMD_GET_SCD30_INFO; break;
+            }
+            if (cmd_to_send) {
+                send_command_to_nano(cmd_to_send);
+                last_init_command_time = millis();
+            }
+        }
+    }
+
+    if (is_sensor_module_connected && !init_sequence_active && (millis() - last_scd30_info_time > SCD30_INFO_INTERVAL_MS)) {
+        last_scd30_info_time = millis();
+        send_command_to_nano(CMD_GET_SCD30_INFO);
+    }
+
 
     uiManager.run();
     delay(5);

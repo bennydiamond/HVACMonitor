@@ -4,7 +4,6 @@
  * Reads Pressure, Geiger, SPS30, SCD30 and SGP40 sensors.
  * ======================================================================
  */
-
 #include <Arduino.h>
 #include <Wire.h>
 #include <avr/wdt.h>
@@ -32,6 +31,8 @@
 #define RSP_SPS30_CLEAN       'c' // ACK for fan cleaning command
 #define CMD_SGP40_TEST        'G' // Request SGP40 test
 #define RSP_SGP40_TEST        'g' // Response with SGP40 test result
+#define CMD_GET_SCD30_INFO    'D' // Request SCD30 info
+#define RSP_SCD30_INFO        'd' // Response with SCD30 info
 
 // --- Pin Definitions ---
 #define PRESSURE_SENSOR_PIN A0
@@ -54,7 +55,7 @@ const unsigned long SCD30_INVALIDATE_TIMEOUT_MS = 60000; // Invalidate SCD30 aft
 #define GEIGER_PULSE_BUFFER_SIZE 36 // Number of pulses to average for CPM calculation
 
 // --- Buffer Sizes ---
-#define MAX_COMMAND_LEN 20
+#define MAX_COMMAND_LEN 16
 #define MAX_RESPONSE_LEN SPS30_MAX_SERIAL_LEN // 32 bytes
 #define MAX_SENSOR_DATA_PACKET_LEN 64
 
@@ -337,46 +338,45 @@ void read_all_sensors() {
   led_state = !led_state;
   digitalWrite(DEBUG_LED_PIN, led_state);
 
+  // Reuse one variable for multiple readings
+  uint16_t temp_uval;
+  int temp_val;
+  
   // Read Pressure Sensor
-  int raw_adc = analogRead(PRESSURE_SENSOR_PIN);
-  float voltage = (raw_adc / 1023.0) * 5.0; 
+  temp_val = analogRead(PRESSURE_SENSOR_PIN);
+  float voltage = (temp_val / 1023.0) * 5.0; 
   float current_ma = (voltage / SHUNT_RESISTOR) * 1000.0;
   current_pressure_pa = (current_ma > 4.0) ? (current_ma - 4.0) * (300.0 / 16.0) : 0.0;
 
-  // Read Current Sensor
   current_amps = readCurrentRMS();
 
-  // Read SPS30 Particulate Matter Sensor
-  int16_t ret_sps_read;
-  uint16_t data_ready_sps;
-  ret_sps_read = sps30_read_data_ready(&data_ready_sps);
-  if (ret_sps_read == 0 && data_ready_sps) {
+  // Read SPS30 - reuse temp_uval
+  int16_t ret_sps_read = sps30_read_data_ready(&temp_uval);
+  if (ret_sps_read == 0 && temp_uval) {
     sps30_read_measurement(&current_sps_data);
   }
 
-  // --- Non-blocking SCD30 (CO2, Temp, Humidity) ---
-  uint16_t scd30_data_ready = 0;
-  uint16_t scd30_error = scd30_sensor.getDataReady(scd30_data_ready);
-  if (scd30_error == 0 && scd30_data_ready) {
-      // Data ready, read it
-      uint16_t read_error = scd30_sensor.readMeasurementData(current_co2, current_temp_c, current_humi);
-      if (read_error == 0) {
+  // SCD30 - reuse temp_uval
+  temp_val = scd30_sensor.getDataReady(temp_uval);
+  if (temp_val == 0 && temp_uval) {
+      temp_val = scd30_sensor.readMeasurementData(current_co2, current_temp_c, current_humi);
+      if (temp_val == 0) {
           last_scd30_update = millis();
       }
   }
-  // Invalidate after 1 minute if not updated
+  
   if (millis() - last_scd30_update > SCD30_INVALIDATE_TIMEOUT_MS) {
       current_co2 = NAN;
       current_temp_c = NAN;
       current_humi = NAN;
   }
 
-  // Read SGP40 (VOC Raw Signal)
-  uint16_t rh_ticks = static_cast<uint16_t>(current_humi * 65535.0f / 100.0f);
-  uint16_t t_ticks = static_cast<uint16_t>((current_temp_c + 45.0f) * 65535.0f / 175.0f);
-  uint16_t sgp40_read_error = sgp40_sensor.measureRawSignal(rh_ticks, t_ticks, current_voc_raw);
-  if (sgp40_read_error) {
-      current_voc_raw = 0; // Set to 0 on error
+  // SGP40 - reuse temp_uval
+  temp_uval = sgp40_sensor.measureRawSignal(static_cast<uint16_t>(current_humi * 65535.0f / 100.0f),
+                                            static_cast<uint16_t>((current_temp_c + 45.0f) * 65535.0f / 175.0f),
+                                            current_voc_raw);
+  if (temp_uval) {
+      current_voc_raw = 0;
   }
 }
 
@@ -420,27 +420,27 @@ void process_command(const char* buffer) {
   if (!comma) return; // Malformed packet, no checksum found
 
   int data_len = comma - buffer;
-  // Check for valid data length to avoid buffer overflows and empty data parts.
   if (data_len <= 0 || data_len >= MAX_COMMAND_LEN) return;
 
-  // Use a fixed-size buffer instead of a Variable Length Array (VLA)
-  // to prevent stack corruption on this memory-constrained device.
-  char data_part[MAX_COMMAND_LEN];
-  strncpy(data_part, buffer, data_len);
-  data_part[data_len] = '\0';
-
   uint8_t received_checksum = atoi(comma + 1);
-  uint8_t calculated_checksum = calculate_checksum(data_part);
+  
+  // Create temporary null-terminated string for checksum calculation
+  char temp_char = buffer[data_len];
+  const_cast<char*>(buffer)[data_len] = '\0';  // Temporarily null-terminate
+  uint8_t calculated_checksum = calculate_checksum(buffer);
+  const_cast<char*>(buffer)[data_len] = temp_char;  // Restore original character
 
   if (received_checksum != calculated_checksum) {
     return; // Checksum mismatch
   }
 
-  char command = data_part[0];
-  // const char* payload = data_part + 1; // Payload would be here if needed
-
+  char command = buffer[0];
   char response_buffer[MAX_RESPONSE_LEN];
   uint8_t checksum;
+  uint32_t uint32_val = 0;
+  uint8_t uint8_val1 = 0, uint8_val2 = 0;
+  int16_t int_val = 0;
+  uint16_t uint_val = 0;
 
   switch (command) {
     case CMD_GET_VERSION:
@@ -471,45 +471,84 @@ void process_command(const char* buffer) {
       break;
 
     case CMD_GET_SPS30_INFO: {
-        // Query SPS30 info
-        uint32_t fan_interval_seconds = 0, status_reg = 0;
-        uint8_t fan_interval_days = 0;
-        uint8_t version_major, version_minor;
-        int16_t ret_fw = sps30_read_firmware_version(&version_major, &version_minor);
-        int16_t ret_fan_interval = sps30_get_fan_auto_cleaning_interval(&fan_interval_seconds);
-        int16_t ret_fan_days = sps30_get_fan_auto_cleaning_interval_days(&fan_interval_days);
-        int16_t ret_status = sps30_read_device_status_register(&status_reg);
-
-        // Compose response: p<ret_fw>,<fw>,<ret_sn>,<sn>,<ret_fan_interval>,<fan_interval>,<ret_fan_days>,<fan_days>,<ret_status>,<status_reg>
-        sprintf(response_buffer, "%c%d,%u,%u,%d,%lu,%d,%lu,%d,%lu",
-            RSP_SPS30_INFO,
-            ret_fw, version_major, version_minor,
-            ret_fan_interval, (unsigned long)fan_interval_seconds,
-            ret_fan_days, (unsigned long)fan_interval_days,
-            ret_status, (unsigned long)status_reg
-        );
+        // Start response with command
+        strcpy(response_buffer, "p");
+        char* pos = response_buffer + 1;
+        
+        // Get firmware version (reuse uint8_val for both major and minor)
+        int_val = sps30_read_firmware_version(&uint8_val1, &uint8_val2);
+        pos += sprintf(pos, "%d,%u,%u,", int_val, uint8_val1, uint8_val2);
+        
+        // Get fan auto cleaning interval
+        int_val = sps30_get_fan_auto_cleaning_interval(&uint32_val);
+        pos += sprintf(pos, "%d,%lu,", int_val, (unsigned long)uint32_val);
+        
+        // Get fan interval days
+        int_val = sps30_get_fan_auto_cleaning_interval_days(&uint8_val1);
+        pos += sprintf(pos, "%d,%lu,", int_val, (unsigned long)uint8_val1);
+        
+        // Get device status (no trailing comma)
+        int_val = sps30_read_device_status_register(&uint32_val);
+        sprintf(pos, "%d,%lu", int_val, (unsigned long)uint32_val);
+        
         checksum = calculate_checksum(response_buffer);
         Serial.print('<'); Serial.print(response_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
         break;
     }
     case CMD_SPS30_CLEAN: {
         // Trigger manual fan cleaning
-        int16_t ret_clean = sps30_start_manual_fan_cleaning();
-        sprintf(response_buffer, "%c%d", RSP_SPS30_CLEAN, ret_clean);
+        int_val = sps30_start_manual_fan_cleaning();
+        sprintf(response_buffer, "%c%d", RSP_SPS30_CLEAN, int_val);
         checksum = calculate_checksum(response_buffer);
         Serial.print('<'); Serial.print(response_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
         break;
     }
     case CMD_SGP40_TEST: {
         // Perform SGP40 test
-        uint16_t test_result = 0;
-        uint16_t sgp40_ret = sgp40_sensor.executeSelfTest(test_result);
+        uint16_t sgp40_ret = sgp40_sensor.executeSelfTest(uint_val);
 
-        // Compose response: g<sgp40_ret>,<test_result>
-        sprintf(response_buffer, "%c%d,0x%4X", RSP_SGP40_TEST, sgp40_ret, test_result);
+        // Compose response: g<sgp40_ret>,<uint_val>
+        sprintf(response_buffer, "%c%d,0x%4X", RSP_SGP40_TEST, sgp40_ret, uint_val);
+                checksum = calculate_checksum(response_buffer);
+        Serial.print('<'); Serial.print(response_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
+        break;
+    }
+    case CMD_GET_SCD30_INFO: {              
+        // Start response with command
+        strcpy(response_buffer, "d");
+        char* pos = response_buffer + 1;
+        
+        // Get measurement interval
+        int_val = scd30_sensor.getMeasurementInterval(uint_val);
+        pos += sprintf(pos, "%X,%X,", int_val, uint_val);
+        
+        // Get auto calibration status
+        int_val = scd30_sensor.getAutoCalibrationStatus(uint_val);
+        pos += sprintf(pos, "%X,%X,", int_val, uint_val);
+        
+        // Get forced recalibration status
+        int_val = scd30_sensor.getForceRecalibrationStatus(uint_val);
+        pos += sprintf(pos, "%X,%X,", int_val, uint_val);
+        
+        // Get temperature offset
+        int_val = scd30_sensor.getTemperatureOffset(uint_val);
+        pos += sprintf(pos, "%X,%X,", int_val, uint_val);
+        
+        // Get altitude compensation
+        int_val = scd30_sensor.getAltitudeCompensation(uint_val);
+        pos += sprintf(pos, "%X,%X,", int_val, uint_val);
+        
+        // Get firmware version
+        int_val = scd30_sensor.readFirmwareVersion(uint8_val1, uint8_val2);
+        sprintf(pos, ",%X,%X,%X", int_val, uint8_val1, uint8_val2);
+        
         checksum = calculate_checksum(response_buffer);
         Serial.print('<'); Serial.print(response_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
         break;
     }
+
+    default:
+      // Unknown command, no response
+      break;
   }
 }

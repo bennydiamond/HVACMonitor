@@ -77,11 +77,30 @@ def parse_packet(packet_str):
         elif cmd == 'v': # Version response
             return { "type": "Version Response", "version": payload_str }
         elif cmd == 'h': # Health response
-            # Payload: <first_time_flag>,<free_ram>
             parts = payload_str.split(',')
             first_time_flag = int(parts[0])
             free_ram = int(parts[1])
-            return { "type": "Health Response", "first_time_flag": first_time_flag, "free_ram_bytes": free_ram }
+            reset_cause = int(parts[2])
+            return { "type": "Health Response", "first_time_flag": first_time_flag, "free_ram_bytes": free_ram, "reset_cause": reset_cause }
+        elif cmd == 'p': # SPS30 info response
+            parts = payload_str.split(',')
+            return { "type": "SPS30 Info Response", "fw_ret": int(parts[0]), "fw_major": int(parts[1]), "fw_minor": int(parts[2]), 
+                    "interval_ret": int(parts[3]), "interval_sec": int(parts[4]), "days_ret": int(parts[5]), 
+                    "days": int(parts[6]), "status_ret": int(parts[7]), "status_reg": int(parts[8]) }
+        elif cmd == 'c': # SPS30 clean response
+            return { "type": "SPS30 Clean Response", "result": int(payload_str) }
+        elif cmd == 'g': # SGP40 test response
+            parts = payload_str.split(',')
+            return { "type": "SGP40 Test Response", "sgp40_ret": int(parts[0]), "test_result": parts[1] }
+        elif cmd == 'd': # SCD30 info response
+            parts = payload_str.split(',')
+            return { "type": "SCD30 Info Response", 
+                    "interval_ret": int(parts[0], 16), "interval": int(parts[1], 16), 
+                    "auto_cal_ret": int(parts[2], 16), "auto_cal": int(parts[3], 16), 
+                    "forced_cal_ret": int(parts[4], 16), "forced_cal": int(parts[5], 16), 
+                    "temp_offset_ret": int(parts[6], 16), "temp_offset": int(parts[7], 16), 
+                    "altitude_ret": int(parts[8], 16), "altitude": int(parts[9], 16) }
+
         else:
             print(f"--> [ERROR] Unknown command received: {cmd}")
             return None
@@ -94,9 +113,11 @@ stop_threads = False
 
 def command_sender_thread(ser):
     """A thread to send commands to the Nano based on user input."""
-    global stop_threads # Added 'R' for Reboot
+    global stop_threads
     print("\n--- Nano Command Sender ---")
-    print("  V - Request Version | H - Request Health | A - Acknowledge Health | R - Request Reboot | quit - Exit")
+    print("  V - Version | H - Health | A - Ack Health | R - Reboot")
+    print("  P - SPS30 Info | C - SPS30 Clean | G - SGP40 Test | D - SCD30 Info")
+    print("  quit - Exit")
     print("---------------------------\n")
     while not stop_threads:
         try:
@@ -104,7 +125,7 @@ def command_sender_thread(ser):
             if cmd_char == 'QUIT':
                 stop_threads = True
                 break
-            if cmd_char in ['V', 'H', 'A', 'R']:
+            if cmd_char in ['V', 'H', 'A', 'R', 'P', 'C', 'G', 'D']:
                 checksum = calculate_checksum(cmd_char)
                 packet = f"<{cmd_char},{checksum}>"
                 print(f"--> Sending command: {packet}")
