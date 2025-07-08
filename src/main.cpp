@@ -344,9 +344,43 @@ void process_packet(String packet) {
                 ret_altitude, altitude_compensation,
                 ret_firmware, fw_major, fw_minor
             );
+            // Update the AutoCalibration switch state and Force Calibration value in Home Assistant
+            haManager.updateScd30AutoCalState(auto_calibration != 0);
+            haManager.updateScd30ForceCalValue(forced_recalibration_value);
+            
             if (init_sequence_active && pending_init_commands[current_init_command_index] == CMD_SCD30_INFO) {
                 current_init_command_index++;
             }
+            break;
+        }
+        case RSP_SCD30_AUTOCAL: {
+            // Format: t<set_result>,<read_result>,<actual_state>
+            char payload_cstr[payload.length() + 1];
+            strcpy(payload_cstr, payload.c_str());
+            char* token = strtok(payload_cstr, ","); if (!token) return; int set_result = strtol(token, nullptr, 16);
+            token = strtok(NULL, ","); if (!token) return; int read_result = strtol(token, nullptr, 16);
+            token = strtok(NULL, ","); if (!token) return; uint16_t actual_state = strtol(token, nullptr, 16);
+            
+            logger.debugf("SCD30 AutoCalibration Set: SetResult=%d, ReadResult=%d, ActualState=%s", 
+                set_result, read_result, actual_state ? "ON" : "OFF");
+            
+            // Update the switch state based on the actual readback value
+            haManager.updateScd30AutoCalState(actual_state != 0);
+            break;
+        }
+        case RSP_SCD30_FORCECAL: {
+            // Format: f<set_result>,<read_result>,<actual_value>
+            char payload_cstr[payload.length() + 1];
+            strcpy(payload_cstr, payload.c_str());
+            char* token = strtok(payload_cstr, ","); if (!token) return; int set_result = strtol(token, nullptr, 16);
+            token = strtok(NULL, ","); if (!token) return; int read_result = strtol(token, nullptr, 16);
+            token = strtok(NULL, ","); if (!token) return; uint16_t actual_value = strtol(token, nullptr, 16);
+            
+            logger.debugf("SCD30 Force Calibration Set: SetResult=%d, ReadResult=%d, ActualValue=%u ppm", 
+                set_result, read_result, actual_value);
+            
+            // Update the number value based on the actual readback value
+            haManager.updateScd30ForceCalValue(actual_value);
             break;
         }
         default:

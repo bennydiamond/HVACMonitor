@@ -100,6 +100,16 @@ def parse_packet(packet_str):
                     "forced_cal_ret": int(parts[4], 16), "forced_cal": int(parts[5], 16), 
                     "temp_offset_ret": int(parts[6], 16), "temp_offset": int(parts[7], 16), 
                     "altitude_ret": int(parts[8], 16), "altitude": int(parts[9], 16) }
+        elif cmd == 't': # SCD30 AutoCalibration response
+            parts = payload_str.split(',')
+            return { "type": "SCD30 AutoCal Response", 
+                    "set_result": int(parts[0], 16), "read_result": int(parts[1], 16), 
+                    "actual_state": "ON" if int(parts[2], 16) else "OFF" }
+        elif cmd == 'f': # SCD30 Force Calibration response
+            parts = payload_str.split(',')
+            return { "type": "SCD30 Force Cal Response", 
+                    "set_result": int(parts[0], 16), "read_result": int(parts[1], 16), 
+                    "actual_value": f"{int(parts[2], 16)} ppm" }
 
         else:
             print(f"--> [ERROR] Unknown command received: {cmd}")
@@ -117,6 +127,8 @@ def command_sender_thread(ser):
     print("\n--- Nano Command Sender ---")
     print("  V - Version | H - Health | A - Ack Health | R - Reboot")
     print("  P - SPS30 Info | C - SPS30 Clean | G - SGP40 Test | D - SCD30 Info")
+    print("  T0 - SCD30 AutoCal OFF | T1 - SCD30 AutoCal ON")
+    print("  F<ppm> - SCD30 Force Calibration (e.g., F400)")
     print("  quit - Exit")
     print("---------------------------\n")
     while not stop_threads:
@@ -129,6 +141,16 @@ def command_sender_thread(ser):
                 checksum = calculate_checksum(cmd_char)
                 packet = f"<{cmd_char},{checksum}>"
                 print(f"--> Sending command: {packet}")
+                ser.write(packet.encode('ascii'))
+            elif cmd_char in ['T0', 'T1']:
+                checksum = calculate_checksum(cmd_char)
+                packet = f"<{cmd_char},{checksum}>"
+                print(f"--> Sending SCD30 AutoCal command: {packet}")
+                ser.write(packet.encode('ascii'))
+            elif cmd_char.startswith('F') and len(cmd_char) > 1:
+                checksum = calculate_checksum(cmd_char)
+                packet = f"<{cmd_char},{checksum}>"
+                print(f"--> Sending SCD30 Force Cal command: {packet}")
                 ser.write(packet.encode('ascii'))
         except (EOFError, KeyboardInterrupt):
             stop_threads = True

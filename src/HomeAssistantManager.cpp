@@ -45,7 +45,9 @@ HomeAssistantManager::HomeAssistantManager() :
     _getSps30InfoButton("get_sps30_info"),
     _Sps30ManualCleanButton("sps30_manual_clean"),
     _getSgp40SelftestButton("get_sgp40_selftest"),
-    _logLevelSelect("log_level")
+    _logLevelSelect("log_level"),
+    _scd30AutoCalSwitch("scd30_autocal"),
+    _scd30ForceCalNumber("scd30_forcecal", HANumber::PrecisionP0)
 {
     _instance = this;
 
@@ -253,6 +255,20 @@ void HomeAssistantManager::init(LGFX* tft, IUIUpdater* uiUpdater, ConfigManager*
     _logLevelSelect.onCommand(onLogLevelCommand);
     _logLevelSelect.setCurrentState(_config->getLogLevel());
 
+    _scd30AutoCalSwitch.setName("SCD30 Auto Calibration");
+    _scd30AutoCalSwitch.setIcon("mdi:tune");
+    _scd30AutoCalSwitch.setEntityCategory(entity_category_config);
+    _scd30AutoCalSwitch.onCommand(onScd30AutoCalCommand);
+
+    _scd30ForceCalNumber.setName("SCD30 Force Calibration");
+    _scd30ForceCalNumber.setIcon("mdi:tune-variant");
+    _scd30ForceCalNumber.setEntityCategory(entity_category_config);
+    _scd30ForceCalNumber.setUnitOfMeasurement("ppm");
+    _scd30ForceCalNumber.setMin(400);
+    _scd30ForceCalNumber.setMax(2000);
+    _scd30ForceCalNumber.setStep(1);
+    _scd30ForceCalNumber.onCommand(onScd30ForceCalCommand);
+
     _device.enableSharedAvailability();
     _device.enableLastWill();
 
@@ -421,8 +437,8 @@ void HomeAssistantManager::setSensorStackVersionUnavailable() {
     _lastPublishedSensorStackVersion = "unavailable";
 }
 
-void HomeAssistantManager::publishSensorStackUptime(unsigned long uptime_seconds, bool force) {
-    unsigned long currentTime = millis();
+void HomeAssistantManager::publishSensorStackUptime(uint32_t uptime_seconds, bool force) {
+    uint32_t currentTime = millis();
 
     // The check below ensures we either publish on a regular interval, or when forced.
     // The underlying ArduinoHA library's setValue() method is smart and will only
@@ -438,7 +454,7 @@ void HomeAssistantManager::publishSensorStackUptime(unsigned long uptime_seconds
 }
 
 void HomeAssistantManager::publishSensorStackFreeRam(uint16_t free_ram) {
-    _sensorStackFreeRamSensor.setValue(free_ram);
+    _sensorStackFreeRamSensor.setValue(free_ram, true);
 }
 
 void HomeAssistantManager::onRebootCommand(HAButton* sender) {
@@ -503,4 +519,51 @@ void HomeAssistantManager::onStateCommand(bool state, HALight* sender) {
 
 void HomeAssistantManager::publishNanoResetCause(const char* cause) {
     _sensorStackResetCauseSensor.setValue(cause);
+}
+
+void HomeAssistantManager::onScd30AutoCalCommand(bool state, HASwitch* sender) {
+    logger.infof("SCD30 AutoCalibration %s command from Home Assistant.", state ? "ON" : "OFF");
+    // Use the existing send_command_to_nano function with parameter
+    char cmd_with_param[3];
+    cmd_with_param[0] = CMD_SET_SCD30_AUTOCAL;
+    cmd_with_param[1] = state ? '1' : '0';
+    cmd_with_param[2] = '\0';
+    
+    uint8_t crc = 0x00;
+    uint8_t polynomial = 0x07;
+    for (int i = 0; i < 2; i++) {
+        crc ^= cmd_with_param[i];
+        for (int j = 0; j < 8; j++) {
+            crc = (crc & 0x80) ? (crc << 1) ^ polynomial : (crc << 1);
+        }
+    }
+    
+    Serial.print('<'); Serial.print(cmd_with_param); Serial.print(','); Serial.print(crc); Serial.print('>');
+}
+
+void HomeAssistantManager::updateScd30AutoCalState(bool state) {
+    _scd30AutoCalSwitch.setState(state);
+}
+
+void HomeAssistantManager::onScd30ForceCalCommand(HANumeric number, HANumber* sender) {
+    uint16_t ppm_value = (uint16_t)number.toUInt16();
+    logger.infof("SCD30 Force Calibration to %u ppm command from Home Assistant.", ppm_value);
+    
+    char cmd_with_param[8];
+    sprintf(cmd_with_param, "%c%u", CMD_SET_SCD30_FORCECAL, ppm_value);
+    
+    uint8_t crc = 0x00;
+    uint8_t polynomial = 0x07;
+    for (int i = 0; cmd_with_param[i] != '\0'; i++) {
+        crc ^= cmd_with_param[i];
+        for (int j = 0; j < 8; j++) {
+            crc = (crc & 0x80) ? (crc << 1) ^ polynomial : (crc << 1);
+        }
+    }
+    
+    Serial.print('<'); Serial.print(cmd_with_param); Serial.print(','); Serial.print(crc); Serial.print('>');
+}
+
+void HomeAssistantManager::updateScd30ForceCalValue(uint16_t value) {
+    _scd30ForceCalNumber.setState(value);
 }

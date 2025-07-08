@@ -16,6 +16,10 @@
 #define RSP_SGP40_TEST        'g' // Response with SGP40 test result
 #define CMD_GET_SCD30_INFO    'D' // Request SCD30 info
 #define RSP_SCD30_INFO        'd' // Response with SCD30 info
+#define CMD_SET_SCD30_AUTOCAL 'T' // Set SCD30 AutoCalibration
+#define RSP_SCD30_AUTOCAL     't' // Response with SCD30 AutoCalibration result
+#define CMD_SET_SCD30_FORCECAL 'F' // Set SCD30 Forced Recalibration
+#define RSP_SCD30_FORCECAL     'f' // Response with SCD30 Forced Recalibration result
 
 // Function to send a command to the Nano, defined in main.cpp
 void send_command_to_nano(char cmd);

@@ -51,7 +51,7 @@ uint8_t CST820::i2c_read(uint8_t addr)
     Wire.beginTransmission(I2C_ADDR_CST820);
     Wire.write(addr);
     Wire.endTransmission(false);
-    Wire.requestFrom(I2C_ADDR_CST820, (uint8_t)1);
+    Wire.requestFrom(I2C_ADDR_CST820, 1);
     while (Wire.available())
     {
         rdData = Wire.read();
