@@ -48,7 +48,8 @@ HomeAssistantManager::HomeAssistantManager() :
     _logLevelSelect("log_level"),
     _scd30AutoCalSwitch("scd30_autocal"),
     _scd30ForceCalNumber("scd30_forcecal", HANumber::PrecisionP0),
-    _esp32FreeRamSensor("esp32_free_ram", HASensor::PrecisionP0)
+    _esp32FreeRamSensor("esp32_free_ram", HASensor::PrecisionP0),
+    _esp32UptimeSensor("esp32_uptime", HASensorNumber::PrecisionP0)
 {
     _instance = this;
 
@@ -274,6 +275,11 @@ void HomeAssistantManager::init(LGFX* tft, IUIUpdater* uiUpdater, ConfigManager*
     _esp32FreeRamSensor.setIcon("mdi:memory");
     _esp32FreeRamSensor.setUnitOfMeasurement("B");
     _esp32FreeRamSensor.setEntityCategory(entity_category_diagnostic);
+
+    _esp32UptimeSensor.setName("ESP32 Uptime");
+    _esp32UptimeSensor.setIcon("mdi:timer-sand");
+    _esp32UptimeSensor.setUnitOfMeasurement("s");
+    _esp32UptimeSensor.setEntityCategory(entity_category_diagnostic);
 
     _device.enableSharedAvailability();
     _device.enableLastWill();
@@ -576,4 +582,8 @@ void HomeAssistantManager::updateScd30ForceCalValue(uint16_t value) {
 
 void HomeAssistantManager::publishEsp32FreeRam(uint32_t free_ram) {
     _esp32FreeRamSensor.setValue(free_ram, true);
+}
+
+void HomeAssistantManager::publishEsp32Uptime(uint32_t uptime_seconds) {
+    _esp32UptimeSensor.setValue(uptime_seconds);
 }

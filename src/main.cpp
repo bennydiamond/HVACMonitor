@@ -501,6 +501,7 @@ void loop() {
         uiUpdater.update_last_packet_time(seconds_since_packet, is_sensor_module_connected);
         haManager.publishSensorStackUptime(nano_current_uptime_seconds);
         haManager.publishEsp32FreeRam(ESP.getFreeHeap());
+        haManager.publishEsp32Uptime(millis() / 1000);
         uiUpdater.update_runtime_info(ESP.getFreeHeap(), nano_current_uptime_seconds);
 
         bool wifi_connected = (WiFi.status() == WL_CONNECTED);
