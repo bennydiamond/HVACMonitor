@@ -38,6 +38,11 @@ public:
     void update_runtime_info(uint32_t freemem, unsigned long uptime_ms) override;
     void update_network_info(const char* ip, const char* mac, int8_t rssi, const char* ssid, bool ha_connected) override;
     void update_last_packet_time(uint32_t seconds_since_packet, bool connected) override;
+    void update_sensorstack_info(const char* version, uint32_t uptime, uint16_t free_ram, bool connected) override;
+    void update_scd30_autocal(bool enabled) override;
+    void update_scd30_forcecal(uint16_t ppm) override;
+    void update_sps30_info(uint32_t fan_interval, uint8_t fan_days) override;
+    void update_sgp40_test(int result, uint16_t value) override;
 
 private:
     static LGFX* _tft;

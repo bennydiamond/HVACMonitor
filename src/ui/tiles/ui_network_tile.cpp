@@ -4,7 +4,7 @@
 const int SCROLL_SPEED_MS_PX_NET = 5;
 
 lv_obj_t* UINetworkTile::create_tile(lv_obj_t* parent_tv) {
-    lv_obj_t* tile = lv_tileview_add_tile(parent_tv, 1, 1, LV_DIR_VER);
+    lv_obj_t* tile = lv_tileview_add_tile(parent_tv, 1, 1, LV_DIR_HOR | LV_DIR_TOP);
     lv_obj_set_scroll_dir(tile, LV_DIR_NONE);
     
     static lv_coord_t col_dsc[] = {LV_GRID_CONTENT, lv_grid_fr(1), LV_GRID_TEMPLATE_LAST};
@@ -57,7 +57,7 @@ lv_obj_t* UINetworkTile::create_tile(lv_obj_t* parent_tv) {
     lv_obj_set_grid_cell(mac_icon, LV_GRID_ALIGN_CENTER, 0, 1, LV_GRID_ALIGN_CENTER, 3, 1);
     mac_label = lv_label_create(tile);
     lv_label_set_text(mac_label, "MAC: ---");
-    lv_obj_set_width(mac_label, 270);
+    lv_obj_set_width(mac_label, 260);
     lv_label_set_long_mode(mac_label, LV_LABEL_LONG_SCROLL);
     lv_obj_set_style_anim_speed(mac_label, SCROLL_SPEED_MS_PX_NET, 0);
     lv_obj_set_grid_cell(mac_label, LV_GRID_ALIGN_START, 1, 1, LV_GRID_ALIGN_CENTER, 3, 1);

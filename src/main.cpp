@@ -48,6 +48,8 @@ bool health_request_pending = false;
 static bool first_health_packet_received = false;
 
 String serial_buffer = "";
+String last_nano_version = "";
+uint16_t last_nano_ram = 0;
 
 static LGFX tft;
 CST820 touch(21, 22, -1, -1);
@@ -221,6 +223,7 @@ void process_packet(String packet) {
         }
         case RSP_VERSION: {
             haManager.publishSensorStackVersion(payload.c_str());
+            last_nano_version = payload;
             if (init_sequence_active && pending_init_commands[current_init_command_index] == CMD_VERSION) {
                 current_init_command_index++;
             }
@@ -244,6 +247,7 @@ void process_packet(String packet) {
             }
             haManager.publishSensorStackFreeRam(nano_free_ram);
             haManager.publishNanoResetCause(reset_cause_str);
+            last_nano_ram = nano_free_ram;
 
             if (first_time_flag == 0) {
                 send_command_to_nano(CMD_ACK_HEALTH);
@@ -279,6 +283,7 @@ void process_packet(String packet) {
                 ret_fan_days, fan_days,
                 ret_status, status_reg
             );
+            uiUpdater.update_sps30_info(fan_interval, fan_days);
             if (init_sequence_active && pending_init_commands[current_init_command_index] == CMD_SPS30_INFO) {
                 current_init_command_index++;
             }
@@ -299,6 +304,7 @@ void process_packet(String packet) {
             token = strtok(NULL, ","); if (!token) return; uint16_t raw_value = strtoul(token, nullptr, 16);
 
             logger.debugf("SGP40 Test Result: Status=%d, RawValue=0x%04X", ret_status, raw_value);
+            uiUpdater.update_sgp40_test(ret_status, raw_value);
             break;
         }
         case RSP_SCD30_INFO: {
@@ -344,9 +350,11 @@ void process_packet(String packet) {
                 ret_altitude, altitude_compensation,
                 ret_firmware, fw_major, fw_minor
             );
-            // Update the AutoCalibration switch state and Force Calibration value in Home Assistant
+            // Update the AutoCalibration switch state and Force Calibration value in Home Assistant and UI
             haManager.updateScd30AutoCalState(auto_calibration != 0);
             haManager.updateScd30ForceCalValue(forced_recalibration_value);
+            uiUpdater.update_scd30_autocal(auto_calibration != 0);
+            uiUpdater.update_scd30_forcecal(forced_recalibration_value);
             
             if (init_sequence_active && pending_init_commands[current_init_command_index] == CMD_SCD30_INFO) {
                 current_init_command_index++;
@@ -503,6 +511,13 @@ void loop() {
         haManager.publishEsp32FreeRam(ESP.getFreeHeap());
         haManager.publishEsp32Uptime(millis() / 1000);
         uiUpdater.update_runtime_info(ESP.getFreeHeap(), nano_current_uptime_seconds);
+        
+        // Update SensorStack tile with current info
+        if (is_sensor_module_connected) {
+            uiUpdater.update_sensorstack_info(last_nano_version.c_str(), nano_current_uptime_seconds, last_nano_ram, true);
+        } else {
+            uiUpdater.update_sensorstack_info("N/A", 0, 0, false);
+        }
 
         bool wifi_connected = (WiFi.status() == WL_CONNECTED);
         String ip = wifi_connected ? WiFi.localIP().toString() : "N/A";

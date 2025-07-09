@@ -57,8 +57,8 @@ void UI::init(LGFX* tft_instance, CST820* touch_instance, ConfigManager* config_
 }
 
 void UI::create_widgets() {
-    create_status_bar();
     create_main_tileview();
+    create_status_bar();
     
     tileManager = new UITileManager();
     tileManager->create_all_tiles(tileview, _config, fan_icon_label);
@@ -85,11 +85,17 @@ void UI::set_initial_debug_info(const char* v, const char* r) { if (tileManager)
 void UI::update_runtime_info(uint32_t f, unsigned long u) { if (tileManager) tileManager->update_runtime_info(f, u); }
 void UI::update_network_info(const char* ip, const char* m, int8_t r, const char* s, bool hc) { if (tileManager) tileManager->update_network_info(ip, m, r, s, hc); }
 void UI::update_last_packet_time(uint32_t s, bool c) { if (tileManager) tileManager->update_last_packet_time(s, c); }
+void UI::update_sensorstack_info(const char* version, uint32_t uptime, uint16_t free_ram, bool connected) { if (tileManager) tileManager->update_sensorstack_info(version, uptime, free_ram, connected); }
+void UI::update_scd30_autocal(bool enabled) { if (tileManager) tileManager->update_scd30_autocal(enabled); }
+void UI::update_scd30_forcecal(uint16_t ppm) { if (tileManager) tileManager->update_scd30_forcecal(ppm); }
+void UI::update_sps30_info(uint32_t fan_interval, uint8_t fan_days) { if (tileManager) tileManager->update_sps30_info(fan_interval, fan_days); }
+void UI::update_sgp40_test(int result, uint16_t value) { if (tileManager) tileManager->update_sgp40_test(result, value); }
 
 void UI::create_status_bar() {
     status_bar = lv_obj_create(lv_scr_act());
     lv_obj_set_size(status_bar, 35, 240);
     lv_obj_align(status_bar, LV_ALIGN_LEFT_MID, 0, 0);
+    lv_obj_move_to_index(status_bar, -1);
     lv_obj_set_flex_flow(status_bar, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(status_bar, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_gap(status_bar, 20, 0);
@@ -125,8 +131,8 @@ void UI::create_status_bar() {
 
 void UI::create_main_tileview() {
     tileview = lv_tileview_create(lv_scr_act());
-    lv_obj_set_size(tileview, 285, 240);
-    lv_obj_align(tileview, LV_ALIGN_RIGHT_MID, 0, 0);
+    lv_obj_set_size(tileview, 320, 240);
+    lv_obj_align(tileview, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_pad_all(tileview, 5, 0);
     lv_obj_set_scrollbar_mode(tileview, LV_SCROLLBAR_MODE_OFF);
     lv_obj_add_event_cb(tileview, tile_change_event_cb_static, LV_EVENT_VALUE_CHANGED, this);
@@ -221,13 +227,20 @@ void UI::tile_change_event_cb_static(lv_event_t * e) {
 void UI::tile_change_event_cb(lv_event_t * e) {
     lv_obj_t * active_tile = lv_tileview_get_tile_act(tileview);
     
-    if (tileManager && (active_tile == tileManager->get_tile3() || active_tile == tileManager->get_tile4())) {
-        if(status_bar) lv_obj_add_flag(status_bar, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_size(tileview, 320, 240);
-        lv_obj_align(tileview, LV_ALIGN_LEFT_MID, 0, 0);
-    } else {
+    // Clear SGP40 test results when leaving SGP40 tile
+    static lv_obj_t* prev_tile = nullptr;
+    if (tileManager && prev_tile == tileManager->get_sgp40_tile() && active_tile != prev_tile) {
+        tileManager->clear_sgp40_results();
+    }
+    prev_tile = active_tile;
+    
+    if (tileManager && (active_tile == tileManager->get_tile1() || active_tile == tileManager->get_secondary_tile())) {
+        // Show status bar for first column tiles
         if(status_bar) lv_obj_clear_flag(status_bar, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_size(tileview, 285, 240);
-        lv_obj_align(tileview, LV_ALIGN_RIGHT_MID, 0, 0);
+        // Force grid layout refresh to maintain proper alignment
+        lv_obj_mark_layout_as_dirty(active_tile);
+    } else {
+        // Hide status bar for other columns
+        if(status_bar) lv_obj_add_flag(status_bar, LV_OBJ_FLAG_HIDDEN);
     }
 }

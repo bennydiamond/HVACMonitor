@@ -4,7 +4,7 @@
 const int SCROLL_SPEED_MS_PX_RT = 5;
 
 lv_obj_t* UIRuntimeTile::create_tile(lv_obj_t* parent_tv) {
-    lv_obj_t* tile = lv_tileview_add_tile(parent_tv, 1, 0, LV_DIR_LEFT | LV_DIR_VER);
+    lv_obj_t* tile = lv_tileview_add_tile(parent_tv, 1, 0, LV_DIR_HOR | LV_DIR_VER);
     lv_obj_set_scroll_dir(tile, LV_DIR_NONE);
     
     static lv_coord_t col_dsc[] = {LV_GRID_CONTENT, lv_grid_fr(1), LV_GRID_TEMPLATE_LAST};
