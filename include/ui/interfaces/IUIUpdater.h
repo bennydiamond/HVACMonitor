@@ -25,6 +25,11 @@ public:
     virtual void update_runtime_info(uint32_t freemem, unsigned long uptime_ms) = 0;
     virtual void update_network_info(const char* ip, const char* mac, int8_t rssi, const char* ssid, bool ha_connected) = 0;
     virtual void update_last_packet_time(uint32_t seconds_since_packet, bool connected) = 0;
+    virtual void update_sensorstack_info(const char* version, uint32_t uptime, uint16_t free_ram, bool connected) = 0;
+    virtual void update_scd30_autocal(bool enabled) = 0;
+    virtual void update_scd30_forcecal(uint16_t ppm) = 0;
+    virtual void update_sps30_info(uint32_t fan_interval, uint8_t fan_days) = 0;
+    virtual void update_sgp40_test(int result, uint16_t value) = 0;
 };
 
 #endif // IUI_UPDATER_H

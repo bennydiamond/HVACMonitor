@@ -5,8 +5,9 @@ UIMainTile::UIMainTile(ConfigManager* config) : _config(config) {}
 
 lv_obj_t* UIMainTile::create_tile(lv_obj_t* parent_tv) {
     lv_obj_t* tile = lv_tileview_add_tile(parent_tv, 0, 0, LV_DIR_RIGHT | LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(tile, LV_SCROLLBAR_MODE_OFF);
     
-    static lv_coord_t main_col_dsc[] = {LV_GRID_CONTENT, lv_grid_fr(1), LV_GRID_TEMPLATE_LAST};
+    static lv_coord_t main_col_dsc[] = {24, LV_GRID_CONTENT, lv_grid_fr(1), LV_GRID_TEMPLATE_LAST};
     static lv_coord_t main_row_dsc[] = {LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST};
 
     lv_obj_set_layout(tile, LV_LAYOUT_GRID);
@@ -28,13 +29,13 @@ void UIMainTile::create_pressure_widgets(lv_obj_t* parent) {
     pressure_icon = lv_label_create(parent);
     lv_obj_set_style_text_font(pressure_icon, &mdi_44, 0);
     lv_label_set_text(pressure_icon, ICON_GAUGE);
-    lv_obj_set_grid_cell(pressure_icon, LV_GRID_ALIGN_END, 0, 1, LV_GRID_ALIGN_CENTER, 0, 1);
+    lv_obj_set_grid_cell(pressure_icon, LV_GRID_ALIGN_END, 1, 1, LV_GRID_ALIGN_CENTER, 0, 1);
     lv_obj_set_style_pad_bottom(pressure_icon, 18, 0);
 
     pressure_label = lv_label_create(parent);
     lv_label_set_text(pressure_label, "--- Pa");
     lv_obj_set_style_text_font(pressure_label, &custom_font_44, 0);
-    lv_obj_set_grid_cell(pressure_label, LV_GRID_ALIGN_START, 1, 1, LV_GRID_ALIGN_CENTER, 0, 1);
+    lv_obj_set_grid_cell(pressure_label, LV_GRID_ALIGN_START, 2, 1, LV_GRID_ALIGN_CENTER, 0, 1);
     lv_obj_set_style_pad_bottom(pressure_label, 18, 0);
 }
 
@@ -42,12 +43,12 @@ void UIMainTile::create_co2_widgets(lv_obj_t* parent) {
     co2_icon = lv_label_create(parent);
     lv_obj_set_style_text_font(co2_icon, &mdi_30, 0);
     lv_label_set_text(co2_icon, ICON_MOLECULE_CO2);
-    lv_obj_set_grid_cell(co2_icon, LV_GRID_ALIGN_CENTER, 0, 1, LV_GRID_ALIGN_CENTER, 1, 1);
+    lv_obj_set_grid_cell(co2_icon, LV_GRID_ALIGN_CENTER, 1, 1, LV_GRID_ALIGN_CENTER, 1, 1);
 
     co2_label = lv_label_create(parent);
     lv_label_set_text(co2_label, "---- ppm");
     lv_obj_set_style_text_font(co2_label, &custom_font_30, 0);
-    lv_obj_set_grid_cell(co2_label, LV_GRID_ALIGN_START, 1, 1, LV_GRID_ALIGN_CENTER, 1, 1);
+    lv_obj_set_grid_cell(co2_label, LV_GRID_ALIGN_START, 2, 1, LV_GRID_ALIGN_CENTER, 1, 1);
     lv_obj_set_style_pad_left(co2_label, -5, 0);
 }
 
@@ -55,12 +56,12 @@ void UIMainTile::create_voc_widgets(lv_obj_t* parent) {
     voc_icon = lv_label_create(parent);
     lv_obj_set_style_text_font(voc_icon, &mdi_30, 0);
     lv_label_set_text(voc_icon, ICON_LUNGS);
-    lv_obj_set_grid_cell(voc_icon, LV_GRID_ALIGN_CENTER, 0, 1, LV_GRID_ALIGN_CENTER, 2, 1);
+    lv_obj_set_grid_cell(voc_icon, LV_GRID_ALIGN_CENTER, 1, 1, LV_GRID_ALIGN_CENTER, 2, 1);
 
     voc_label = lv_label_create(parent);
     lv_label_set_text(voc_label, "---");
     lv_obj_set_style_text_font(voc_label, &custom_font_30, 0);
-    lv_obj_set_grid_cell(voc_label, LV_GRID_ALIGN_START, 1, 1, LV_GRID_ALIGN_CENTER, 2, 1);
+    lv_obj_set_grid_cell(voc_label, LV_GRID_ALIGN_START, 2, 1, LV_GRID_ALIGN_CENTER, 2, 1);
     lv_obj_set_style_pad_left(voc_label, -5, 0);
 }
 
@@ -68,12 +69,12 @@ void UIMainTile::create_geiger_widgets(lv_obj_t* parent) {
     usv_icon = lv_label_create(parent);
     lv_obj_set_style_text_font(usv_icon, &mdi_30, 0);
     lv_label_set_text(usv_icon, ICON_RADIOACTIVE);
-    lv_obj_set_grid_cell(usv_icon, LV_GRID_ALIGN_CENTER, 0, 1, LV_GRID_ALIGN_CENTER, 3, 1);
+    lv_obj_set_grid_cell(usv_icon, LV_GRID_ALIGN_CENTER, 1, 1, LV_GRID_ALIGN_CENTER, 3, 1);
     
     usv_label = lv_label_create(parent);
     lv_label_set_text(usv_label, "-.-- µSv/h");
     lv_obj_set_style_text_font(usv_label, &custom_font_30, 0);
-    lv_obj_set_grid_cell(usv_label, LV_GRID_ALIGN_START, 1, 1, LV_GRID_ALIGN_CENTER, 3, 1);
+    lv_obj_set_grid_cell(usv_label, LV_GRID_ALIGN_START, 2, 1, LV_GRID_ALIGN_CENTER, 3, 1);
     lv_obj_set_style_pad_left(usv_label, -5, 0);
 }
 
@@ -81,7 +82,7 @@ void UIMainTile::create_temp_humi_widgets(lv_obj_t* parent) {
     lv_obj_t* temp_humi_container = lv_obj_create(parent);
     lv_obj_remove_style_all(temp_humi_container);
     lv_obj_set_height(temp_humi_container, LV_SIZE_CONTENT);
-    lv_obj_set_grid_cell(temp_humi_container, LV_GRID_ALIGN_STRETCH, 1, 1, LV_GRID_ALIGN_CENTER, 4, 1);
+    lv_obj_set_grid_cell(temp_humi_container, LV_GRID_ALIGN_STRETCH, 2, 1, LV_GRID_ALIGN_CENTER, 4, 1);
     lv_obj_set_layout(temp_humi_container, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(temp_humi_container, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(temp_humi_container, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -93,7 +94,7 @@ void UIMainTile::create_temp_humi_widgets(lv_obj_t* parent) {
     temp_icon = lv_label_create(parent);
     lv_obj_set_style_text_font(temp_icon, &mdi_30, 0);
     lv_label_set_text(temp_icon, ICON_THERMOMETER);
-    lv_obj_set_grid_cell(temp_icon, LV_GRID_ALIGN_CENTER, 0, 1, LV_GRID_ALIGN_CENTER, 4, 1);
+    lv_obj_set_grid_cell(temp_icon, LV_GRID_ALIGN_CENTER, 1, 1, LV_GRID_ALIGN_CENTER, 4, 1);
     
     temp_label = lv_label_create(temp_humi_container);
     lv_label_set_text(temp_label, "--.- °C");

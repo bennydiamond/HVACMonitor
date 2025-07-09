@@ -6,10 +6,11 @@ const int SCROLL_SPEED_MS_PX_SEC = 5;
 UISecondaryTile::UISecondaryTile(ConfigManager* config) : _config(config) {}
 
 lv_obj_t* UISecondaryTile::create_tile(lv_obj_t* parent_tv) {
-    lv_obj_t* tile = lv_tileview_add_tile(parent_tv, 0, 1, LV_DIR_VER);
+    lv_obj_t* tile = lv_tileview_add_tile(parent_tv, 0, 1, LV_DIR_TOP);
     lv_obj_set_scroll_dir(tile, LV_DIR_NONE);
+    lv_obj_set_scrollbar_mode(tile, LV_SCROLLBAR_MODE_OFF);
     
-    static lv_coord_t col_dsc[] = {LV_GRID_CONTENT, lv_grid_fr(1), LV_GRID_TEMPLATE_LAST};
+    static lv_coord_t col_dsc[] = {24, LV_GRID_CONTENT, lv_grid_fr(1), LV_GRID_TEMPLATE_LAST};
     static lv_coord_t row_dsc[] = {LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_CONTENT, LV_GRID_TEMPLATE_LAST};
 
     lv_obj_set_layout(tile, LV_LAYOUT_GRID);
@@ -24,71 +25,71 @@ lv_obj_t* UISecondaryTile::create_tile(lv_obj_t* parent_tv) {
     lv_obj_set_style_text_font(pm1_icon, &mdi_30, 0);
     lv_label_set_text(pm1_icon, ICON_BLUR);
     lv_obj_set_style_text_color(pm1_icon, COLOR_DEFAULT_ICON, 0);
-    lv_obj_set_grid_cell(pm1_icon, LV_GRID_ALIGN_CENTER, 0, 1, LV_GRID_ALIGN_CENTER, 0, 1);
+    lv_obj_set_grid_cell(pm1_icon, LV_GRID_ALIGN_CENTER, 1, 1, LV_GRID_ALIGN_CENTER, 0, 1);
 
     pm1_label = lv_label_create(tile);
     lv_label_set_text(pm1_label, "PM1.0: --- µg/m³");
-    lv_obj_set_width(pm1_label, 225);
+    lv_obj_set_width(pm1_label, 228);
     lv_label_set_long_mode(pm1_label, LV_LABEL_LONG_SCROLL);
     lv_obj_set_style_anim_speed(pm1_label, SCROLL_SPEED_MS_PX_SEC, 0);
     lv_obj_set_style_text_font(pm1_label, &custom_font_30, 0);
-    lv_obj_set_grid_cell(pm1_label, LV_GRID_ALIGN_START, 1, 1, LV_GRID_ALIGN_CENTER, 0, 1);
+    lv_obj_set_grid_cell(pm1_label, LV_GRID_ALIGN_START, 2, 1, LV_GRID_ALIGN_CENTER, 0, 1);
 
     pm25_icon = lv_label_create(tile);
     lv_obj_set_style_text_font(pm25_icon, &mdi_30, 0);
     lv_label_set_text(pm25_icon, ICON_BLUR);
     lv_obj_set_style_text_color(pm25_icon, COLOR_DEFAULT_ICON, 0);
-    lv_obj_set_grid_cell(pm25_icon, LV_GRID_ALIGN_CENTER, 0, 1, LV_GRID_ALIGN_CENTER, 1, 1);
+    lv_obj_set_grid_cell(pm25_icon, LV_GRID_ALIGN_CENTER, 1, 1, LV_GRID_ALIGN_CENTER, 1, 1);
 
     pm25_label = lv_label_create(tile);
     lv_label_set_text(pm25_label, "PM2.5: --- µg/m³");
-    lv_obj_set_width(pm25_label, 225);
+    lv_obj_set_width(pm25_label, 228);
     lv_label_set_long_mode(pm25_label, LV_LABEL_LONG_SCROLL);
     lv_obj_set_style_anim_speed(pm25_label, SCROLL_SPEED_MS_PX_SEC, 0);
     lv_obj_set_style_text_font(pm25_label, &custom_font_30, 0);
-    lv_obj_set_grid_cell(pm25_label, LV_GRID_ALIGN_START, 1, 1, LV_GRID_ALIGN_CENTER, 1, 1);
+    lv_obj_set_grid_cell(pm25_label, LV_GRID_ALIGN_START, 2, 1, LV_GRID_ALIGN_CENTER, 1, 1);
     
     pm4_icon = lv_label_create(tile);
     lv_obj_set_style_text_font(pm4_icon, &mdi_30, 0);
     lv_label_set_text(pm4_icon, ICON_BLUR);
     lv_obj_set_style_text_color(pm4_icon, COLOR_DEFAULT_ICON, 0);
-    lv_obj_set_grid_cell(pm4_icon, LV_GRID_ALIGN_CENTER, 0, 1, LV_GRID_ALIGN_CENTER, 2, 1);
+    lv_obj_set_grid_cell(pm4_icon, LV_GRID_ALIGN_CENTER, 1, 1, LV_GRID_ALIGN_CENTER, 2, 1);
 
     pm4_label = lv_label_create(tile);
     lv_label_set_text(pm4_label, "PM4.0: --- µg/m³");
-    lv_obj_set_width(pm4_label, 225);
+    lv_obj_set_width(pm4_label, 228);
     lv_label_set_long_mode(pm4_label, LV_LABEL_LONG_SCROLL);
     lv_obj_set_style_anim_speed(pm4_label, SCROLL_SPEED_MS_PX_SEC, 0);
     lv_obj_set_style_text_font(pm4_label, &custom_font_30, 0);
-    lv_obj_set_grid_cell(pm4_label, LV_GRID_ALIGN_START, 1, 1, LV_GRID_ALIGN_CENTER, 2, 1);
+    lv_obj_set_grid_cell(pm4_label, LV_GRID_ALIGN_START, 2, 1, LV_GRID_ALIGN_CENTER, 2, 1);
     
     pm10_icon = lv_label_create(tile);
     lv_obj_set_style_text_font(pm10_icon, &mdi_30, 0);
     lv_label_set_text(pm10_icon, ICON_BLUR);
     lv_obj_set_style_text_color(pm10_icon, COLOR_DEFAULT_ICON, 0);
-    lv_obj_set_grid_cell(pm10_icon, LV_GRID_ALIGN_CENTER, 0, 1, LV_GRID_ALIGN_CENTER, 3, 1);
+    lv_obj_set_grid_cell(pm10_icon, LV_GRID_ALIGN_CENTER, 1, 1, LV_GRID_ALIGN_CENTER, 3, 1);
 
     pm10_label = lv_label_create(tile);
     lv_label_set_text(pm10_label, "PM10: --- µg/m³");
-    lv_obj_set_width(pm10_label, 225);
+    lv_obj_set_width(pm10_label, 228);
     lv_label_set_long_mode(pm10_label, LV_LABEL_LONG_SCROLL);
     lv_obj_set_style_anim_speed(pm10_label, SCROLL_SPEED_MS_PX_SEC, 0);
     lv_obj_set_style_text_font(pm10_label, &custom_font_30, 0);
-    lv_obj_set_grid_cell(pm10_label, LV_GRID_ALIGN_START, 1, 1, LV_GRID_ALIGN_CENTER, 3, 1);
+    lv_obj_set_grid_cell(pm10_label, LV_GRID_ALIGN_START, 2, 1, LV_GRID_ALIGN_CENTER, 3, 1);
 
     fan_icon = lv_label_create(tile);
     lv_obj_set_style_text_font(fan_icon, &mdi_30, 0);
     lv_label_set_text(fan_icon, ICON_FAN_OFF);
     lv_obj_set_style_text_color(fan_icon, COLOR_DEFAULT_ICON, 0);
-    lv_obj_set_grid_cell(fan_icon, LV_GRID_ALIGN_CENTER, 0, 1, LV_GRID_ALIGN_CENTER, 4, 1);
+    lv_obj_set_grid_cell(fan_icon, LV_GRID_ALIGN_CENTER, 1, 1, LV_GRID_ALIGN_CENTER, 4, 1);
 
     fan_label = lv_label_create(tile);
     lv_label_set_text(fan_label, "--- A");
-    lv_obj_set_width(fan_label, 225);
+    lv_obj_set_width(fan_label, 228);
     lv_label_set_long_mode(fan_label, LV_LABEL_LONG_SCROLL);
     lv_obj_set_style_anim_speed(fan_label, SCROLL_SPEED_MS_PX_SEC, 0);
     lv_obj_set_style_text_font(fan_label, &custom_font_30, 0);
-    lv_obj_set_grid_cell(fan_label, LV_GRID_ALIGN_START, 1, 1, LV_GRID_ALIGN_CENTER, 4, 1);
+    lv_obj_set_grid_cell(fan_label, LV_GRID_ALIGN_START, 2, 1, LV_GRID_ALIGN_CENTER, 4, 1);
     
     fan_alert_icons.main_screen_icon = fan_icon;
     
