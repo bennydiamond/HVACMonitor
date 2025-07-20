@@ -89,7 +89,7 @@ void UI::update_sensorstack_info(const char* version, uint32_t uptime, uint16_t 
 void UI::update_scd30_autocal(bool enabled) { if (tileManager) tileManager->update_scd30_autocal(enabled); }
 void UI::update_scd30_forcecal(uint16_t ppm) { if (tileManager) tileManager->update_scd30_forcecal(ppm); }
 void UI::update_sps30_info(uint32_t fan_interval, uint8_t fan_days) { if (tileManager) tileManager->update_sps30_info(fan_interval, fan_days); }
-void UI::update_sgp40_test(int result, uint16_t value) { if (tileManager) tileManager->update_sgp40_test(result, value); }
+void UI::update_sgp41_test(int result, uint16_t value) { if (tileManager) tileManager->update_sgp41_test(result, value); }
 
 void UI::create_status_bar() {
     status_bar = lv_obj_create(lv_scr_act());
@@ -227,10 +227,10 @@ void UI::tile_change_event_cb_static(lv_event_t * e) {
 void UI::tile_change_event_cb(lv_event_t * e) {
     lv_obj_t * active_tile = lv_tileview_get_tile_act(tileview);
     
-    // Clear SGP40 test results when leaving SGP40 tile
+    // Clear SGP41 test results when leaving SGP41 tile
     static lv_obj_t* prev_tile = nullptr;
-    if (tileManager && prev_tile == tileManager->get_sgp40_tile() && active_tile != prev_tile) {
-        tileManager->clear_sgp40_results();
+    if (tileManager && prev_tile == tileManager->get_sgp41_tile() && active_tile != prev_tile) {
+        tileManager->clear_sgp41_results();
     }
     prev_tile = active_tile;
     

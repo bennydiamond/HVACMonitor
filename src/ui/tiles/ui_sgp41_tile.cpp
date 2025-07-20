@@ -1,4 +1,4 @@
-#include "ui/tiles/ui_sgp40_tile.h"
+#include "ui/tiles/ui_sgp41_tile.h"
 #include "NanoCommands.h"
 #include <Arduino.h>
 
@@ -9,11 +9,11 @@ const int RESULT_LABEL_Y = 120;
 const int VALUE_LABEL_Y = 152;
 const int LABEL_X = 10;
 
-lv_obj_t* UISGP40Tile::create_tile(lv_obj_t* parent_tv) {
+lv_obj_t* UISGP41Tile::create_tile(lv_obj_t* parent_tv) {
     lv_obj_t* tile = lv_tileview_add_tile(parent_tv, 2, 3, LV_DIR_RIGHT | LV_DIR_VER);
     
     lv_obj_t* title = lv_label_create(tile);
-    lv_label_set_text(title, "SGP40");
+    lv_label_set_text(title, "SGP41");
     lv_obj_set_style_text_font(title, &custom_font_30, 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, TITLE_Y);
     
@@ -35,7 +35,7 @@ lv_obj_t* UISGP40Tile::create_tile(lv_obj_t* parent_tv) {
     return tile;
 }
 
-void UISGP40Tile::update_test_result(int result, uint16_t value) {
+void UISGP41Tile::update_test_result(int result, uint16_t value) {
     if (result != 0) {
         lv_label_set_text(result_label, "Test Result: Error!");
         lv_label_set_text(value_label, "");
@@ -53,15 +53,15 @@ void UISGP40Tile::update_test_result(int result, uint16_t value) {
     }
 }
 
-void UISGP40Tile::clear_test_results() {
+void UISGP41Tile::clear_test_results() {
     lv_label_set_text(result_label, "");
     lv_label_set_text(value_label, "");
 }
 
-void UISGP40Tile::selftest_btn_cb(lv_event_t* e) {
+void UISGP41Tile::selftest_btn_cb(lv_event_t* e) {
     uint8_t crc = 0x00;
     uint8_t polynomial = 0x07;
-    char cmd = CMD_SGP40_TEST;
+    char cmd = CMD_SGP41_TEST;
     
     crc ^= cmd;
     for (int j = 0; j < 8; j++) {

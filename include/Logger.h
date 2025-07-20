@@ -6,10 +6,12 @@
 #include <WiFiUdp.h>
 #include <Syslog.h>
 #include <ArduinoHA.h>
-#include <vector>
-#include <string>
 
-// Define application-specific severity levels to avoid conflicts with Syslog.h
+#include "freertos/FreeRTOS.h"
+#include "freertos/stream_buffer.h"
+
+#include <atomic>
+
 enum AppLogLevel {
     APP_LOG_DEBUG,
     APP_LOG_INFO,
@@ -17,30 +19,18 @@ enum AppLogLevel {
     APP_LOG_ERROR
 };
 
-// Struct to hold a single log entry for the queue
-struct LogEntry {
-    AppLogLevel level;
-    std::string message;
-};
-
-// Define the maximum number of logs to queue while offline
-#define MAX_LOG_QUEUE_SIZE 30
-// Check syslog server reachability every 5 seconds
-#define PING_CHECK_INTERVAL_MS 5000
-
 class Logger {
 public:
     Logger();
     void init(HAMqtt* mqtt);
-    void loop(); // Method to be called in the main loop to handle queue flushing
-    
+    void loop();
+
     void setLogLevel(AppLogLevel level);
-    AppLogLevel getLogLevel() const { return _currentLogLevel; }
+    AppLogLevel getLogLevel() const;
 
     void log(AppLogLevel level, const char* message);
-    void logf(AppLogLevel level, const char* format, ...);
 
-    // Helper methods for different levels
+    // Helper methods
     void debug(const char* message) { log(APP_LOG_DEBUG, message); }
     void info(const char* message) { log(APP_LOG_INFO, message); }
     void warning(const char* message) { log(APP_LOG_WARNING, message); }
@@ -52,23 +42,34 @@ public:
     void errorf(const char* format, ...);
 
 private:
+    static const size_t LOG_BUFFER_SIZE_BYTES = 4096;
+    static const unsigned long PING_CHECK_INTERVAL_MS = 5000;
+    static const int MAX_LOGS_PER_LOOP = 5;
+    static const size_t MAX_MESSAGE_LENGTH = 255;
+    static const uint16_t SYSLOG_PORT = 514;
+    static constexpr const char* SYSLOG_SERVER = "192.168.0.15";
+    static constexpr const char* DEVICE_HOSTNAME = "hvac-sensor-display";
+    static constexpr const char* MQTT_LOG_TOPIC = "aha/hvac_diff_pressure_sensor_01/log";
+
+#pragma pack(push, 1)
+struct LogMessage {
+    AppLogLevel level;
+    uint8_t msgLen;
+    char message[Logger::MAX_MESSAGE_LENGTH];
+};
+#pragma pack(pop)
+
+    StreamBufferHandle_t _logStreamBufferHandle = nullptr;
     WiFiUDP _udpClient;
     Syslog* _syslog = nullptr;
     HAMqtt* _mqtt = nullptr;
-    AppLogLevel _currentLogLevel = APP_LOG_INFO; // Default to INFO
-    bool _isLogging = false; // Re-entrancy guard
-    bool _syslogServerReachable = false; // Flag to indicate if the syslog server is reachable
-    unsigned long _lastPingTime = 0; // Timer for ping checks
-
-    std::vector<LogEntry> _logQueue; // Queue for offline messages
+    std::atomic<AppLogLevel> _currentLogLevel{APP_LOG_INFO};
+    bool _syslogServerReachable = false;
+    unsigned long _lastPingTime = 0;
 
     const char* _getLogLevelString(AppLogLevel level);
-    void _sendSyslog(AppLogLevel level, const char* message);
-    void _queueLog(AppLogLevel level, const char* message);
-    void _flushLogQueue();
 };
 
-// Declare a global logger instance
 extern Logger logger;
 
 #endif // LOGGER_H

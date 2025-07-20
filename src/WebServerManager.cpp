@@ -4,10 +4,8 @@
 #include "Logger.h"
 
 WebServer server(80);
-// ADDED: Definition for the static member
 String WebServerManager::_firmware_version;
 
-// MODIFIED: HTML now includes a placeholder for the firmware version
 const char* update_page_html = R"rawliteral(
 <!DOCTYPE html>
 <html>
@@ -37,7 +35,6 @@ input[type=submit]:hover { background: #0056b3; }
 )rawliteral";
 
 
-// MODIFIED: init now accepts and stores the firmware version
 void WebServerManager::init(const char* firmware_version) {
     _firmware_version = firmware_version;
 
@@ -60,7 +57,6 @@ void WebServerManager::handle() {
     server.handleClient();
 }
 
-// MODIFIED: handleRoot now replaces the version placeholder in the HTML
 void WebServerManager::handleRoot() {
     String ip = WiFi.localIP().toString();
     String html = String(update_page_html);
