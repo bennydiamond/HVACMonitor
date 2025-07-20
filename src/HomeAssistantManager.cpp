@@ -35,16 +35,21 @@ HomeAssistantManager::HomeAssistantManager() :
     _pm2_5_sensor("pm2_5", HASensor::PrecisionP1),
     _pm4_0_sensor("pm4_0", HASensor::PrecisionP1),
     _pm10_0_sensor("pm10_0", HASensor::PrecisionP1),
+    _o3_sensor("o3", HASensorNumber::PrecisionP0),
+    _no2_sensor("no2", HASensorNumber::PrecisionP0),
+    _fast_aqi_sensor("fast_aqi", HASensorNumber::PrecisionP0),
+    _epa_aqi_sensor("epa_aqi", HASensorNumber::PrecisionP0),
     _co2_sensor("co2", HASensor::PrecisionP0),
-    _sensorStackUptimeSensor("nano_uptime", HASensor::PrecisionP0), // Initialize Nano Uptime Sensor
+    _sensorStackUptimeSensor("nano_uptime", HASensor::PrecisionP0),
     _sensorStackVersionSensor("nano_firmware_version"), 
     _sensorStackFreeRamSensor("nano_free_ram", HASensor::PrecisionP0),
     _voc_index_sensor("voc_index", HASensor::PrecisionP0),
+    _nox_index_sensor("nox_index", HASensor::PrecisionP0),
     _currentSensor("current", HASensor::PrecisionP2),
     _sensorStackResetCauseSensor("nano_reset_cause"),
     _getSps30InfoButton("get_sps30_info"),
     _Sps30ManualCleanButton("sps30_manual_clean"),
-    _getSgp40SelftestButton("get_sgp40_selftest"),
+    _getSgp41SelftestButton("get_sgp41_selftest"),
     _logLevelSelect("log_level"),
     _scd30AutoCalSwitch("scd30_autocal"),
     _scd30ForceCalNumber("scd30_forcecal", HANumber::PrecisionP0),
@@ -60,6 +65,7 @@ HomeAssistantManager::HomeAssistantManager() :
     _lastPublishedHumi = -1.0f;
     _lastPublishedCo2 = -1.0f;
     _lastPublishedVocIndex = -1;
+    _lastPublishedNOxIndex = -1;
     _lastPublishedAmps = -1.0f;
     _lastPublishedWifiRssi = 0;
     _lastPublishedWifiConnected = false;
@@ -72,6 +78,10 @@ HomeAssistantManager::HomeAssistantManager() :
     _lastPublishedPm2_5 = -1.0f;
     _lastPublishedPm4_0 = -1.0f;
     _lastPublishedPm10_0 = -1.0f;
+    _lastPublishedO3 = UINT16_MAX;
+    _lastPublishedNO2 = UINT16_MAX;
+    _lastPublishedFastAQI = UINT16_MAX;
+    _lastPublishedEPAAQI = UINT16_MAX;
 
     _lastPressurePublishTime = 0;
     _lastCpmPublishTime = 0;
@@ -81,10 +91,19 @@ HomeAssistantManager::HomeAssistantManager() :
     _lastSensorStatusPublishTime = 0;
     _lastHighPressurePublishTime = 0;
     _lastPmPublishTime = 0;
+    _LastO3PublishTime = 0;
+    _lastNO2PublishTime = 0;
+    _lastFastAQIPublishTime = 0;
+    _lastEPAAQIPublishTime = 0;
     _lastCo2PublishTime = 0;
     _lastVocPublishTime = 0;
+    _lastNOxPublishTime = 0;
     _lastAmpsPublishTime = 0;
     _lastFanStatusPublishTime = 0;
+}
+
+HomeAssistantManager::~HomeAssistantManager() {
+
 }
 
 void HomeAssistantManager::init(LGFX* tft, IUIUpdater* uiUpdater, ConfigManager* config, const char* firmware_version) {
@@ -191,6 +210,28 @@ void HomeAssistantManager::init(LGFX* tft, IUIUpdater* uiUpdater, ConfigManager*
     _pm10_0_sensor.setUnitOfMeasurement(pm_unit);
     _pm10_0_sensor.setIcon(pm_icon);
     _pm10_0_sensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
+
+    _o3_sensor.setName("Ozone (O3)");
+    _o3_sensor.setDeviceClass("ozone");
+    _o3_sensor.setUnitOfMeasurement("ppb");
+    _o3_sensor.setIcon("mdi:chemical-weapon");
+    _o3_sensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
+
+    _no2_sensor.setName("Nitrogen Dioxide (NO2)");
+    _no2_sensor.setDeviceClass("nitrogen_dioxide");
+    _no2_sensor.setUnitOfMeasurement("ppb");
+    _no2_sensor.setIcon("mdi:smog");
+    _no2_sensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
+
+    _fast_aqi_sensor.setName("Fast AQI");
+    _fast_aqi_sensor.setDeviceClass("aqi");
+    _fast_aqi_sensor.setIcon("mdi:air-filter");
+    _fast_aqi_sensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
+
+    _epa_aqi_sensor.setName("EPA AQI");
+    _epa_aqi_sensor.setDeviceClass("aqi");
+    _epa_aqi_sensor.setIcon("mdi:air-filter");
+    _epa_aqi_sensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
     
     _co2_sensor.setName("Carbon Dioxide");
     _co2_sensor.setDeviceClass("carbon_dioxide");
@@ -199,14 +240,20 @@ void HomeAssistantManager::init(LGFX* tft, IUIUpdater* uiUpdater, ConfigManager*
     _co2_sensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
     
     _voc_index_sensor.setName("VOC Index");
+    _voc_index_sensor.setDeviceClass("volatile_organic_compounds");
+    _voc_index_sensor.setUnitOfMeasurement("");
     _voc_index_sensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
     _voc_index_sensor.setIcon("mdi:lungs");
+
+    _nox_index_sensor.setName("NOx Index");
+    _nox_index_sensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
+    _nox_index_sensor.setIcon("mdi:smog");
     
     _sensorStackUptimeSensor.setName("SensorStack Uptime");
     _sensorStackUptimeSensor.setIcon("mdi:timer-sand");
     _sensorStackUptimeSensor.setUnitOfMeasurement("s");
     _sensorStackUptimeSensor.setEntityCategory(entity_category_diagnostic);
-    _sensorStackUptimeSensor.setValue(static_cast<uint32_t>(0)); // Initialize to 0
+    _sensorStackUptimeSensor.setValue(static_cast<uint32_t>(0));
 
     _sensorStackVersionSensor.setName("SensorStack Firmware Version");
     _sensorStackVersionSensor.setIcon("mdi:chip");
@@ -245,10 +292,10 @@ void HomeAssistantManager::init(LGFX* tft, IUIUpdater* uiUpdater, ConfigManager*
     _Sps30ManualCleanButton.setEntityCategory(entity_category_diagnostic);
     _Sps30ManualCleanButton.onCommand(onGetSps30ManualCleanCommand);
 
-    _getSgp40SelftestButton.setName("SGP40 Self-Test");
-    _getSgp40SelftestButton.setIcon("mdi:information");
-    _getSgp40SelftestButton.setEntityCategory(entity_category_diagnostic);
-    _getSgp40SelftestButton.onCommand(onGetSgp40SelftestCommand);
+    _getSgp41SelftestButton.setName("SGP41 Self-Test");
+    _getSgp41SelftestButton.setIcon("mdi:information");
+    _getSgp41SelftestButton.setEntityCategory(entity_category_diagnostic);
+    _getSgp41SelftestButton.onCommand(onGetSgp41SelftestCommand);
 
     _logLevelSelect.setName("Log Level");
     _logLevelSelect.setIcon("mdi:message-text");
@@ -287,6 +334,11 @@ void HomeAssistantManager::init(LGFX* tft, IUIUpdater* uiUpdater, ConfigManager*
 
     _mqtt.onConnected(onMqttConnected);
     _mqtt.onDisconnected(onMqttDisconnected);
+    
+    // Configure MQTT client for better stability
+    //_mqtt.setBufferSize(1024);
+    //_mqtt.setKeepAlive(30);
+    
     _mqtt.begin(MQTT_HOST, MQTT_USER, MQTT_PASSWORD);
 }
 
@@ -323,7 +375,8 @@ void HomeAssistantManager::onMqttDisconnected() {
 
 void HomeAssistantManager::publishSensorData(
     float pressure, int cpm, float temp, float humi,
-    float co2, int32_t voc_index, float amps,
+    float co2, int32_t voc_index, int32_t nox_index, 
+    float amps,
     float pm1, float pm25, float pm4, float pm10
 ) {
     unsigned long currentTime = millis();
@@ -374,6 +427,12 @@ void HomeAssistantManager::publishSensorData(
         _lastPublishedVocIndex = voc_index;
         _lastVocPublishTime = currentTime;
     }
+    if (nox_index != _lastPublishedNOxIndex || (currentTime - _lastNOxPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+        itoa(nox_index, data_str, 10);
+        _nox_index_sensor.setValue(data_str);
+        _lastPublishedNOxIndex = nox_index;
+        _lastNOxPublishTime = currentTime;
+    }
     if (fabs(pm1 - _lastPublishedPm1_0) > 0.1f || (currentTime - _lastPmPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
         dtostrf(pm1, 4, 1, data_str); _pm1_0_sensor.setValue(data_str);
         dtostrf(pm25, 4, 1, data_str); _pm2_5_sensor.setValue(data_str);
@@ -385,6 +444,38 @@ void HomeAssistantManager::publishSensorData(
         _lastPmPublishTime = currentTime;
     }
 }
+
+void HomeAssistantManager::publish_O3_NOx_Values(
+        uint16_t o3_conc_ppb, uint16_t no2_conc_ppb, 
+        uint16_t fast_aqi, uint16_t epa_aqi
+    )
+    {
+        unsigned long currentTime = millis();
+
+        if(o3_conc_ppb != _lastPublishedO3 || (currentTime - _LastO3PublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+            _o3_sensor.setValue(o3_conc_ppb, true);
+            _lastPublishedO3 = o3_conc_ppb;
+            _LastO3PublishTime = currentTime;
+        }
+
+        if(no2_conc_ppb != _lastPublishedNO2 || (currentTime - _lastNO2PublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+            _no2_sensor.setValue(no2_conc_ppb, true);
+            _lastPublishedNO2 = no2_conc_ppb;
+            _lastNO2PublishTime = currentTime;
+        }
+
+        if(fast_aqi != _lastPublishedFastAQI || (currentTime - _lastFastAQIPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+            _fast_aqi_sensor.setValue(fast_aqi, true);
+            _lastPublishedFastAQI = fast_aqi;
+            _lastFastAQIPublishTime = currentTime;
+        }
+
+        if(epa_aqi != _lastPublishedEPAAQI || (currentTime - _lastEPAAQIPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+            _epa_aqi_sensor.setValue(epa_aqi, true);
+            _lastPublishedEPAAQI = epa_aqi;
+            _lastEPAAQIPublishTime = currentTime;
+        }
+    }
 
 void HomeAssistantManager::publishWiFiStatus(bool connected, long rssi, const char* ssid, const char* ip) {
     unsigned long currentTime = millis();
@@ -491,9 +582,9 @@ void HomeAssistantManager::onGetSps30ManualCleanCommand(HAButton* sender) {
     send_command_to_nano(CMD_SPS30_CLEAN);
 }
 
-void HomeAssistantManager::onGetSgp40SelftestCommand(HAButton* sender) {
-    logger.info("SGP40 Self-Test command sent to SensorStack from Home Assistant.");
-    send_command_to_nano(CMD_SGP40_TEST);
+void HomeAssistantManager::onGetSgp41SelftestCommand(HAButton* sender) {
+    logger.info("SGP41 Self-Test command sent to SensorStack from Home Assistant.");
+    send_command_to_nano(CMD_SGP41_TEST);
 }
 
 void HomeAssistantManager::onLogLevelCommand(int8_t index, HASelect* sender) {

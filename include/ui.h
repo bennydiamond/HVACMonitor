@@ -42,7 +42,7 @@ public:
     void update_scd30_autocal(bool enabled) override;
     void update_scd30_forcecal(uint16_t ppm) override;
     void update_sps30_info(uint32_t fan_interval, uint8_t fan_days) override;
-    void update_sgp40_test(int result, uint16_t value) override;
+    void update_sgp41_test(int result, uint16_t value) override;
 
 private:
     static LGFX* _tft;

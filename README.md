@@ -20,7 +20,7 @@ The system is composed of two main components:
 - **Air Quality Sensing**:
   - **Particulate Matter**: Sensirion SPS30 for PM1.0, PM2.5, PM4.0, and PM10 readings.
   - **CO₂ Levels**: Sensirion SCD30 for Carbon Dioxide concentration.
-  - **VOC Index**: Sensirion SGP40 for a Volatile Organic Compounds index value.
+  - **VOC Index**: Sensirion SGP41 for a Volatile Organic Compounds index value.
   - **Temperature & Humidity**: Provided by the Sensirion SCD30.
 
 - **Environmental Sensing**:
@@ -51,7 +51,7 @@ The system is composed of two main components:
 - **Differential Pressure**: Custom 4-20mA current loop sensor.
 - **Particulate Matter**: [Sensirion SPS30](https://sensirion.com/products/catalog/SPS30/)
 - **CO₂, Temp, Humidity**: [Sensirion SCD30](https://sensirion.com/products/catalog/SCD30/)
-- **VOC**: [Sensirion SGP40](https://sensirion.com/products/catalog/SGP40/)
+- **VOC**: [Sensirion SGP41](https://sensirion.com/products/catalog/SGP41/)
 - **Fan Current**: SCT-013-010 Non-invasive AC Current Sensor (CT Clamp)
 - **Radiation**: Generic Geiger-Müller tube with a pulse output.
 
@@ -70,11 +70,11 @@ This project is built using [PlatformIO](https://platformio.org/).
 ### Arduino Nano (Sensor Hub)
 - **Core**: MiniCore
 - **Bootloader**: **Urboot**. Refer to [urboot Github page](https://github.com/stefanrueger/urboot) for more information.
-- **Sensor Libraries**: Official Sensirion libraries for SPS30, SCD30, and SGP40.
+- **Sensor Libraries**: Official Sensirion libraries for SPS30, SCD30, and SGP41.
 
 ## Communication Protocol (ESP32 <-> Nano)
 
-Communication occurs over a simple, packet-based serial protocol at 9600 baud.
+Communication occurs over a simple, packet-based serial protocol at 19200 baud.
 
 - **Packet Format**: `<DATA,CHECKSUM>`
 - **Checksum**: A custom 8-bit CRC (polynomial `0x07`) ensures data integrity.
@@ -157,7 +157,7 @@ Once the device is connected to your network and MQTT broker, it will automatica
   - A `HAButton` to reboot the ESP32 display.
   - A `HAButton` to remotely reboot the Nano sensor stack.
   - A `HAButton` to request detailed diagnostic info from the SPS30 sensor.
-  - A `HAButton` to trigger the SGP40 self-test.
+  - A `HAButton` to trigger the SGP41 self-test.
 
 ---
 
