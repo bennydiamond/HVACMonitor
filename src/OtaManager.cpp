@@ -20,7 +20,6 @@ void OtaManager::init() {
     });
 
     ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-        // This prints too frequently for normal logging, so we leave it on Serial
         logger.debugf("OTA Progress: %u%%\r", (progress / (total / 100)));
     });
 

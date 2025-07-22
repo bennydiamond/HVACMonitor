@@ -16,7 +16,13 @@
 #include "ConfigManager.h"
 #include "RollingAverage.h"
 #include "VOCGasIndexAlgorithm.h"
+#include "NOxGasIndexAlgorithm.h"
 #include "NanoCommands.h"
+#include "I2CBridge.h"
+#include "GeigerCounter.h"
+#include "ZMOD4510Sensor.h"
+#include "ZMOD4510Manager.h"
+#include "SerialMutex.h"
 
 // =================== CONSTANTS & GLOBALS ===================
 const char* FIRMWARE_VERSION = "1.0.0";
@@ -25,9 +31,8 @@ const int DEBUG_UPDATE_INTERVAL_MS = 5000;
 const int HEALTH_CHECK_INTERVAL_MS = 30000;
 const int NANO_PACKET_TIMEOUT_MS = 7000;
 const int HEALTH_RESPONSE_TIMEOUT_MS = 500;
-const int SCD30_INFO_INTERVAL_MS = 20000; // Request SCD30 info every 20 seconds
-const unsigned long ROLLING_AVERAGE_WINDOW_MS = 30 * 60 * 1000;
-const size_t MAX_AVG_SAMPLES = 1024;
+const int SCD30_INFO_INTERVAL_MS = 20000;
+const int STACK_CHECK_INTERVAL_MS = 60000;
 
 enum InitCommand { CMD_NONE, CMD_VERSION, CMD_HEALTH, CMD_SPS30_INFO, CMD_SCD30_INFO };
 InitCommand pending_init_commands[] = {CMD_VERSION, CMD_HEALTH, CMD_SPS30_INFO, CMD_SCD30_INFO, CMD_NONE};
@@ -41,11 +46,13 @@ unsigned long last_health_check_time = 0;
 unsigned long last_debug_update_time = 0;
 unsigned long last_sensor_data_time = 0;
 unsigned long last_health_request_time = 0;
+unsigned long last_stack_check_time = 0;
 unsigned long nano_boot_millis = 0;
 unsigned long last_scd30_info_time = 0;
 bool is_sensor_module_connected = false;
 bool health_request_pending = false;
 static bool first_health_packet_received = false;
+static bool latest_first_time_flag = false;
 
 String serial_buffer = "";
 String last_nano_version = "";
@@ -59,12 +66,20 @@ OtaManager otaManager;
 WebServerManager webServerManager;
 
 VOCGasIndexAlgorithm voc_algorithm;
-RollingAverage co2_avg(ROLLING_AVERAGE_WINDOW_MS, MAX_AVG_SAMPLES);
-RollingAverage voc_avg(ROLLING_AVERAGE_WINDOW_MS, MAX_AVG_SAMPLES);
-RollingAverage pm1_avg(ROLLING_AVERAGE_WINDOW_MS, MAX_AVG_SAMPLES);
-RollingAverage pm25_avg(ROLLING_AVERAGE_WINDOW_MS, MAX_AVG_SAMPLES);
-RollingAverage pm4_avg(ROLLING_AVERAGE_WINDOW_MS, MAX_AVG_SAMPLES);
-RollingAverage pm10_avg(ROLLING_AVERAGE_WINDOW_MS, MAX_AVG_SAMPLES);
+NOxGasIndexAlgorithm nox_algorithm;
+GeigerCounter geigerCounter;
+ZMOD4510Manager zmod4510_manager;
+RollingAverage<uint16_t> co2_avg(100);
+RollingAverage<uint16_t> voc_avg(100);
+RollingAverage<uint16_t> nox_avg(100);
+RollingAverage<float> pm1_avg(100);
+RollingAverage<float> pm25_avg(100);
+RollingAverage<float> pm4_avg(100);
+RollingAverage<float> pm10_avg(100);
+RollingAverage<uint16_t> o3_avg(100);
+RollingAverage<uint16_t> no2_avg(100);
+RollingAverage<uint16_t> fast_aqi_avg(100);
+RollingAverage<uint16_t> epa_aqi_avg(100);
 
 // =================== UTILITY FUNCTIONS ===================
 uint8_t calculate_checksum(const char* data_str) {
@@ -84,7 +99,17 @@ void send_command_to_nano(char cmd) {
     char data_part[2] = {cmd, '\0'};
     uint8_t checksum = calculate_checksum(data_part);
     logger.debugf("Sending command to Nano: <%c,%d>", cmd, checksum);
-    Serial.print('<'); Serial.print(cmd); Serial.print(','); Serial.print(checksum); Serial.print('>');
+    
+    SerialMutex& serialMutex = SerialMutex::getInstance();
+    if (serialMutex.lock()) {
+        Serial.print('<');
+        Serial.print(cmd);
+        Serial.print(',');
+        Serial.print(checksum);
+        Serial.print('>');
+        serialMutex.unlock();
+    }
+    
     if (cmd == CMD_REBOOT) {
         logger.info("Reboot command sent. Marking sensor stack as disconnected.");
         is_sensor_module_connected = false;
@@ -132,6 +157,8 @@ void update_wifi_status() {
     haManager.publishWiFiStatus(is_connected, rssi, WIFI_SSID, WiFi.localIP().toString().c_str());
 }
 
+
+
 // =================== PACKET PROCESSING ===================
 void process_packet(String packet) {
     packet.trim();
@@ -177,20 +204,27 @@ void process_packet(String packet) {
             char data_cstr[payload.length() + 1];
             strcpy(data_cstr, payload.c_str());
             char* token = strtok(data_cstr, ","); if (!token) return; float p = atof(token) / 10.0f;
-            token = strtok(NULL, ","); if (!token) return; int c = atoi(token);
+            token = strtok(NULL, ","); if (!token) return; uint16_t pulse_count = atoi(token);
             token = strtok(NULL, ","); if (!token) return; float t = atof(token) / 10.0f;
             token = strtok(NULL, ","); if (!token) return; float h = atof(token) / 10.0f;
             token = strtok(NULL, ","); if (!token) return; float co2 = atof(token);
             token = strtok(NULL, ","); if (!token) return; uint16_t voc_raw = atol(token);
+            token = strtok(NULL, ","); if (!token) return; uint16_t nox_raw = atol(token);
             token = strtok(NULL, ","); if (!token) return; float amps = atof(token) / 100.0f;
             token = strtok(NULL, ","); if (!token) return; float pm1 = atof(token) / 10.0f;
             token = strtok(NULL, ","); if (!token) return; float pm25 = atof(token) / 10.0f;
             token = strtok(NULL, ","); if (!token) return; float pm4 = atof(token) / 10.0f;
             token = strtok(NULL, ","); if (!token) return; float pm10 = atof(token) / 10.0f;
-
+            
+            // Add the pulse count to the geiger counter object
+            geigerCounter.addSample(pulse_count);
+            int c = geigerCounter.getCPM();
+            
             int32_t voc_index = voc_algorithm.process(voc_raw);
+            int32_t nox_index = nox_algorithm.process(nox_raw);
             co2_avg.add(co2);
-            voc_avg.add((float)voc_index);
+            voc_avg.add(voc_index);
+            nox_avg.add(nox_index);
             pm1_avg.add(pm1);
             pm25_avg.add(pm25);
             pm4_avg.add(pm4);
@@ -208,17 +242,26 @@ void process_packet(String packet) {
             uiUpdater.update_high_pressure_status(is_pressure_high);
             uiUpdater.update_fan_status(fan_status);
             uiUpdater.update_pressure(p);
-            float usv_h = c * 0.0057;
+            
+            geigerCounter.checkAndLogHighRadiation();
+            float usv_h = geigerCounter.getDoseRate();
             uiUpdater.update_geiger_reading(c, usv_h);
+
             uiUpdater.update_temp_humi(t, h);
             uiUpdater.update_fan_current(amps, fan_status);
             uiUpdater.update_co2(co2_avg.getAverage());
-            uiUpdater.update_voc((int32_t)voc_avg.getAverage());
+            uiUpdater.update_voc(voc_avg.getAverage());
             uiUpdater.update_pm_values(pm1_avg.getAverage(), pm25_avg.getAverage(), pm4_avg.getAverage(), pm10_avg.getAverage());
 
             haManager.publishHighPressureStatus(is_pressure_high);
             haManager.publishFanStatus(fan_status != FAN_STATUS_OFF);
-            haManager.publishSensorData(p, c, t, h, co2_avg.getAverage(), (int32_t)voc_avg.getAverage(), amps, pm1_avg.getAverage(), pm25_avg.getAverage(), pm4_avg.getAverage(), pm10_avg.getAverage());
+            haManager.publishSensorData(p, c, t, h, 
+                co2_avg.getAverage(), 
+                voc_avg.getAverage(), nox_avg.getAverage(), 
+                amps,
+                pm1_avg.getAverage(), pm25_avg.getAverage(), pm4_avg.getAverage(), pm10_avg.getAverage());
+
+            zmod4510_manager.setEnvironmentalData(t, h);
             break;
         }
         case RSP_VERSION: {
@@ -232,9 +275,18 @@ void process_packet(String packet) {
         case RSP_HEALTH: {
             char payload_cstr[payload.length() + 1];
             strcpy(payload_cstr, payload.c_str());
-            char* token = strtok(payload_cstr, ","); if (!token) return; int first_time_flag = atoi(token);
-            token = strtok(NULL, ","); if (!token) return; uint16_t nano_free_ram = atoi(token);
-            token = strtok(NULL, ","); uint8_t nano_reset_cause = 0; if (token) nano_reset_cause = atoi(token);
+            
+            char* token = strtok(payload_cstr, ","); 
+            if (!token) return; 
+            int first_time_flag = atoi(token);
+            
+            token = strtok(NULL, ","); 
+            if (!token) return; 
+            uint16_t nano_free_ram = atoi(token);
+
+            token = strtok(NULL, ","); 
+            uint8_t nano_reset_cause = 0; 
+            if (token) nano_reset_cause = atoi(token);
             const char* reset_cause_str = nano_reset_cause_to_string(nano_reset_cause);
 
             logger.debugf("Nano Health: FirstTimeFlag=%d, FreeRAM=%d bytes, ResetCause=%s", first_time_flag, nano_free_ram, reset_cause_str);
@@ -248,6 +300,9 @@ void process_packet(String packet) {
             haManager.publishSensorStackFreeRam(nano_free_ram);
             haManager.publishNanoResetCause(reset_cause_str);
             last_nano_ram = nano_free_ram;
+
+            // Store first_time_flag for ZMOD4510 manager processing in main loop
+            latest_first_time_flag = first_time_flag != 0;
 
             if (first_time_flag == 0) {
                 send_command_to_nano(CMD_ACK_HEALTH);
@@ -293,18 +348,28 @@ void process_packet(String packet) {
             // Format: c<ret_status>    
             char payload_cstr[payload.length() + 1];
             strcpy(payload_cstr, payload.c_str());
-            char* token = strtok(payload_cstr, ","); if (!token) return; int ret_status = atoi(token);
+
+            char* token = strtok(payload_cstr, ","); 
+            if (!token) return; 
+            int ret_status = atoi(token);
+
             logger.debugf("SPS30 Manual Fan Cleaning: Status=%d", ret_status);
         }
-        case RSP_SGP40_TEST: {
+        case RSP_SGP41_TEST: {
             // Format: g<ret_status>,<raw_value>
             char payload_cstr[payload.length() + 1];
             strcpy(payload_cstr, payload.c_str());
-            char* token = strtok(payload_cstr, ","); if (!token) return; int ret_status = atoi(token);
-            token = strtok(NULL, ","); if (!token) return; uint16_t raw_value = strtoul(token, nullptr, 16);
 
-            logger.debugf("SGP40 Test Result: Status=%d, RawValue=0x%04X", ret_status, raw_value);
-            uiUpdater.update_sgp40_test(ret_status, raw_value);
+            char* token = strtok(payload_cstr, ","); 
+            if (!token) return; 
+            int ret_status = atoi(token);
+
+            token = strtok(NULL, ","); 
+            if (!token) return; 
+            uint16_t raw_value = strtoul(token, nullptr, 16);
+
+            logger.debugf("SGP41 Test Result: Status=%d, RawValue=0x%04X", ret_status, raw_value);
+            uiUpdater.update_sgp41_test(ret_status, raw_value); // Keeping the same UI method for backward compatibility
             break;
         }
         case RSP_SCD30_INFO: {
@@ -365,9 +430,18 @@ void process_packet(String packet) {
             // Format: t<set_result>,<read_result>,<actual_state>
             char payload_cstr[payload.length() + 1];
             strcpy(payload_cstr, payload.c_str());
-            char* token = strtok(payload_cstr, ","); if (!token) return; int set_result = strtol(token, nullptr, 16);
-            token = strtok(NULL, ","); if (!token) return; int read_result = strtol(token, nullptr, 16);
-            token = strtok(NULL, ","); if (!token) return; uint16_t actual_state = strtol(token, nullptr, 16);
+
+            char* token = strtok(payload_cstr, ","); 
+            if (!token) return; 
+            int set_result = strtol(token, nullptr, 16);
+
+            token = strtok(NULL, ","); 
+            if (!token) return; 
+            int read_result = strtol(token, nullptr, 16);
+
+            token = strtok(NULL, ","); 
+            if (!token) return; 
+            uint16_t actual_state = strtol(token, nullptr, 16);
             
             logger.debugf("SCD30 AutoCalibration Set: SetResult=%d, ReadResult=%d, ActualState=%s", 
                 set_result, read_result, actual_state ? "ON" : "OFF");
@@ -380,15 +454,86 @@ void process_packet(String packet) {
             // Format: f<set_result>,<read_result>,<actual_value>
             char payload_cstr[payload.length() + 1];
             strcpy(payload_cstr, payload.c_str());
-            char* token = strtok(payload_cstr, ","); if (!token) return; int set_result = strtol(token, nullptr, 16);
-            token = strtok(NULL, ","); if (!token) return; int read_result = strtol(token, nullptr, 16);
-            token = strtok(NULL, ","); if (!token) return; uint16_t actual_value = strtol(token, nullptr, 16);
+
+            char* token = strtok(payload_cstr, ","); 
+            if (!token) return; 
+            int set_result = strtol(token, nullptr, 16);
+
+            token = strtok(NULL, ","); 
+            if (!token) return; 
+            int read_result = strtol(token, nullptr, 16);
+
+            token = strtok(NULL, ","); 
+            if (!token) return; 
+            uint16_t actual_value = strtol(token, nullptr, 16);
             
             logger.debugf("SCD30 Force Calibration Set: SetResult=%d, ReadResult=%d, ActualValue=%u ppm", 
                 set_result, read_result, actual_value);
             
             // Update the number value based on the actual readback value
             haManager.updateScd30ForceCalValue(actual_value);
+            break;
+        }
+        case RSP_I2C_READ: {
+            // Format: i<status_byte>,<num_bytes>[,<byte1>,<byte2>,...]
+            char payload_cstr[payload.length() + 1];
+            strcpy(payload_cstr, payload.c_str());
+            
+            // Parse status byte
+            char* token = strtok(payload_cstr, ","); 
+            if (!token) return; 
+            uint8_t status = strtol(token, nullptr, 16);
+            
+            // Parse number of bytes
+            token = strtok(NULL, ","); 
+            if (!token) return; 
+            uint8_t num_bytes = strtol(token, nullptr, 16);
+            
+            // Parse data bytes
+            uint8_t data[32]; // Max 32 bytes
+            uint8_t bytes_read = 0;
+            
+            while ((token = strtok(NULL, ",")) != NULL && bytes_read < num_bytes) {
+                data[bytes_read++] = strtol(token, nullptr, 16);
+            }
+            
+            if (bytes_read != num_bytes) {
+                logger.warningf("I2C read: Expected %d bytes, got %d", num_bytes, bytes_read);
+            }
+            
+            if (status != I2C_ERROR_NONE) {
+                logger.warningf("I2C read error: 0x%02X", status);
+            } else {
+                // Log the received data bytes
+                String hexData;
+                for (int i = 0; i < bytes_read; i++) {
+                    if (i > 0) hexData += " ";
+                    char hex[4];
+                    sprintf(hex, "%02X", data[i]);
+                    hexData += hex;
+                }
+            }
+            
+            // Update the I2CBridge with the response and send to queue
+            I2CBridge::getInstance().processReadResponse(status, data, bytes_read);
+            break;
+        }
+        case RSP_I2C_WRITE: {
+            // Format: w<status_byte>
+            char payload_cstr[payload.length() + 1];
+            strcpy(payload_cstr, payload.c_str());
+            
+            // Parse status byte
+            char* token = strtok(payload_cstr, ","); 
+            if (!token) return; 
+            uint8_t status = strtol(token, nullptr, 16);
+            
+            if (status != I2C_ERROR_NONE) {
+                logger.warningf("I2C write error: 0x%02X", status);
+            }
+            
+            // Update the I2CBridge with the response and send to queue
+            I2CBridge::getInstance().processWriteResponse(status);
             break;
         }
         default:
@@ -418,11 +563,14 @@ void setup_wifi() {
 
 void setup() {
     logger.info("--- System Booting ---");
-    Serial.begin(9600);
+    Serial.begin(19200);
+    //Serial.begin(115200);
     configManager.init();
     logger.init(haManager.getMqtt());
     logger.setLogLevel(configManager.getLogLevel());
     delay(500);
+    
+    SerialMutex::getInstance().init();
     
     String reset_reason = get_reset_reason_string();
     logger.infof("Firmware Version: %s", FIRMWARE_VERSION);
@@ -445,9 +593,18 @@ void setup() {
     haManager.init(&tft, &uiUpdater, &configManager, FIRMWARE_VERSION);
     webServerManager.init(FIRMWARE_VERSION);
     otaManager.init();
+    
+    I2CBridge::begin();
+    
+    zmod4510_manager.init();
+    vTaskPrioritySet(NULL, tskIDLE_PRIORITY + 2); // above ZMOD4510 task priority
 }
 
+
+
 void loop() {
+    haManager.loop();
+    
     logger.loop();
     static bool valid_packet_start_received = false;
 
@@ -478,7 +635,6 @@ void loop() {
         }
     }
 
-    haManager.loop();
     IUIManager& uiManager = UI::getInstance();
     IUIUpdater& uiUpdater = UI::getInstance();
 
@@ -512,7 +668,6 @@ void loop() {
         haManager.publishEsp32Uptime(millis() / 1000);
         uiUpdater.update_runtime_info(ESP.getFreeHeap(), nano_current_uptime_seconds);
         
-        // Update SensorStack tile with current info
         if (is_sensor_module_connected) {
             uiUpdater.update_sensorstack_info(last_nano_version.c_str(), nano_current_uptime_seconds, last_nano_ram, true);
         } else {
@@ -524,6 +679,7 @@ void loop() {
         int8_t rssi = wifi_connected ? WiFi.RSSI() : 0;
         String ssid = wifi_connected ? WIFI_SSID : "N/A";
         bool ha_conn = haManager.isMqttConnected();
+        
         uiUpdater.update_network_info(ip.c_str(), WiFi.macAddress().c_str(), rssi, ssid.c_str(), ha_conn);
     }
 
@@ -537,6 +693,8 @@ void loop() {
             haManager.setSensorStackVersionUnavailable();
             haManager.publishSensorStackUptime(0, true);
             uiUpdaterTimeout.clearSensorReadings();
+            
+            // Nano disconnected status will be handled in main loop
         }
     }
 
@@ -563,7 +721,26 @@ void loop() {
         send_command_to_nano(CMD_GET_SCD30_INFO);
     }
 
-
+    ZMOD4510Manager::Values zmod_values;
+    const bool freshValues = zmod4510_manager.process(is_sensor_module_connected, latest_first_time_flag, zmod_values);
+    
+    if(freshValues)
+    {
+        o3_avg.add(zmod_values.o3_conc_ppb);
+        no2_avg.add(zmod_values.no2_conc_ppb);
+        fast_aqi_avg.add(zmod_values.fast_aqi);
+        epa_aqi_avg.add(zmod_values.epa_aqi);
+        haManager.publish_O3_NOx_Values(o3_avg.getAverage(), no2_avg.getAverage(), fast_aqi_avg.getAverage(), epa_aqi_avg.getAverage());
+    }
     uiManager.run();
+
+    if (millis() - last_stack_check_time > STACK_CHECK_INTERVAL_MS) {
+        last_stack_check_time = millis();
+        // Pass NULL to get the stack high water mark for the current task (the loop)
+        // On ESP32, this function returns the size in bytes.
+        UBaseType_t remaining_stack = uxTaskGetStackHighWaterMark(NULL);
+        logger.debugf("Main loop task remaining stack: %u bytes", remaining_stack);
+    }
+
     delay(5);
 }

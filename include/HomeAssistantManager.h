@@ -11,15 +11,21 @@ class ConfigManager;
 class HomeAssistantManager {
 public:
     HomeAssistantManager();
-    // MODIFIED: Added firmware_version parameter
+    ~HomeAssistantManager();
+    
     void init(LGFX* tft, IUIUpdater* uiUpdater, ConfigManager* config, const char* firmware_version);
     void loop();
 
     // Data Publishing Methods
     void publishSensorData(
         float pressure, int cpm, float temp, float humi,
-        float co2, int32_t voc_index, float amps,
+        float co2, int32_t voc_index, int32_t nox_index,
+        float amps,
         float pm1, float pm25, float pm4, float pm10
+    );
+    void publish_O3_NOx_Values(
+        uint16_t o3_conc_ppb, uint16_t no2_conc_ppb, 
+        uint16_t fast_aqi, uint16_t epa_aqi
     );
     void publishWiFiStatus(bool connected, long rssi, const char* ssid, const char* ip);
     void publishSensorConnectionStatus(bool connected);
@@ -70,16 +76,18 @@ private:
     HAButton _rebootButton; 
     HAButton _rebootSensorStackButton;
     HASensor _pm1_0_sensor, _pm2_5_sensor, _pm4_0_sensor, _pm10_0_sensor;
+    HASensorNumber _o3_sensor, _no2_sensor, _fast_aqi_sensor, _epa_aqi_sensor;
     HASensor _co2_sensor;
     HASensorNumber _sensorStackUptimeSensor;
     HASensor _sensorStackVersionSensor;
     HASensorNumber _sensorStackFreeRamSensor;
     HASensor _voc_index_sensor;
+    HASensor _nox_index_sensor;
     HASensor _currentSensor;
     HASensor _sensorStackResetCauseSensor;
     HAButton _getSps30InfoButton;
     HAButton _Sps30ManualCleanButton;
-    HAButton _getSgp40SelftestButton;
+    HAButton _getSgp41SelftestButton;
     HASelect _logLevelSelect;
     HASwitch _scd30AutoCalSwitch;
     HANumber _scd30ForceCalNumber;
@@ -91,17 +99,19 @@ private:
     float _lastPublishedAmps;
     int _lastPublishedCpm;
     int32_t _lastPublishedVocIndex;
+    int32_t _lastPublishedNOxIndex;
     long _lastPublishedWifiRssi;
     bool _lastPublishedWifiConnected, _lastPublishedSensorConnected, _lastPublishedHighPressure;
     bool _lastPublishedFanStatus;
     String _lastPublishedSensorStackVersion; // Tracks the last version string published
-    // _lastPublishedSensorStackUptime is no longer needed as HASensorNumber handles its internal state.
     float _lastPublishedPm1_0, _lastPublishedPm2_5, _lastPublishedPm4_0, _lastPublishedPm10_0;
+    uint16_t _lastPublishedO3, _lastPublishedNO2, _lastPublishedFastAQI, _lastPublishedEPAAQI;
     
     // Timestamps for periodic publishing
     unsigned long _lastPressurePublishTime, _lastCpmPublishTime, _lastTempPublishTime, _lastHumiPublishTime;
+    unsigned long _LastO3PublishTime, _lastNO2PublishTime, _lastFastAQIPublishTime, _lastEPAAQIPublishTime;
     unsigned long _lastWifiStatusPublishTime, _lastSensorStatusPublishTime, _lastHighPressurePublishTime;
-    unsigned long _lastPmPublishTime, _lastCo2PublishTime, _lastVocPublishTime;
+    unsigned long _lastPmPublishTime, _lastCo2PublishTime, _lastVocPublishTime, _lastNOxPublishTime;
     unsigned long _lastAmpsPublishTime, _lastFanStatusPublishTime;
     unsigned long _lastSensorStackUptimePublishTime;
 
@@ -114,7 +124,7 @@ private:
     static void onRebootSensorStackCommand(HAButton* sender);
     static void onGetSps30InfoCommand(HAButton* sender);
     static void onGetSps30ManualCleanCommand(HAButton* sender);
-    static void onGetSgp40SelftestCommand(HAButton* sender);
+    static void onGetSgp41SelftestCommand(HAButton* sender);
     static void onLogLevelCommand(int8_t index, HASelect* sender);
     static void onScd30AutoCalCommand(bool state, HASwitch* sender);
     static void onScd30ForceCalCommand(HANumeric number, HANumber* sender);

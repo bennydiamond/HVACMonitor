@@ -25,8 +25,8 @@ void UITileManager::create_all_tiles(lv_obj_t* parent_tv, ConfigManager* config,
     sps30_tile = new UISPS30Tile();
     sps30_tile_obj = sps30_tile->create_tile(parent_tv);
     
-    sgp40_tile = new UISGP40Tile();
-    sgp40_tile_obj = sgp40_tile->create_tile(parent_tv);
+    sgp41_tile = new UISGP41Tile();
+    sgp41_tile_obj = sgp41_tile->create_tile(parent_tv);
 }
 
 void UITileManager::clear_all_readings() {
@@ -50,5 +50,5 @@ void UITileManager::update_sensorstack_info(const char* version, uint32_t uptime
 void UITileManager::update_scd30_autocal(bool enabled) { if (scd30_tile) scd30_tile->update_autocal_state(enabled); }
 void UITileManager::update_scd30_forcecal(uint16_t ppm) { if (scd30_tile) scd30_tile->update_forcecal_value(ppm); }
 void UITileManager::update_sps30_info(uint32_t fan_interval, uint8_t fan_days) { if (sps30_tile) sps30_tile->update_sps30_info(fan_interval, fan_days); }
-void UITileManager::update_sgp40_test(int result, uint16_t value) { if (sgp40_tile) sgp40_tile->update_test_result(result, value); }
-void UITileManager::clear_sgp40_results() { if (sgp40_tile) sgp40_tile->clear_test_results(); }
+void UITileManager::update_sgp41_test(int result, uint16_t value) { if (sgp41_tile) sgp41_tile->update_test_result(result, value); }
+void UITileManager::clear_sgp41_results() { if (sgp41_tile) sgp41_tile->clear_test_results(); }

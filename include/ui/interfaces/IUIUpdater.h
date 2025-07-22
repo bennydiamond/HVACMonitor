@@ -29,7 +29,7 @@ public:
     virtual void update_scd30_autocal(bool enabled) = 0;
     virtual void update_scd30_forcecal(uint16_t ppm) = 0;
     virtual void update_sps30_info(uint32_t fan_interval, uint8_t fan_days) = 0;
-    virtual void update_sgp40_test(int result, uint16_t value) = 0;
+    virtual void update_sgp41_test(int result, uint16_t value) = 0;
 };
 
 #endif // IUI_UPDATER_H

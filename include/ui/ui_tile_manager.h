@@ -10,7 +10,7 @@
 #include "tiles/ui_sensorstack_tile.h"
 #include "tiles/ui_scd30_tile.h"
 #include "tiles/ui_sps30_tile.h"
-#include "tiles/ui_sgp40_tile.h"
+#include "tiles/ui_sgp41_tile.h"
 
 class UITileManager {
 public:
@@ -23,7 +23,7 @@ public:
     lv_obj_t* get_sensorstack_tile() { return sensorstack_tile_obj; }
     lv_obj_t* get_scd30_tile() { return scd30_tile_obj; }
     lv_obj_t* get_sps30_tile() { return sps30_tile_obj; }
-    lv_obj_t* get_sgp40_tile() { return sgp40_tile_obj; }
+    lv_obj_t* get_sgp41_tile() { return sgp41_tile_obj; }
     void clear_all_readings();
     void update_pressure(float p);
     void update_co2(float co2);
@@ -41,8 +41,8 @@ public:
     void update_scd30_autocal(bool enabled);
     void update_scd30_forcecal(uint16_t ppm);
     void update_sps30_info(uint32_t fan_interval, uint8_t fan_days);
-    void update_sgp40_test(int result, uint16_t value);
-    void clear_sgp40_results();
+    void update_sgp41_test(int result, uint16_t value);
+    void clear_sgp41_results();
 private:
     UIMainTile* main_tile = nullptr;
     UISecondaryTile* secondary_tile = nullptr;
@@ -51,7 +51,7 @@ private:
     UISensorStackTile* sensorstack_tile = nullptr;
     UISCD30Tile* scd30_tile = nullptr;
     UISPS30Tile* sps30_tile = nullptr;
-    UISGP40Tile* sgp40_tile = nullptr;
+    UISGP41Tile* sgp41_tile = nullptr;
     lv_obj_t* main_tile_obj = nullptr;
     lv_obj_t* secondary_tile_obj = nullptr;
     lv_obj_t* runtime_tile_obj = nullptr;
@@ -59,7 +59,7 @@ private:
     lv_obj_t* sensorstack_tile_obj = nullptr;
     lv_obj_t* scd30_tile_obj = nullptr;
     lv_obj_t* sps30_tile_obj = nullptr;
-    lv_obj_t* sgp40_tile_obj = nullptr;
+    lv_obj_t* sgp41_tile_obj = nullptr;
 };
 
 #endif // UI_TILE_MANAGER_H

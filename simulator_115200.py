@@ -40,7 +40,7 @@ def calculate_checksum(data_str):
     return crc
 
 def format_packet(p, pulse_count, t, h, co2, voc, nox, amps, pm1, pm25, pm4, pm10):
-    """Formats the data into the <pressure,pulse_count,temp,humi,co2,voc,nox,amps,pm...,checksum>\\n protocol."""
+    """Formats the data into the <pressure,pulse_count,temp,humi,co2,voc,nox,amps,pm...,checksum>\n protocol."""
     # Scale float values to integers to match the Arduino Nano's new format
     p_val = int(p * 10)
     t_val = int(t * 10)
@@ -66,19 +66,19 @@ def user_input_thread():
     
     print("\n--- Interactive Simulator Control ---")
     print("Commands:")
-    print("  <number>          - Set pressure (e.g., 150.5)")
-    print("  amps <number>     - Set AC Current in Amps (e.g., amps 1.5)")
-    print("  pulse <number>    - Set pulse count (e.g., pulse 2)")
-    print("  temp <number>     - Set temperature (e.g., temp 23.8)")
-    print("  humi <number>     - Set humidity (e.g., humi 55.2)")
-    print("  co2 <number>      - Set CO2 in ppm (e.g., co2 800)")
-    print("  voc <number>      - Set raw VOC value (e.g., voc 28000)")
-    print("  nox <number>      - Set raw NOx value (e.g., nox 15000)")
-    print("  pm1 <number>      - Set PM1.0 (e.g., pm1 5.2)")
-    print("  pm25 <number>     - Set PM2.5 (e.g., pm25 9.8)")
-    print("  pm4 <number>      - Set PM4.0 (e.g., pm4 11.3)")
-    print("  pm10 <number>     - Set PM10.0 (e.g., pm10 15.1)")
-    print("  quit              - Exit the simulator")
+    print("  <number>        - Set pressure (e.g., 150.5)")
+    print("  amps <number>   - Set AC Current in Amps (e.g., amps 1.5)")
+    print("  pulse <number>  - Set pulse count (e.g., pulse 2)")
+    print("  temp <number>   - Set temperature (e.g., temp 23.8)")
+    print("  humi <number>   - Set humidity (e.g., humi 55.2)")
+    print("  co2 <number>    - Set CO2 in ppm (e.g., co2 800)")
+    print("  voc <number>    - Set raw VOC value (e.g., voc 28000)")
+    print("  nox <number>    - Set raw NOx value (e.g., nox 15000)")
+    print("  pm1 <number>    - Set PM1.0 (e.g., pm1 5.2)")
+    print("  pm25 <number>   - Set PM2.5 (e.g., pm25 9.8)")
+    print("  pm4 <number>    - Set PM4.0 (e.g., pm4 11.3)")
+    print("  pm10 <number>   - Set PM10.0 (e.g., pm10 15.1)")
+    print("  quit            - Exit the simulator")
     print("-------------------------------------\n")
     
     while not stop_threads:
@@ -135,32 +135,49 @@ def user_input_thread():
             break
 
 def serial_reader_thread(ser):
-    """A thread to continuously read and process data from the serial port using a buffer."""
+    """
+    A thread to continuously read data, printing raw/crash data while
+    also processing standard command packets.
+    """
     global stop_threads, serial_buffer
 
     while not stop_threads:
         try:
             # Read all available data and append to the buffer
             if ser.in_waiting > 0:
+                # Decode using utf-8, ignoring errors which are common in crash dumps
                 serial_buffer += ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
 
-            # Process all complete packets in the buffer
+            # Process the buffer for both raw data and structured packets
             while True:
                 start_idx = serial_buffer.find('<')
+                
+                if start_idx == -1:
+                    # No packet start found, so the entire buffer is raw data
+                    if len(serial_buffer) > 0:
+                        print(f"\n[ESP32-RAW]: {serial_buffer.strip()}")
+                        serial_buffer = "" # Clear buffer after printing
+                    break # Wait for more data
+                
+                # Check for and print any raw data before a packet starts
+                if start_idx > 0:
+                    raw_data = serial_buffer[:start_idx]
+                    print(f"\n[ESP32-RAW]: {raw_data.strip()}")
+                    serial_buffer = serial_buffer[start_idx:] # Trim the raw data
+                    # After trimming, re-find the start index which is now 0
+                    start_idx = 0 
+                
+                # Now, look for a complete packet at the start of the buffer
                 end_idx = serial_buffer.find('>')
-
-                # Check if a complete packet "<...>" exists
-                if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-                    # Extract the packet
+                if start_idx == 0 and end_idx > start_idx:
+                    # A complete packet is found
                     packet = serial_buffer[start_idx : end_idx + 1]
-
-                    # The original function expects a clean packet string
-                    handle_command_packet(ser, packet)
-
+                    handle_command_packet(ser, packet) # Process it
+                    
                     # Remove the processed packet from the buffer
                     serial_buffer = serial_buffer[end_idx + 1:]
                 else:
-                    # No complete packet found, break and wait for more data
+                    # Incomplete packet (< found, but no > yet), wait for more data
                     break
 
         except serial.SerialException:
@@ -173,6 +190,7 @@ def serial_reader_thread(ser):
             break
 
         time.sleep(0.01) # Sleep briefly to prevent a busy-wait loop
+
 
 def handle_command_packet(ser, packet_str):
     """Handle command packets from the ESP32."""
@@ -231,7 +249,6 @@ def handle_command_packet(ser, packet_str):
                     
                     print(f"--> [SIM-SENDING I2C READ RESPONSE]: {num_bytes} bytes")
                     
-                # --- Start of Restored Code ---
                 elif len(parts) >= 3:  # Write-then-read: I<addr>,<write_len>,<read_len>,<write_data...>
                     write_len = int(parts[1], 16)
                     read_len = int(parts[2], 16)
@@ -268,7 +285,6 @@ def handle_command_packet(ser, packet_str):
                     data_hex = ",".join([f"{b:02X}" for b in data_bytes])
                     
                     print(f"--> [SIM-SENDING I2C WRITE-READ RESPONSE]: {read_len} bytes")
-                # --- End of Restored Code ---
                 
                 # Format response
                 response_bytes = read_len if len(parts) >= 3 else num_bytes
@@ -333,8 +349,9 @@ def main():
         port_name = input("Enter the COM port of your USB-to-Serial adapter (e.g., COM3 or /dev/ttyUSB0): ")
     
     try:
-        ser = serial.Serial(port_name, 19200, timeout=1)
-        print(f"Successfully opened serial port {port_name} at 19200 baud.")
+        # MODIFIED: Changed baud rate to 115200 to capture ESP32 crash logs
+        ser = serial.Serial(port_name, 115200, timeout=1)
+        print(f"Successfully opened serial port {port_name} at 115200 baud.")
     except serial.SerialException as e:
         print(f"Error: Could not open serial port {port_name}.")
         print(e)
