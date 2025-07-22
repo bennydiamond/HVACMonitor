@@ -1,9 +1,9 @@
-#ifndef UI_SGP40_TILE_H
-#define UI_SGP40_TILE_H
+#ifndef UI_SGP41_TILE_H
+#define UI_SGP41_TILE_H
 
 #include "../ui_common.h"
 
-class UISGP40Tile {
+class UISGP41Tile {
 public:
     lv_obj_t* create_tile(lv_obj_t* parent_tv);
     void update_test_result(int result, uint16_t value);
@@ -14,4 +14,4 @@ private:
     lv_obj_t* value_label;
 };
 
-#endif // UI_SGP40_TILE_H
+#endif // UI_SGP41_TILE_H
