@@ -176,27 +176,18 @@ void UIMainTile::update_voc(int32_t voc) {
     lv_obj_set_style_text_color(voc_icon, color, 0);
 }
 
-void UIMainTile::update_geiger(int cpm, float usv) {
+void UIMainTile::update_geiger_cpm(int cpm) {
+    // Optionally store cpm for use in update_geiger_usvh
+    // For now, do nothing or update a label if you want
+}
+void UIMainTile::update_geiger_usvh(float usv) {
     char usv_str[10];
     dtostrf(usv, 4, 2, usv_str);
     lv_label_set_text_fmt(usv_label, "%s µSv/h", usv_str);
-
-    lv_color_t color;
-    if (cpm < _config->getCpmWarnThreshold()) {
-        color = COLOR_GREEN;
-    } else if (cpm < _config->getCpmDangerThreshold()) {
-        color = COLOR_MID;
-    } else {
-        color = COLOR_HIGH;
-    }
-    lv_obj_set_style_text_color(usv_label, color, 0);
-    lv_obj_set_style_text_color(usv_icon, color, 0); 
 }
-
-void UIMainTile::update_temp_humi(float temp, float humi) {
-    lv_obj_set_style_text_color(temp_icon, lv_theme_get_color_primary(lv_obj_get_parent(temp_label)), 0);
-    lv_obj_set_style_text_color(humi_icon, lv_theme_get_color_primary(lv_obj_get_parent(humi_label)), 0);
-    
+void UIMainTile::update_temp(float temp) {
     lv_label_set_text_fmt(temp_label, "%.1f °C", temp);
+}
+void UIMainTile::update_humi(float humi) {
     lv_label_set_text_fmt(humi_label, "%.0f %%", humi);
 }

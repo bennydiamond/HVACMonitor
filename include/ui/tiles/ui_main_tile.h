@@ -11,8 +11,10 @@ public:
     void update_pressure(float p);
     void update_co2(float co2);
     void update_voc(int32_t voc);
-    void update_geiger(int cpm, float usv);
-    void update_temp_humi(float temp, float humi);
+    void update_geiger_cpm(int cpm);
+    void update_geiger_usvh(float usv);
+    void update_temp(float temp);
+    void update_humi(float humi);
     void clear_readings();
 private:
     void create_pressure_widgets(lv_obj_t* parent);

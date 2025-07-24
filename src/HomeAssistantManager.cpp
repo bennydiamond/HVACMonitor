@@ -6,6 +6,7 @@
 #include "Logger.h"
 #include "NanoCommands.h"
 #include "ConfigManager.h"
+#include "UITask.h"
 
 const unsigned long FORCE_PUBLISH_INTERVAL_MS = 20000;
 const unsigned long SENSOR_EXPIRE_TIMEOUT_S = 30;
@@ -13,8 +14,6 @@ const unsigned long SENSOR_EXPIRE_TIMEOUT_S = 30;
 HomeAssistantManager* HomeAssistantManager::_instance = nullptr;
 
 HomeAssistantManager::HomeAssistantManager() :
-    _tft(nullptr),
-    _uiUpdater(nullptr),
     _device("hvac_diff_pressure_sensor_01"), // TODO: Make device ID configurable
     _mqtt(_wifiClient, _device),
     _pressureSensor("pressure", HASensor::PrecisionP1),
@@ -106,9 +105,7 @@ HomeAssistantManager::~HomeAssistantManager() {
 
 }
 
-void HomeAssistantManager::init(LGFX* tft, IUIUpdater* uiUpdater, ConfigManager* config, const char* firmware_version) {
-    _tft = tft;
-    _uiUpdater = uiUpdater;
+void HomeAssistantManager::init(ConfigManager* config, const char* firmware_version) {
     _config = config;
     
     const char* const entity_category_diagnostic = "diagnostic";
@@ -240,7 +237,6 @@ void HomeAssistantManager::init(LGFX* tft, IUIUpdater* uiUpdater, ConfigManager*
     _co2_sensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
     
     _voc_index_sensor.setName("VOC Index");
-    _voc_index_sensor.setDeviceClass("volatile_organic_compounds");
     _voc_index_sensor.setUnitOfMeasurement("");
     _voc_index_sensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
     _voc_index_sensor.setIcon("mdi:lungs");
@@ -357,20 +353,20 @@ void HomeAssistantManager::loop() {
 void HomeAssistantManager::onMqttConnected() {
     if (!_instance) return;
     logger.info("MQTT connected.");
-    if (_instance->_uiUpdater) _instance->_uiUpdater->update_ha_status(true);
+    UITask::getInstance().update_network_ha_conn(true);
 
 
     _instance->_wifi_ssid.setValue(WIFI_SSID);
     _instance->_wifi_ip.setValue(WiFi.localIP().toString().c_str());
 
-    uint8_t current_brightness = _instance->_tft->getBrightness();
+    uint8_t current_brightness = UITask::getInstance().get_brightness();
     _instance->_backlight.setState(current_brightness > 0, current_brightness);
 }
 
 void HomeAssistantManager::onMqttDisconnected() {
     if (!_instance) return;
     logger.warning("MQTT disconnected.");
-    if (_instance->_uiUpdater) _instance->_uiUpdater->update_ha_status(false);
+    UITask::getInstance().update_network_ha_conn(false);
 }
 
 void HomeAssistantManager::publishSensorData(
@@ -601,7 +597,7 @@ void HomeAssistantManager::resetSensorStackUptimePublishTime() {
 
 void HomeAssistantManager::onBrightnessCommand(uint8_t brightness, HALight* sender) {
     if (!_instance) return;
-    _instance->_tft->setBrightness(brightness);
+    UITask::getInstance().set_brightness(brightness);
     sender->setBrightness(brightness);
     if (brightness > 0 && !sender->getCurrentState()) {
         sender->setState(true);
@@ -613,9 +609,9 @@ void HomeAssistantManager::onStateCommand(bool state, HALight* sender) {
     if (state) {
         uint8_t brightness = sender->getCurrentBrightness();
         if (brightness == 0) brightness = 255; 
-        _instance->_tft->setBrightness(brightness);
+        UITask::getInstance().set_brightness(brightness);
     } else {
-        _instance->_tft->setBrightness(0);
+        UITask::getInstance().set_brightness(0);
     }
     sender->setState(state);
 }

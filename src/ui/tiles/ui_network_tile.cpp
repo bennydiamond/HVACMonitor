@@ -76,36 +76,12 @@ lv_obj_t* UINetworkTile::create_tile(lv_obj_t* parent_tv) {
     return tile;
 }
 
-void UINetworkTile::update_network_info(const char* ip, const char* mac, int8_t rssi, const char* ssid, bool ha_conn) {
-    if(ip_label) lv_label_set_text_fmt(ip_label, "IP: %s", ip);
-    if(mac_label) lv_label_set_text_fmt(mac_label, "MAC: %s", mac);
-    if(ssid_label) lv_label_set_text_fmt(ssid_label, "SSID: %s", ssid);
-
+void UINetworkTile::update_network_rssi(int8_t rssi) {
     if(rssi_label) {
-        lv_obj_t* rssi_icon_in_tile = lv_obj_get_child(lv_obj_get_parent(rssi_label), lv_obj_get_index(rssi_label) - 1);
-        if (rssi == 0) {
-            lv_label_set_text(rssi_label, "RSSI: N/A");
-            lv_obj_set_style_text_color(rssi_label, COLOR_DISCONNECTED, 0);
-            if(rssi_icon_in_tile) {
-                lv_label_set_text(rssi_icon_in_tile, ICON_WIFI_ALERT);
-                lv_obj_set_style_text_color(rssi_icon_in_tile, COLOR_DISCONNECTED, 0);
-            }
-        } else {
-            lv_label_set_text_fmt(rssi_label, "RSSI: %d dBm", rssi);
-            lv_color_t color;
-            const char* icon;
-            if (rssi >= -67) { color = COLOR_GREEN; icon = ICON_WIFI_STRENGTH_4; }
-            else if (rssi >= -75) { color = COLOR_GREEN; icon = ICON_WIFI_STRENGTH_3; }
-            else if (rssi >= -82) { color = COLOR_MID; icon = ICON_WIFI_STRENGTH_2; }
-            else { color = COLOR_MID; icon = ICON_WIFI_STRENGTH_1; }
-            lv_obj_set_style_text_color(rssi_label, color, 0);
-            if (rssi_icon_in_tile) {
-                lv_label_set_text(rssi_icon_in_tile, icon);
-                lv_obj_set_style_text_color(rssi_icon_in_tile, color, 0);
-            }
-        }
+        lv_label_set_text_fmt(rssi_label, "RSSI: %d dBm", rssi);
     }
-    
+}
+void UINetworkTile::update_network_ha_conn(bool ha_conn) {
     if(ha_label) {
         lv_color_t color = ha_conn ? COLOR_HA_BLUE : COLOR_DISCONNECTED;
         lv_obj_set_style_text_color(ha_label, color, 0);
@@ -113,4 +89,14 @@ void UINetworkTile::update_network_info(const char* ip, const char* mac, int8_t 
         lv_obj_set_style_text_color(ha_icon_in_tile, color, 0);
         lv_label_set_text(ha_label, ha_conn ? "HA: Connected" : "HA: Disconnected");
     }
+}
+
+void UINetworkTile::update_ssid(const char* ssid) {
+    if (ssid_label) lv_label_set_text(ssid_label, ssid);
+}
+void UINetworkTile::update_ip(const char* ip) {
+    if (ip_label) lv_label_set_text(ip_label, ip);
+}
+void UINetworkTile::update_mac(const char* mac) {
+    if (mac_label) lv_label_set_text(mac_label, mac);
 }
