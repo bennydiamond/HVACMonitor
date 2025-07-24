@@ -37,18 +37,33 @@ void UITileManager::clear_all_readings() {
 void UITileManager::update_pressure(float p) { if (main_tile) main_tile->update_pressure(p); }
 void UITileManager::update_co2(float co2) { if (main_tile) main_tile->update_co2(co2); }
 void UITileManager::update_voc(int32_t voc) { if (main_tile) main_tile->update_voc(voc); }
-void UITileManager::update_geiger(int cpm, float usv) { if (main_tile) main_tile->update_geiger(cpm, usv); }
-void UITileManager::update_temp_humi(float temp, float humi) { if (main_tile) main_tile->update_temp_humi(temp, humi); }
-void UITileManager::update_pm_values(float p1, float p25, float p4, float p10) { if (secondary_tile) secondary_tile->update_pm_values(p1, p25, p4, p10); }
-void UITileManager::update_fan_current(float amps, FanStatus status) { if (secondary_tile) secondary_tile->update_fan_current(amps, status); }
 void UITileManager::update_fan_status(FanStatus status) { if (secondary_tile) secondary_tile->update_fan_status(status); }
 void UITileManager::set_initial_debug_info(const char* ver, const char* rst_reason) { if (runtime_tile) runtime_tile->set_initial_info(ver, rst_reason); }
-void UITileManager::update_runtime_info(uint32_t freemem, unsigned long uptime) { if (runtime_tile) runtime_tile->update_runtime_info(freemem, uptime); }
-void UITileManager::update_last_packet_time(uint32_t secs, bool connected) { if (runtime_tile) runtime_tile->update_last_packet_time(secs, connected); }
-void UITileManager::update_network_info(const char* ip, const char* mac, int8_t rssi, const char* ssid, bool ha_conn) { if (network_tile) network_tile->update_network_info(ip, mac, rssi, ssid, ha_conn); }
-void UITileManager::update_sensorstack_info(const char* version, uint32_t uptime, uint16_t free_ram, bool connected) { if (sensorstack_tile) sensorstack_tile->update_sensorstack_info(version, uptime, free_ram, connected); }
 void UITileManager::update_scd30_autocal(bool enabled) { if (scd30_tile) scd30_tile->update_autocal_state(enabled); }
 void UITileManager::update_scd30_forcecal(uint16_t ppm) { if (scd30_tile) scd30_tile->update_forcecal_value(ppm); }
-void UITileManager::update_sps30_info(uint32_t fan_interval, uint8_t fan_days) { if (sps30_tile) sps30_tile->update_sps30_info(fan_interval, fan_days); }
-void UITileManager::update_sgp41_test(int result, uint16_t value) { if (sgp41_tile) sgp41_tile->update_test_result(result, value); }
 void UITileManager::clear_sgp41_results() { if (sgp41_tile) sgp41_tile->clear_test_results(); }
+void UITileManager::update_geiger_cpm(int cpm) { if (main_tile) main_tile->update_geiger_cpm(cpm); }
+void UITileManager::update_geiger_usvh(float usv) { if (main_tile) main_tile->update_geiger_usvh(usv); }
+void UITileManager::update_temp(float temp) { if (main_tile) main_tile->update_temp(temp); }
+void UITileManager::update_humi(float humi) { if (main_tile) main_tile->update_humi(humi); }
+void UITileManager::update_pm1(float pm1) { if (secondary_tile) secondary_tile->update_pm1(pm1); }
+void UITileManager::update_pm25(float pm25) { if (secondary_tile) secondary_tile->update_pm25(pm25); }
+void UITileManager::update_pm4(float pm4) { if (secondary_tile) secondary_tile->update_pm4(pm4); }
+void UITileManager::update_pm10(float pm10) { if (secondary_tile) secondary_tile->update_pm10(pm10); }
+void UITileManager::update_fan_amps(float amps) { if (secondary_tile) secondary_tile->update_fan_amps(amps); }
+void UITileManager::update_sps30_fan_interval(unsigned long v) { if (sps30_tile) sps30_tile->update_sps30_fan_interval(v); }
+void UITileManager::update_sps30_fan_days(unsigned long v) { if (sps30_tile) sps30_tile->update_sps30_fan_days(v); }
+void UITileManager::update_sgp41_test_status(int v) { if (sgp41_tile) sgp41_tile->update_sgp41_test_status(v); }
+void UITileManager::update_sgp41_test_value(uint16_t v) { if (sgp41_tile) sgp41_tile->update_sgp41_test_value(v); }
+void UITileManager::update_runtime_free_heap(uint32_t v) { if (runtime_tile) runtime_tile->update_runtime_free_heap(v); }
+void UITileManager::update_runtime_uptime(unsigned long v) { if (runtime_tile) runtime_tile->update_runtime_uptime(v); }
+void UITileManager::update_sensorstack_uptime(uint32_t v) { if (sensorstack_tile) sensorstack_tile->update_sensorstack_uptime(v); }
+void UITileManager::update_sensorstack_ram(uint16_t v) { if (sensorstack_tile) sensorstack_tile->update_sensorstack_ram(v); }
+void UITileManager::update_network_rssi(int8_t v) { if (network_tile) network_tile->update_network_rssi(v); }
+void UITileManager::update_network_ha_conn(bool v) { if (network_tile) network_tile->update_network_ha_conn(v); }
+void UITileManager::update_sensor_status(bool v) { if (runtime_tile) runtime_tile->update_sensor_status(v); if (sensorstack_tile) sensorstack_tile->update_sensor_status(v); }
+void UITileManager::update_last_packet_time(uint32_t v) { if (runtime_tile) runtime_tile->update_last_packet_time(v); }
+void UITileManager::update_ssid(const char* ssid) { if (network_tile) network_tile->update_ssid(ssid); }
+void UITileManager::update_ip(const char* ip) { if (network_tile) network_tile->update_ip(ip); }
+void UITileManager::update_mac(const char* mac) { if (network_tile) network_tile->update_mac(mac); }
+void UITileManager::update_fw_version(const char* fw) { if (sensorstack_tile) sensorstack_tile->update_fw_version(fw); }

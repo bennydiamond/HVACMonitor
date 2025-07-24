@@ -219,3 +219,19 @@ void UISecondaryTile::fan_alert_blink_cb(lv_timer_t* timer) {
     lv_obj_set_style_opa(icons->status_bar_icon, new_opa, 0);
     lv_obj_set_style_opa(icons->main_screen_icon, new_opa, 0);
 }
+
+void UISecondaryTile::update_pm1(float pm1) {
+    lv_label_set_text_fmt(pm1_label, "PM1.0: %.1f µg/m³", pm1);
+}
+void UISecondaryTile::update_pm25(float pm25) {
+    lv_label_set_text_fmt(pm25_label, "PM2.5: %.1f µg/m³", pm25);
+}
+void UISecondaryTile::update_pm4(float pm4) {
+    lv_label_set_text_fmt(pm4_label, "PM4.0: %.1f µg/m³", pm4);
+}
+void UISecondaryTile::update_pm10(float pm10) {
+    lv_label_set_text_fmt(pm10_label, "PM10:  %.1f µg/m³", pm10);
+}
+void UISecondaryTile::update_fan_amps(float amps) {
+    lv_label_set_text_fmt(fan_label, "%.2f A", amps);
+}
