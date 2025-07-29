@@ -24,9 +24,14 @@ public:
         float pm1, float pm25, float pm4, float pm10
     );
     void publish_O3_NOx_Values(
-        uint16_t o3_conc_ppb, uint16_t no2_conc_ppb, 
+        float o3_conc_ug_per_m3, float no2_conc_ug_per_m3, 
         uint16_t fast_aqi, uint16_t epa_aqi
     );
+    void publishBMP280Data(float pressure_pa);
+    void publishBMP280Data(float pressure_pa, float temperature_degc);
+#ifdef AHT20_ENABLED
+    void publishAHT20Data(float temperature_degc, float humidity_pct);
+#endif
     void publishWiFiStatus(bool connected, long rssi, const char* ssid, const char* ip);
     void publishSensorConnectionStatus(bool connected);
     void publishHighPressureStatus(bool is_high);
@@ -68,6 +73,12 @@ private:
     HASensor _geiger_dose;
     HASensor _temperatureSensor;
     HASensor _humiditySensor;
+    HASensorNumber _bmp280PressureSensor;
+    HASensorNumber _bmp280TemperatureSensor;
+#ifdef AHT20_ENABLED
+    HASensorNumber _aht20TemperatureSensor;
+    HASensorNumber _aht20HumiditySensor;
+#endif
     HABinarySensor _sensorStatus;
     HABinarySensor _highPressureSensor;
     HABinarySensor _fanStatus;
@@ -98,12 +109,19 @@ private:
     int _lastPublishedCpm;
     int32_t _lastPublishedVocIndex;
     int32_t _lastPublishedNOxIndex;
+    float _lastPublishedBMP280Pressure;
+    float _lastPublishedBMP280Temperature;
+#ifdef AHT20_ENABLED
+    float _lastPublishedAHT20Temperature;
+    float _lastPublishedAHT20Humidity;
+#endif
     long _lastPublishedWifiRssi;
     bool _lastPublishedWifiConnected, _lastPublishedSensorConnected, _lastPublishedHighPressure;
     bool _lastPublishedFanStatus;
     String _lastPublishedSensorStackVersion; // Tracks the last version string published
     float _lastPublishedPm1_0, _lastPublishedPm2_5, _lastPublishedPm4_0, _lastPublishedPm10_0;
-    uint16_t _lastPublishedO3, _lastPublishedNO2, _lastPublishedFastAQI, _lastPublishedEPAAQI;
+    float _lastPublishedO3, _lastPublishedNO2;
+    uint16_t _lastPublishedFastAQI, _lastPublishedEPAAQI;
     
     // Timestamps for periodic publishing
     unsigned long _lastPressurePublishTime, _lastCpmPublishTime, _lastTempPublishTime, _lastHumiPublishTime;
@@ -111,6 +129,12 @@ private:
     unsigned long _lastWifiStatusPublishTime, _lastSensorStatusPublishTime, _lastHighPressurePublishTime;
     unsigned long _lastPmPublishTime, _lastCo2PublishTime, _lastVocPublishTime, _lastNOxPublishTime;
     unsigned long _lastAmpsPublishTime, _lastFanStatusPublishTime;
+    unsigned long _lastBMP280PressurePublishTime;
+    unsigned long _lastBMP280TemperaturePublishTime;
+#ifdef AHT20_ENABLED
+    unsigned long _lastAHT20TemperaturePublishTime;
+    unsigned long _lastAHT20HumidityPublishTime;
+#endif
     unsigned long _lastSensorStackUptimePublishTime;
 
     // Static callbacks for ArduinoHA

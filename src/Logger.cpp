@@ -42,7 +42,6 @@ void Logger::log(AppLogLevel level, const char* message) {
     size_t totalLen = offsetof(LogMessage, message) + msgLen;
 
     if (xStreamBufferSpacesAvailable(_logStreamBufferHandle) < totalLen) {
-        Serial.println("[Logger] Log buffer is full. A message was dropped.");
         return;
     }
 

@@ -1,12 +1,14 @@
 #pragma once
 
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
-#include <freertos/semphr.h>
 #include "ZMOD4510Sensor.h"
 
 class ZMOD4510Manager {
 public:
+    // Singleton instance
+    static ZMOD4510Manager& getInstance() {
+        static ZMOD4510Manager instance;
+        return instance;
+    }
 
     typedef struct Values {
         Values() : o3_conc_ppb(0), no2_conc_ppb(0), fast_aqi(0), epa_aqi(0), valid(false) {}
@@ -17,40 +19,43 @@ public:
         bool valid;           // Whether the results are valid
     } Values;
     
-    ZMOD4510Manager();
-    ~ZMOD4510Manager();
-    
-    // Initialize the manager and start the task
+    // Initialize the manager (simple initialization that cannot fail)
     void init();
     
-    // Process the manager (call in loop)
-    // Thread-safe
-    bool process(bool sensorStackConnected, bool firstTimeFlag, Values& outValues);
-
+    // Process the sensor (call in loop) - handles complex initialization and error recovery
+    void process();
+    
+    // Check if new data is available
+    bool hasNewData() const;
+    
+    // Get the latest sensor data
+    Values getData();
+    
     // Update environmental data (temperature and humidity) for algo calculations
-    // Thread-safe
     void setEnvironmentalData(float temperature_degc, float humidity_pct);
     
-private:
-    enum State {
-        STATE_WAITING_FOR_NANO,  // Waiting for Nano to connect
-        STATE_INITIALIZING,      // Initializing the sensor
-        STATE_READY              // Sensor is ready for use
-    };
+    // Get sensor status
+    bool isInitialized() const { return initialized_; }
+    bool isHealthy() const { return healthy_; }
     
-    static void taskFunction(void* parameter);
-    void taskLoop();
+    // Handle connection status changes from SensorTask
+    void onConnectionStatusChanged(bool connected);
+    
+    // Handle nano reboot detection from SensorTask
+    void onNanoReboot();
+    
+    // Attempt sensor initialization (called internally)
+    void attemptInitialization();
+    
+private:
+    ZMOD4510Manager(); // Private constructor for singleton
     
     ZMOD4510Sensor sensor;
-    State state;
+    bool initialized_;
+    bool healthy_;
+    bool new_data_available_;
+    bool nano_connected_;
+    bool nano_reboot_detected_;
+    bool previous_nano_connected_; // Track previous connection state
     Values latestValues;
-    bool previousFirstTimeFlag;
-    
-    TaskHandle_t taskHandle;
-    
-    // Shared state variables
-    bool sensorStackConnected;
-    bool firstTimeFlag;
-    SemaphoreHandle_t stateMutex;
-    StaticSemaphore_t stateMutexBuffer;
 };
