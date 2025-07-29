@@ -23,9 +23,12 @@
 #include "ZMOD4510Sensor.h"
 #include "ZMOD4510Manager.h"
 #include "SerialMutex.h"
+#include "UITask.h"
+#include "ResetUtils.h"
+#include "MainTaskEvents.h"
+#include "HVACMonitor.h"
 
 // =================== CONSTANTS & GLOBALS ===================
-const char* FIRMWARE_VERSION = "1.0.0";
 const int WIFI_CHECK_INTERVAL_MS = 10000;
 const int DEBUG_UPDATE_INTERVAL_MS = 5000;
 const int HEALTH_CHECK_INTERVAL_MS = 30000;
@@ -58,8 +61,6 @@ String serial_buffer = "";
 String last_nano_version = "";
 uint16_t last_nano_ram = 0;
 
-static LGFX tft;
-CST820 touch(21, 22, -1, -1);
 ConfigManager configManager;
 HomeAssistantManager haManager;
 OtaManager otaManager;
@@ -80,6 +81,8 @@ RollingAverage<uint16_t> o3_avg(100);
 RollingAverage<uint16_t> no2_avg(100);
 RollingAverage<uint16_t> fast_aqi_avg(100);
 RollingAverage<uint16_t> epa_aqi_avg(100);
+
+TaskHandle_t mainTaskHandle = nullptr;
 
 // =================== UTILITY FUNCTIONS ===================
 uint8_t calculate_checksum(const char* data_str) {
@@ -113,12 +116,28 @@ void send_command_to_nano(char cmd) {
     if (cmd == CMD_REBOOT) {
         logger.info("Reboot command sent. Marking sensor stack as disconnected.");
         is_sensor_module_connected = false;
-        IUIUpdater& uiUpdater = UI::getInstance();
-        uiUpdater.update_sensor_status(false);
+        UITask::getInstance().update_sensor_status(false);
         haManager.publishSensorConnectionStatus(false);
         haManager.setSensorStackVersionUnavailable();
         haManager.publishSensorStackUptime(0, true);
-        uiUpdater.clearSensorReadings();
+        UITask::getInstance().clearSensorReadings();
+    }
+}
+
+void send_command_to_nano_with_param(char cmd, char param) {
+    char data_part[3] = {cmd, param, '\0'};
+    uint8_t checksum = calculate_checksum(data_part);
+    logger.debugf("Sending command to Nano: <%c%c,%d>", cmd, param, checksum);
+
+    SerialMutex& serialMutex = SerialMutex::getInstance();
+    if (serialMutex.lock()) {
+        Serial.print('<');
+        Serial.print(cmd);
+        Serial.print(param);
+        Serial.print(',');
+        Serial.print(checksum);
+        Serial.print('>');
+        serialMutex.unlock();
     }
 }
 
@@ -132,29 +151,9 @@ const char* nano_reset_cause_to_string(uint8_t code) {
     }
 }
 
-String get_reset_reason_string() {
-    switch (esp_reset_reason()) {
-        case ESP_RST_UNKNOWN:    return "Unknown";
-        case ESP_RST_POWERON:    return "Power On";
-        case ESP_RST_EXT:        return "External";
-        case ESP_RST_SW:         return "Software";
-        case ESP_RST_PANIC:      return "Panic";
-        case ESP_RST_INT_WDT:    return "Interrupt WDT";
-        case ESP_RST_TASK_WDT:   return "Task WDT";
-        case ESP_RST_WDT:        return "Other WDT";
-        case ESP_RST_DEEPSLEEP:  return "Deep Sleep";
-        case ESP_RST_BROWNOUT:   return "Brownout";
-        case ESP_RST_SDIO:       return "SDIO";
-        default:                 return "No reason";
-    }
-}
-
 void update_wifi_status() {
-    IUIUpdater& uiUpdater = UI::getInstance();
-    bool is_connected = (WiFi.status() == WL_CONNECTED);
-    long rssi = is_connected ? WiFi.RSSI() : 0;
-    uiUpdater.update_wifi_status(is_connected, rssi);
-    haManager.publishWiFiStatus(is_connected, rssi, WIFI_SSID, WiFi.localIP().toString().c_str());
+    UITask::getInstance().update_wifi_status(WiFi.status() == WL_CONNECTED, WiFi.RSSI());
+    haManager.publishWiFiStatus(WiFi.status() == WL_CONNECTED, WiFi.RSSI(), WIFI_SSID, WiFi.localIP().toString().c_str());
 }
 
 
@@ -192,8 +191,7 @@ void process_packet(String packet) {
         current_init_command_index = 0;
     }
 
-    IUIUpdater& uiUpdater = UI::getInstance();
-    uiUpdater.update_sensor_status(true);
+    UITask::getInstance().update_sensor_status(true);
     haManager.publishSensorConnectionStatus(true);
 
     char cmd = data_part.charAt(0);
@@ -239,19 +237,18 @@ void process_packet(String packet) {
                 fan_status = FAN_STATUS_NORMAL;
             }
             bool is_pressure_high = (p > configManager.getHighPressureThreshold());
-            uiUpdater.update_high_pressure_status(is_pressure_high);
-            uiUpdater.update_fan_status(fan_status);
-            uiUpdater.update_pressure(p);
+            UITask::getInstance().update_high_pressure_status(is_pressure_high);
+            UITask::getInstance().update_pressure(p);
             
             geigerCounter.checkAndLogHighRadiation();
             float usv_h = geigerCounter.getDoseRate();
-            uiUpdater.update_geiger_reading(c, usv_h);
+            UITask::getInstance().update_geiger_reading(c, usv_h);
 
-            uiUpdater.update_temp_humi(t, h);
-            uiUpdater.update_fan_current(amps, fan_status);
-            uiUpdater.update_co2(co2_avg.getAverage());
-            uiUpdater.update_voc(voc_avg.getAverage());
-            uiUpdater.update_pm_values(pm1_avg.getAverage(), pm25_avg.getAverage(), pm4_avg.getAverage(), pm10_avg.getAverage());
+            UITask::getInstance().update_temp_humi(t, h);
+            UITask::getInstance().update_fan_current(amps, fan_status);
+            UITask::getInstance().update_co2(co2_avg.getAverage());
+            UITask::getInstance().update_voc(voc_avg.getAverage());
+            UITask::getInstance().update_pm_values(pm1_avg.getAverage(), pm25_avg.getAverage(), pm4_avg.getAverage(), pm10_avg.getAverage());
 
             haManager.publishHighPressureStatus(is_pressure_high);
             haManager.publishFanStatus(fan_status != FAN_STATUS_OFF);
@@ -267,6 +264,7 @@ void process_packet(String packet) {
         case RSP_VERSION: {
             haManager.publishSensorStackVersion(payload.c_str());
             last_nano_version = payload;
+            UITask::getInstance().update_fw_version(last_nano_version.c_str());
             if (init_sequence_active && pending_init_commands[current_init_command_index] == CMD_VERSION) {
                 current_init_command_index++;
             }
@@ -338,7 +336,8 @@ void process_packet(String packet) {
                 ret_fan_days, fan_days,
                 ret_status, status_reg
             );
-            uiUpdater.update_sps30_info(fan_interval, fan_days);
+            UITask::getInstance().update_sps30_fan_interval(fan_interval);
+            UITask::getInstance().update_sps30_fan_days(fan_days);
             if (init_sequence_active && pending_init_commands[current_init_command_index] == CMD_SPS30_INFO) {
                 current_init_command_index++;
             }
@@ -369,7 +368,8 @@ void process_packet(String packet) {
             uint16_t raw_value = strtoul(token, nullptr, 16);
 
             logger.debugf("SGP41 Test Result: Status=%d, RawValue=0x%04X", ret_status, raw_value);
-            uiUpdater.update_sgp41_test(ret_status, raw_value); // Keeping the same UI method for backward compatibility
+            UITask::getInstance().update_sgp41_test_status(ret_status);
+            UITask::getInstance().update_sgp41_test_value(raw_value);
             break;
         }
         case RSP_SCD30_INFO: {
@@ -418,9 +418,9 @@ void process_packet(String packet) {
             // Update the AutoCalibration switch state and Force Calibration value in Home Assistant and UI
             haManager.updateScd30AutoCalState(auto_calibration != 0);
             haManager.updateScd30ForceCalValue(forced_recalibration_value);
-            uiUpdater.update_scd30_autocal(auto_calibration != 0);
-            uiUpdater.update_scd30_forcecal(forced_recalibration_value);
-            
+            UITask::getInstance().update_scd30_autocal(auto_calibration != 0);
+            UITask::getInstance().update_scd30_forcecal(forced_recalibration_value);
+
             if (init_sequence_active && pending_init_commands[current_init_command_index] == CMD_SCD30_INFO) {
                 current_init_command_index++;
             }
@@ -559,9 +559,13 @@ void setup_wifi() {
         logger.error("WiFi connection failed.");
     }
     update_wifi_status();
+    UITask::getInstance().update_ssid(WIFI_SSID);
+    UITask::getInstance().update_ip(WiFi.localIP().toString().c_str());
+    UITask::getInstance().update_mac(WiFi.macAddress().c_str());
 }
 
 void setup() {
+    MainTaskEventNotifier::getInstance().setMainTaskHandle(xTaskGetCurrentTaskHandle());
     logger.info("--- System Booting ---");
     Serial.begin(19200);
     //Serial.begin(115200);
@@ -572,41 +576,33 @@ void setup() {
     
     SerialMutex::getInstance().init();
     
-    String reset_reason = get_reset_reason_string();
-    logger.infof("Firmware Version: %s", FIRMWARE_VERSION);
-    logger.infof("Reset Reason: %s", reset_reason.c_str());
+    const char* reset_reason = get_reset_reason_string();
+    logger.infof("Firmware Version: %s", HVACMONITOR_FIRMWARE_VERSION);
+    logger.infof("Reset Reason: %s", reset_reason);
     
-    tft.init(); tft.setRotation(1); tft.setBrightness(255); tft.fillScreen(TFT_BLACK);
-    logger.info("TFT display initialized.");
-    touch.begin();
-    logger.info("Touch controller initialized.");
-    
-    IUIManager& uiManager = UI::getInstance();
-    IUIUpdater& uiUpdater = UI::getInstance();
-    uiManager.init(&tft, &touch, &configManager);
-    uiManager.create_widgets();
-    uiUpdater.set_initial_debug_info(FIRMWARE_VERSION, reset_reason.c_str());
-    logger.info("UI singleton initialized.");
-    lv_timer_handler();
+    // Start UI task (UI objects are now owned by UITask)
+    UITask::getInstance().start(&configManager);
     
     setup_wifi();
-    haManager.init(&tft, &uiUpdater, &configManager, FIRMWARE_VERSION);
-    webServerManager.init(FIRMWARE_VERSION);
+    haManager.init(&configManager, HVACMONITOR_FIRMWARE_VERSION); // UI pointers are now managed by UITask
+    webServerManager.init(HVACMONITOR_FIRMWARE_VERSION);
     otaManager.init();
     
     I2CBridge::begin();
     
     zmod4510_manager.init();
-    vTaskPrioritySet(NULL, tskIDLE_PRIORITY + 2); // above ZMOD4510 task priority
+    vTaskPrioritySet(NULL, tskIDLE_PRIORITY + 3); // above ZMOD4510 task priority
 }
 
 
-
 void loop() {
-    haManager.loop();
-    
-    logger.loop();
+    bool serial_command_sent_this_loop = false;
     static bool valid_packet_start_received = false;
+    
+    haManager.loop();
+    otaManager.handle();
+    webServerManager.handle();
+    logger.loop();
 
     while (Serial.available() > 0) {
         char incoming_char = Serial.read();
@@ -635,18 +631,12 @@ void loop() {
         }
     }
 
-    IUIManager& uiManager = UI::getInstance();
-    IUIUpdater& uiUpdater = UI::getInstance();
-
-    otaManager.handle();
-    webServerManager.handle();
-
     if (millis() - last_wifi_check_time > WIFI_CHECK_INTERVAL_MS) {
         last_wifi_check_time = millis();
         update_wifi_status();
     }
 
-    if (is_sensor_module_connected && (millis() - last_health_check_time > HEALTH_CHECK_INTERVAL_MS)) {
+    if (!serial_command_sent_this_loop && is_sensor_module_connected && (millis() - last_health_check_time > HEALTH_CHECK_INTERVAL_MS)) {
         last_health_check_time = millis();
         send_command_to_nano(CMD_GET_HEALTH);
         last_health_request_time = millis();
@@ -662,16 +652,19 @@ void loop() {
         last_debug_update_time = millis();
         uint32_t seconds_since_packet = (millis() - last_sensor_data_time) / 1000;
         uint32_t nano_current_uptime_seconds = is_sensor_module_connected ? (millis() - nano_boot_millis) / 1000 : 0;
-        uiUpdater.update_last_packet_time(seconds_since_packet, is_sensor_module_connected);
+        UITask::getInstance().update_last_packet_time(seconds_since_packet);
         haManager.publishSensorStackUptime(nano_current_uptime_seconds);
         haManager.publishEsp32FreeRam(ESP.getFreeHeap());
         haManager.publishEsp32Uptime(millis() / 1000);
-        uiUpdater.update_runtime_info(ESP.getFreeHeap(), nano_current_uptime_seconds);
+        UITask::getInstance().update_runtime_uptime(millis() / 1000);
+        UITask::getInstance().update_runtime_free_heap(ESP.getFreeHeap());
         
         if (is_sensor_module_connected) {
-            uiUpdater.update_sensorstack_info(last_nano_version.c_str(), nano_current_uptime_seconds, last_nano_ram, true);
+            UITask::getInstance().update_sensorstack_uptime(nano_current_uptime_seconds);
+            UITask::getInstance().update_sensorstack_ram(last_nano_ram);
         } else {
-            uiUpdater.update_sensorstack_info("N/A", 0, 0, false);
+            UITask::getInstance().update_sensorstack_uptime(0);
+            UITask::getInstance().update_sensorstack_ram(0);
         }
 
         bool wifi_connected = (WiFi.status() == WL_CONNECTED);
@@ -680,19 +673,21 @@ void loop() {
         String ssid = wifi_connected ? WIFI_SSID : "N/A";
         bool ha_conn = haManager.isMqttConnected();
         
-        uiUpdater.update_network_info(ip.c_str(), WiFi.macAddress().c_str(), rssi, ssid.c_str(), ha_conn);
+        UITask::getInstance().update_network_rssi(rssi);
+        UITask::getInstance().update_ssid(ssid.c_str());
+        UITask::getInstance().update_ip(ip.c_str());
+        UITask::getInstance().update_network_ha_conn(ha_conn);
     }
 
     if (millis() - last_sensor_data_time > NANO_PACKET_TIMEOUT_MS) {
         if (is_sensor_module_connected) {
             is_sensor_module_connected = false;
             logger.warning("Sensor data timeout. Marking as disconnected.");
-            IUIUpdater& uiUpdaterTimeout = UI::getInstance();
-            uiUpdaterTimeout.update_sensor_status(false);
+            UITask::getInstance().update_sensor_status(false);
             haManager.publishSensorConnectionStatus(false);
             haManager.setSensorStackVersionUnavailable();
             haManager.publishSensorStackUptime(0, true);
-            uiUpdaterTimeout.clearSensorReadings();
+            UITask::getInstance().clearSensorReadings();
             
             // Nano disconnected status will be handled in main loop
         }
@@ -716,7 +711,7 @@ void loop() {
         }
     }
 
-    if (is_sensor_module_connected && !init_sequence_active && (millis() - last_scd30_info_time > SCD30_INFO_INTERVAL_MS)) {
+    if (!serial_command_sent_this_loop && is_sensor_module_connected && !init_sequence_active && (millis() - last_scd30_info_time > SCD30_INFO_INTERVAL_MS)) {
         last_scd30_info_time = millis();
         send_command_to_nano(CMD_GET_SCD30_INFO);
     }
@@ -732,7 +727,6 @@ void loop() {
         epa_aqi_avg.add(zmod_values.epa_aqi);
         haManager.publish_O3_NOx_Values(o3_avg.getAverage(), no2_avg.getAverage(), fast_aqi_avg.getAverage(), epa_aqi_avg.getAverage());
     }
-    uiManager.run();
 
     if (millis() - last_stack_check_time > STACK_CHECK_INTERVAL_MS) {
         last_stack_check_time = millis();
@@ -742,5 +736,28 @@ void loop() {
         logger.debugf("Main loop task remaining stack: %u bytes", remaining_stack);
     }
 
-    delay(5);
+    if (!serial_command_sent_this_loop) {
+        MainTaskEventNotifier::getInstance().processOneEvent([&](MainTaskEventNotifier::EventBits event) {
+            switch (event) {
+                case MainTaskEventNotifier::EVT_SCD30_AUTOCAL_ON:
+                    send_command_to_nano_with_param(CMD_SET_SCD30_AUTOCAL, '1');
+                    serial_command_sent_this_loop = true;
+                    break;
+                case MainTaskEventNotifier::EVT_SCD30_AUTOCAL_OFF:
+                    send_command_to_nano_with_param(CMD_SET_SCD30_AUTOCAL, '0');
+                    serial_command_sent_this_loop = true;
+                    break;
+                case MainTaskEventNotifier::EVT_SPS30_CLEAN:
+                    send_command_to_nano(CMD_SPS30_CLEAN);
+                    serial_command_sent_this_loop = true;
+                    break;
+                case MainTaskEventNotifier::EVT_SGP41_TEST:
+                    send_command_to_nano(CMD_SGP41_TEST);
+                    serial_command_sent_this_loop = true;
+                    break;
+                default:
+                    break;
+            }
+        });
+    }
 }

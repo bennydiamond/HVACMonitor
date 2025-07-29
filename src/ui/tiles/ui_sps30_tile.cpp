@@ -1,7 +1,9 @@
 #include "ui/tiles/ui_sps30_tile.h"
 #include "NanoCommands.h"
+#include "SerialMutex.h"
 #include <cstdio>
 #include <Arduino.h>
+#include "MainTaskEvents.h"
 
 // Layout constants
 const int TITLE_Y = 10;
@@ -48,15 +50,13 @@ void UISPS30Tile::update_sps30_info(uint32_t fan_interval, uint8_t fan_days) {
     lv_label_set_text(days_label, buf);
 }
 
+void UISPS30Tile::update_sps30_fan_interval(unsigned long fan_interval) {
+    if (interval_label) lv_label_set_text_fmt(interval_label, "Fan sec.: %lu", fan_interval);
+}
+void UISPS30Tile::update_sps30_fan_days(unsigned long fan_days) {
+    if (days_label) lv_label_set_text_fmt(days_label, "Fan Days: %lu", fan_days);
+}
+
 void UISPS30Tile::manual_clean_cb(lv_event_t* e) {
-    uint8_t crc = 0x00;
-    uint8_t polynomial = 0x07;
-    char cmd = CMD_SPS30_CLEAN;
-    
-    crc ^= cmd;
-    for (int j = 0; j < 8; j++) {
-        crc = (crc & 0x80) ? (crc << 1) ^ polynomial : (crc << 1);
-    }
-    
-    Serial.print('<'); Serial.print(cmd); Serial.print(','); Serial.print(crc); Serial.print('>');
+    MainTaskEventNotifier::getInstance().sendEvent(MainTaskEventNotifier::EVT_SPS30_CLEAN);
 }

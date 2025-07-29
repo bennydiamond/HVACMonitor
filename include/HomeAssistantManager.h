@@ -13,7 +13,7 @@ public:
     HomeAssistantManager();
     ~HomeAssistantManager();
     
-    void init(LGFX* tft, IUIUpdater* uiUpdater, ConfigManager* config, const char* firmware_version);
+    void init(ConfigManager* config, const char* firmware_version);
     void loop();
 
     // Data Publishing Methods
@@ -51,8 +51,6 @@ public:
 
 private:
     // Pointers to external hardware/UI classes
-    LGFX* _tft;
-    IUIUpdater* _uiUpdater;
     ConfigManager* _config;
     
     // MQTT and Home Assistant objects

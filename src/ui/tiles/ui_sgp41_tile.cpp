@@ -1,6 +1,8 @@
 #include "ui/tiles/ui_sgp41_tile.h"
+#include "SerialMutex.h"
 #include "NanoCommands.h"
 #include <Arduino.h>
+#include "MainTaskEvents.h"
 
 // Layout constants
 const int TITLE_Y = 10;
@@ -58,15 +60,24 @@ void UISGP41Tile::clear_test_results() {
     lv_label_set_text(value_label, "");
 }
 
-void UISGP41Tile::selftest_btn_cb(lv_event_t* e) {
-    uint8_t crc = 0x00;
-    uint8_t polynomial = 0x07;
-    char cmd = CMD_SGP41_TEST;
-    
-    crc ^= cmd;
-    for (int j = 0; j < 8; j++) {
-        crc = (crc & 0x80) ? (crc << 1) ^ polynomial : (crc << 1);
+void UISGP41Tile::update_sgp41_test_status(int ret_status) {
+    if (result_label) {
+        if (ret_status != 0) {
+            lv_label_set_text(result_label, "Test Result: Error!");
+            lv_obj_set_style_text_color(result_label, COLOR_HIGH, 0);
+        } else {
+            lv_label_set_text(result_label, "Test Result: OK!");
+            lv_obj_set_style_text_color(result_label, COLOR_GREEN, 0);
+        }
     }
-    
-    Serial.print('<'); Serial.print(cmd); Serial.print(','); Serial.print(crc); Serial.print('>');
+}
+void UISGP41Tile::update_sgp41_test_value(uint16_t raw_value) {
+    if (value_label) {
+        lv_label_set_text_fmt(value_label, "Value: 0x%04X", raw_value);
+        lv_obj_set_style_text_color(value_label, COLOR_GREEN, 0);
+    }
+}
+
+void UISGP41Tile::selftest_btn_cb(lv_event_t* e) {
+    MainTaskEventNotifier::getInstance().sendEvent(MainTaskEventNotifier::EVT_SGP41_TEST);
 }

@@ -48,7 +48,7 @@ void ZMOD4510Manager::init() {
         "ZMOD4510Task",
         3072,
         this,
-        tskIDLE_PRIORITY + 1,
+        tskIDLE_PRIORITY + 2,
         &taskHandle,
         xPortGetCoreID()      // Core ID (use running core to avoid executing on WIFI core)
     );
