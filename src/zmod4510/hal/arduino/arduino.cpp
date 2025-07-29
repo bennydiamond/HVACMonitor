@@ -174,9 +174,7 @@ HAL_Init ( Interface_t*  hal ) {
   hal -> i2cWrite    = _I2CWrite;
   hal -> msSleep     = _Delay;
   hal -> reset       = NULL;
-  // Allow UART interface to settle - otherwise startup information 
-  //  will not be received by Arduino IDE
-  _Delay ( 2500 );
+
   logger.info("ZMOD4510: HAL interface initialized successfully");
   return ecSuccess;
 }

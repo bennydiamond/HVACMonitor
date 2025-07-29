@@ -55,8 +55,11 @@
 // --- Pin Definitions ---
 #define PRESSURE_SENSOR_PIN A0
 #define GEIGER_PIN          2
-#define CT_CLAMP_PIN        A1
+#define FAN_CT_CLAMP_PIN    A1
 #define DEBUG_LED_PIN       13
+#define LIQUID_LEVEL_SENSOR_PIN 8
+#define COMPRESSOR_CT_CLAMP_PIN A6
+#define GEOTHERMAL_PUMP_CT_CLAMP_PIN A7
 
 // --- Timing Constants ---
 const int SENSOR_READ_INTERVAL_MS = 2000;
@@ -66,7 +69,9 @@ const unsigned long SCD30_INVALIDATE_TIMEOUT_MS = 60000;
 // --- Sensor Calculation Constants ---
 #define SHUNT_RESISTOR 150.0f
 #define NUM_SAMPLES   1000
-#define VOLTS_PER_AMP 0.1f
+#define FAN_CT_VOLTS_PER_AMP        (1.0f / 10.0f)   // 0.1 V/A, e.g. 1V at 10A
+#define COMPRESSOR_CT_VOLTS_PER_AMP (1.0f / 30.0f)   // 0.0333 V/A, SCT-013-030: 1V at 30A
+#define GEOTHERMAL_PUMP_CT_VOLTS_PER_AMP (1.0f / 5.0f)   // 0.2 V/A, 5A CT clamp: 1V at 5A
 
 // --- Buffer Sizes ---
 #define MAX_COMMAND_LEN 150
@@ -89,7 +94,9 @@ unsigned long last_sensor_read_time = 0;
 bool first_health_status_sent = true;
 volatile uint16_t geiger_pulse_count = 0;
 float    current_pressure_pa = 0.0;
-float    current_amps        = 0.0;
+float    fan_amps            = 0.0;
+float    compressor_amps     = 0.0;
+float    geothermal_pump_amps = 0.0;
 float    current_co2         = 0.0;
 float    current_temp_c      = 0.0;
 float    current_humi        = 0.0;
@@ -106,6 +113,8 @@ void read_all_sensors();
 void send_data_packet();
 void process_command(const char* buffer);
 int freeRam();
+void recoverI2Cbus();
+bool checkAndRecoverI2C();
 
 // ======================================================================
 
@@ -136,20 +145,20 @@ uint8_t calculate_checksum(const char* data_str) {
   return crc;
 }
 
-float readCurrentRMS() {
+float readCurrentRMS_Generic(uint8_t analog_pin, float volts_per_amp) {
   long sum_of_squares = 0;
   long sum_of_samples = 0;
   for (int i = 0; i < NUM_SAMPLES; i++) {
-    int reading = analogRead(CT_CLAMP_PIN);
-    sum_of_samples += reading;
-    sum_of_squares += (long)reading * reading;
+      int reading = analogRead(analog_pin);
+      sum_of_samples += reading;
+      sum_of_squares += (long)reading * reading;
   }
   float mean_of_samples = (float)sum_of_samples / NUM_SAMPLES;
   float mean_of_squares = (float)sum_of_squares / NUM_SAMPLES;
   float variance = mean_of_squares - (mean_of_samples * mean_of_samples);
   float rms_adc = sqrt(variance);
   float voltage = rms_adc * (5.0 / 1023.0);
-  float current = voltage / VOLTS_PER_AMP;
+  float current = voltage / volts_per_amp;
   return current;
 }
 
@@ -189,11 +198,16 @@ void setup() {
     digitalWrite(DEBUG_LED_PIN, LOW);
     delay(STARTUP_BLINK_DELAY_MS);
 
+    // Check and recover I2C bus before initializing sensors
+    checkAndRecoverI2C();
+
     sensirion_i2c_init();
 
     while (sps30_probe() != 0) {
       blink_error_code(3);
       delay(1500);
+      // Check I2C bus before retrying
+      checkAndRecoverI2C();
     }
 
     if (sps30_start_measurement() < 0) {
@@ -206,6 +220,8 @@ void setup() {
     }
 
     sgp41_sensor.begin(Wire);
+
+    pinMode(LIQUID_LEVEL_SENSOR_PIN, INPUT_PULLUP);
 
     pinMode(GEIGER_PIN, INPUT);
     attachInterrupt(digitalPinToInterrupt(GEIGER_PIN), on_geiger_pulse, RISING);
@@ -221,8 +237,15 @@ void loop() {
   static uint8_t command_len = 0;
   static bool in_command = false;
   static unsigned long command_start_time = 0;
+  static unsigned long last_i2c_check_time = 0;
 
   unsigned long current_time = millis();
+
+  // Periodic I2C bus health check (every 10 seconds)
+  if (current_time - last_i2c_check_time >= 10000) {
+    last_i2c_check_time = current_time;
+    checkAndRecoverI2C();
+  }
 
   if (current_time - last_sensor_read_time >= SENSOR_READ_INTERVAL_MS) {
     last_sensor_read_time = current_time;
@@ -265,41 +288,58 @@ void loop() {
 
 void read_all_sensors() {
   static bool led_state = LOW;
+  int temp_val;
+  uint16_t temp_uval;
   led_state = !led_state;
   digitalWrite(DEBUG_LED_PIN, led_state);
-
-  uint16_t temp_uval;
-  int temp_val;
   
-  temp_val = analogRead(PRESSURE_SENSOR_PIN);
+  
+  // Check and recover I2C bus before sensor readings
+  checkAndRecoverI2C();
+  
+  
   float voltage = (temp_val / 1023.0) * 5.0; 
   float current_ma = (voltage / SHUNT_RESISTOR) * 1000.0;
   current_pressure_pa = (current_ma > 4.0) ? (current_ma - 4.0) * (300.0 / 16.0) : 0.0;
-
-  current_amps = readCurrentRMS();
-
+  
+  // ADC read 1, space out ADC reads to avoid noise
+  temp_val = analogRead(PRESSURE_SENSOR_PIN);
+  
+  // Check I2C bus before SPS30 operations
+  checkAndRecoverI2C();
   int16_t ret_sps_read = sps30_read_data_ready(&temp_uval);
   if (ret_sps_read == 0 && temp_uval) {
     sps30_read_measurement(&current_sps_data);
   }
+  
+  // ADC read 2
+  fan_amps = readCurrentRMS_Generic(FAN_CT_CLAMP_PIN, FAN_CT_VOLTS_PER_AMP);
 
+  // Check I2C bus before SCD30 operations
+  checkAndRecoverI2C();
   temp_val = scd30_sensor.getDataReady(temp_uval);
   if (temp_val == 0 && temp_uval) {
-      temp_val = scd30_sensor.readMeasurementData(current_co2, current_temp_c, current_humi);
-      if (temp_val == 0) {
-          last_scd30_update = millis();
-      }
+    temp_val = scd30_sensor.readMeasurementData(current_co2, current_temp_c, current_humi);
+    if (temp_val == 0) {
+      last_scd30_update = millis();
+    }
   }
   
   if (millis() - last_scd30_update > SCD30_INVALIDATE_TIMEOUT_MS) {
-      current_co2 = NAN;
-      current_temp_c = NAN;
-      current_humi = NAN;
+    current_co2 = NAN;
+    current_temp_c = NAN;
+    current_humi = NAN;
   }
-
+  
   uint16_t rh = static_cast<uint16_t>(current_humi * 65535.0f / 100.0f);
   uint16_t temp = static_cast<uint16_t>((current_temp_c + 45.0f) * 65535.0f / 175.0f);
   
+  // ADC read 3
+  // TODO add to data packet
+  compressor_amps = readCurrentRMS_Generic(COMPRESSOR_CT_CLAMP_PIN, COMPRESSOR_CT_VOLTS_PER_AMP);
+
+  // Check I2C bus before SGP41 operations
+  checkAndRecoverI2C();
   if (conditioning_s > 0) {
     temp_uval = sgp41_sensor.executeConditioning(rh, temp, current_voc_raw);
     conditioning_s--;
@@ -311,6 +351,10 @@ void read_all_sensors() {
     current_voc_raw = 0;
     current_nox_raw = 0;
   }
+
+  // ADC read 4
+  // TODO add to data packet
+  geothermal_pump_amps = readCurrentRMS_Generic(GEOTHERMAL_PUMP_CT_CLAMP_PIN, GEOTHERMAL_PUMP_CT_VOLTS_PER_AMP);
 }
 
 void send_data_packet() {
@@ -323,12 +367,15 @@ void send_data_packet() {
   pulse_count = geiger_pulse_count;
   geiger_pulse_count = 0;
   interrupts();
+
+  // TODO add to data packet
+  bool liquid_level_sensor_state = digitalRead(LIQUID_LEVEL_SENSOR_PIN);
   
   long p_val = (long)(current_pressure_pa * 10);
   long t_val = (long)(current_temp_c * 10);
   long h_val = (long)(current_humi * 10);
   long co2_val = (long)current_co2;
-  long amps_val = (long)(current_amps * 100);
+  long amps_val = (long)(fan_amps * 100);
   long pm1_val = (long)(current_sps_data.mc_1p0 * 10);
   long pm25_val = (long)(current_sps_data.mc_2p5 * 10);
   long pm4_val = (long)(current_sps_data.mc_4p0 * 10);
@@ -467,6 +514,9 @@ void process_command(const char* buffer) {
     }
     
     case CMD_I2C_READ: {
+        // Check and recover I2C bus before I2C operations
+        checkAndRecoverI2C();
+        
         char* p = const_cast<char*>(buffer + 1);
         char* endptr;
 
@@ -533,6 +583,9 @@ void process_command(const char* buffer) {
     }
     
     case CMD_I2C_WRITE: {
+        // Check and recover I2C bus before I2C operations
+        checkAndRecoverI2C();
+        
         char* p = const_cast<char*>(buffer + 1);
         char* endptr;
 
@@ -583,4 +636,88 @@ void process_command(const char* buffer) {
     default:
       break;
   }
+}
+
+// ======================================================================
+//  I2C RECOVERY
+// ======================================================================
+
+/**
+ * @brief Attempts to recover the I2C bus if a slave device is holding SDA low.
+ * * This function manually toggles the SCL line up to 9 times to persuade a
+ * stuck slave to release the SDA line. It then issues a manual STOP condition
+ * before re-initializing the Wire library.
+ */
+void recoverI2Cbus() {
+    Serial.println(F("<E,I2C_RECOVER,1>")); // Log recovery attempt
+
+    // The standard I2C pins for Arduino Nano are A4 (SDA) and A5 (SCL).
+    uint8_t sda_pin = A4;
+    uint8_t scl_pin = A5;
+
+    // Release the I2C hardware peripheral
+    TWCR = 0; 
+    
+    // Set pins to OUTPUT to drive them manually
+    pinMode(sda_pin, OUTPUT);
+    pinMode(scl_pin, OUTPUT);
+    
+    digitalWrite(sda_pin, HIGH); // Try to release SDA
+    digitalWrite(scl_pin, HIGH); // Release SCL
+    
+    // Check if the bus is already free
+    pinMode(sda_pin, INPUT_PULLUP);
+    if (digitalRead(sda_pin) == HIGH) {
+        // Bus is free, re-initialize and exit
+        Wire.begin(); 
+        return;
+    }
+
+    // Slave is holding SDA low. Generate up to 9 clock pulses.
+    for (int i = 0; i < 9; i++) {
+        pinMode(scl_pin, OUTPUT);
+        digitalWrite(scl_pin, LOW);
+        delayMicroseconds(5);
+        digitalWrite(scl_pin, HIGH);
+        delayMicroseconds(5);
+        
+        // Check if slave has released SDA
+        pinMode(sda_pin, INPUT_PULLUP); 
+        if (digitalRead(sda_pin) == HIGH) {
+            break; // Bus is free
+        }
+    }
+    
+    // Generate a STOP condition: SDA goes from LOW to HIGH while SCL is HIGH
+    pinMode(scl_pin, OUTPUT);
+    pinMode(sda_pin, OUTPUT);
+    
+    digitalWrite(scl_pin, LOW);
+    delayMicroseconds(5);
+    digitalWrite(sda_pin, LOW);
+    delayMicroseconds(5);
+    digitalWrite(scl_pin, HIGH);
+    delayMicroseconds(5);
+    digitalWrite(sda_pin, HIGH);
+    delayMicroseconds(5);
+
+    // Re-initialize the I2C peripheral
+    Wire.begin(); 
+    delay(10);
+    Serial.println(F("<E,I2C_RECOVER,0>")); // Log recovery finished
+}
+
+/**
+ * @brief Checks if the I2C bus is stuck and calls recovery function if needed.
+ * * @return true if the bus was stuck and a recovery was attempted.
+ * @return false if the bus is OK.
+ */
+bool checkAndRecoverI2C() {
+    pinMode(SDA, INPUT_PULLUP);
+    if (digitalRead(SDA) == LOW) { // If SDA is stuck low
+        recoverI2Cbus();
+        // Re-check after recovery attempt
+        return (digitalRead(SDA) == LOW); // Returns true if still stuck
+    }
+    return false; // Bus was not stuck
 }
