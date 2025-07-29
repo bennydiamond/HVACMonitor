@@ -74,22 +74,36 @@ void UI::run(void) {
 
 void UI::clearSensorReadings(void) { if (tileManager) tileManager->clear_all_readings(); }
 void UI::update_pressure(float p) { if (tileManager) tileManager->update_pressure(p); }
-void UI::update_geiger_reading(int cpm, float usv) { if (tileManager) tileManager->update_geiger(cpm, usv); }
-void UI::update_temp_humi(float temp, float humi) { if (tileManager) tileManager->update_temp_humi(temp, humi); }
-void UI::update_pm_values(float p1, float p25, float p4, float p10) { if (tileManager) tileManager->update_pm_values(p1, p25, p4, p10); }
-void UI::update_fan_current(float amps, FanStatus s) { if (tileManager) tileManager->update_fan_current(amps, s); }
+void UI::update_geiger_cpm(int cpm) { if (tileManager) tileManager->update_geiger_cpm(cpm); }
+void UI::update_geiger_usvh(float usv) { if (tileManager) tileManager->update_geiger_usvh(usv); }
+void UI::update_temp(float temp) { if (tileManager) tileManager->update_temp(temp); }
+void UI::update_humi(float humi) { if (tileManager) tileManager->update_humi(humi); }
+void UI::update_pm1(float pm1) { if (tileManager) tileManager->update_pm1(pm1); }
+void UI::update_pm25(float pm25) { if (tileManager) tileManager->update_pm25(pm25); }
+void UI::update_pm4(float pm4) { if (tileManager) tileManager->update_pm4(pm4); }
+void UI::update_pm10(float pm10) { if (tileManager) tileManager->update_pm10(pm10); }
+void UI::update_fan_amps(float amps) { if (tileManager) tileManager->update_fan_amps(amps); }
 void UI::update_fan_status(FanStatus s) { if (tileManager) tileManager->update_fan_status(s); }
 void UI::update_co2(float co2) { if (tileManager) tileManager->update_co2(co2); }
 void UI::update_voc(int32_t voc) { if (tileManager) tileManager->update_voc(voc); }
 void UI::set_initial_debug_info(const char* v, const char* r) { if (tileManager) tileManager->set_initial_debug_info(v, r); }
-void UI::update_runtime_info(uint32_t f, unsigned long u) { if (tileManager) tileManager->update_runtime_info(f, u); }
-void UI::update_network_info(const char* ip, const char* m, int8_t r, const char* s, bool hc) { if (tileManager) tileManager->update_network_info(ip, m, r, s, hc); }
-void UI::update_last_packet_time(uint32_t s, bool c) { if (tileManager) tileManager->update_last_packet_time(s, c); }
-void UI::update_sensorstack_info(const char* version, uint32_t uptime, uint16_t free_ram, bool connected) { if (tileManager) tileManager->update_sensorstack_info(version, uptime, free_ram, connected); }
 void UI::update_scd30_autocal(bool enabled) { if (tileManager) tileManager->update_scd30_autocal(enabled); }
 void UI::update_scd30_forcecal(uint16_t ppm) { if (tileManager) tileManager->update_scd30_forcecal(ppm); }
-void UI::update_sps30_info(uint32_t fan_interval, uint8_t fan_days) { if (tileManager) tileManager->update_sps30_info(fan_interval, fan_days); }
-void UI::update_sgp41_test(int result, uint16_t value) { if (tileManager) tileManager->update_sgp41_test(result, value); }
+void UI::update_sps30_fan_interval(unsigned long v) { if (tileManager) tileManager->update_sps30_fan_interval(v); }
+void UI::update_sps30_fan_days(unsigned long v) { if (tileManager) tileManager->update_sps30_fan_days(v); }
+void UI::update_sgp41_test_status(int v) { if (tileManager) tileManager->update_sgp41_test_status(v); }
+void UI::update_sgp41_test_value(uint16_t v) { if (tileManager) tileManager->update_sgp41_test_value(v); }
+void UI::update_runtime_free_heap(uint32_t v) { if (tileManager) tileManager->update_runtime_free_heap(v); }
+void UI::update_runtime_uptime(unsigned long v) { if (tileManager) tileManager->update_runtime_uptime(v); }
+void UI::update_sensorstack_uptime(uint32_t v) { if (tileManager) tileManager->update_sensorstack_uptime(v); }
+void UI::update_sensorstack_ram(uint16_t v) { if (tileManager) tileManager->update_sensorstack_ram(v); }
+void UI::update_network_rssi(int8_t v) { if (tileManager) tileManager->update_network_rssi(v); }
+void UI::update_network_ha_conn(bool v) { if (tileManager) tileManager->update_network_ha_conn(v); update_ha_status(v); }
+void UI::update_last_packet_time(uint32_t v) { if (tileManager) tileManager->update_last_packet_time(v); }
+void UI::update_ssid(const char* ssid) { if (tileManager) tileManager->update_ssid(ssid); }
+void UI::update_ip(const char* ip) { if (tileManager) tileManager->update_ip(ip); }
+void UI::update_mac(const char* mac) { if (tileManager) tileManager->update_mac(mac); }
+void UI::update_fw_version(const char* fw) { if (tileManager) tileManager->update_fw_version(fw); }
 
 void UI::create_status_bar() {
     status_bar = lv_obj_create(lv_scr_act());
@@ -172,6 +186,7 @@ void UI::update_ha_status(bool connected) {
 void UI::update_sensor_status(bool connected) {
     lv_label_set_text(sensor_icon_label, connected ? ICON_LAN_CONNECT : ICON_LAN_DISCONNECT);
     lv_obj_set_style_text_color(sensor_icon_label, connected ? COLOR_GREEN : COLOR_DISCONNECTED, 0);
+    if (tileManager) tileManager->update_sensor_status(connected);
 }
 
 void UI::disp_flush_cb(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p) {

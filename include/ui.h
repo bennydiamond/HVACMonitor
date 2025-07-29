@@ -23,10 +23,15 @@ public:
     // --- IUIUpdater Implementation ---
     void clearSensorReadings(void) override;
     void update_pressure(float p) override;
-    void update_geiger_reading(int cpm, float usv) override;
-    void update_temp_humi(float temp, float humi) override;
-    void update_pm_values(float pm1, float pm25, float pm4, float pm10) override;
-    void update_fan_current(float amps, FanStatus status) override;
+    void update_geiger_cpm(int cpm) override;
+    void update_geiger_usvh(float usv) override;
+    void update_temp(float temp) override;
+    void update_humi(float humi) override;
+    void update_pm1(float pm1) override;
+    void update_pm25(float pm25) override;
+    void update_pm4(float pm4) override;
+    void update_pm10(float pm10) override;
+    void update_fan_amps(float amps) override;
     void update_fan_status(FanStatus status) override;
     void update_high_pressure_status(bool is_high) override;
     void update_wifi_status(bool connected, int8_t rssi) override;
@@ -35,14 +40,23 @@ public:
     void update_co2(float co2_ppm) override;
     void update_voc(int32_t voc_index) override;
     void set_initial_debug_info(const char* version, const char* reason) override;
-    void update_runtime_info(uint32_t freemem, unsigned long uptime_ms) override;
-    void update_network_info(const char* ip, const char* mac, int8_t rssi, const char* ssid, bool ha_connected) override;
-    void update_last_packet_time(uint32_t seconds_since_packet, bool connected) override;
-    void update_sensorstack_info(const char* version, uint32_t uptime, uint16_t free_ram, bool connected) override;
     void update_scd30_autocal(bool enabled) override;
     void update_scd30_forcecal(uint16_t ppm) override;
-    void update_sps30_info(uint32_t fan_interval, uint8_t fan_days) override;
-    void update_sgp41_test(int result, uint16_t value) override;
+    void update_sps30_fan_interval(unsigned long) override;
+    void update_sps30_fan_days(unsigned long) override;
+    void update_sgp41_test_status(int) override;
+    void update_sgp41_test_value(uint16_t) override;
+    void update_runtime_free_heap(uint32_t) override;
+    void update_runtime_uptime(unsigned long) override;
+    void update_sensorstack_uptime(uint32_t) override;
+    void update_sensorstack_ram(uint16_t) override;
+    void update_network_rssi(int8_t) override;
+    void update_network_ha_conn(bool) override;
+    void update_last_packet_time(uint32_t) override;
+    void update_ssid(const char* ssid) override;
+    void update_ip(const char* ip) override;
+    void update_mac(const char* mac) override;
+    void update_fw_version(const char* fw) override;
 
 private:
     static LGFX* _tft;

@@ -7,8 +7,10 @@ class UIRuntimeTile {
 public:
     lv_obj_t* create_tile(lv_obj_t* parent_tv);
     void set_initial_info(const char* ver, const char* rst_reason);
-    void update_runtime_info(uint32_t freemem, unsigned long uptime);
-    void update_last_packet_time(uint32_t secs, bool connected);
+    void update_runtime_free_heap(uint32_t free_heap);
+    void update_runtime_uptime(unsigned long system_uptime);
+    void update_sensor_status(bool connected);
+    void update_last_packet_time(uint32_t seconds_since_packet);
     static void high_pressure_blink_cb(lv_timer_t* timer);
 private:
     lv_obj_t* fw_label;

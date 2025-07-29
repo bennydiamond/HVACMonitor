@@ -1,7 +1,9 @@
 #include "ui/tiles/ui_scd30_tile.h"
 #include "NanoCommands.h"
+#include "SerialMutex.h"
 #include <cstdio>
 #include <Arduino.h>
+#include "MainTaskEvents.h"
 
 // Layout constants
 const int TITLE_Y = 10;
@@ -56,20 +58,5 @@ void UISCD30Tile::update_forcecal_value(uint16_t ppm) {
 void UISCD30Tile::autocal_switch_cb(lv_event_t* e) {
     lv_obj_t* sw = lv_event_get_target(e);
     bool state = lv_obj_has_state(sw, LV_STATE_CHECKED);
-    
-    char cmd_with_param[3];
-    cmd_with_param[0] = CMD_SET_SCD30_AUTOCAL;
-    cmd_with_param[1] = state ? '1' : '0';
-    cmd_with_param[2] = '\0';
-    
-    uint8_t crc = 0x00;
-    uint8_t polynomial = 0x07;
-    for (int i = 0; i < 2; i++) {
-        crc ^= cmd_with_param[i];
-        for (int j = 0; j < 8; j++) {
-            crc = (crc & 0x80) ? (crc << 1) ^ polynomial : (crc << 1);
-        }
-    }
-    
-    Serial.print('<'); Serial.print(cmd_with_param); Serial.print(','); Serial.print(crc); Serial.print('>');
+    MainTaskEventNotifier::getInstance().sendEvent(state ? MainTaskEventNotifier::EVT_SCD30_AUTOCAL_ON : MainTaskEventNotifier::EVT_SCD30_AUTOCAL_OFF);
 }
