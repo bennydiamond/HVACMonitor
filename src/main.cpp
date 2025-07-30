@@ -21,17 +21,18 @@
 #include "I2CBridge.h"
 #include "GeigerCounter.h"
 #include "ZMOD4510Sensor.h"
-#include "ZMOD4510Manager.h"
+#include "SensorTask.h"
 #include "SerialMutex.h"
 #include "UITask.h"
 #include "ResetUtils.h"
 #include "MainTaskEvents.h"
 #include "HVACMonitor.h"
+#include "GasConcentrationConverter.h"
 
 // =================== CONSTANTS & GLOBALS ===================
 const int WIFI_CHECK_INTERVAL_MS = 10000;
 const int DEBUG_UPDATE_INTERVAL_MS = 5000;
-const int HEALTH_CHECK_INTERVAL_MS = 30000;
+const int HEALTH_CHECK_INTERVAL_MS = 5000;  // Reduced from 30000 for faster reboot detection
 const int NANO_PACKET_TIMEOUT_MS = 7000;
 const int HEALTH_RESPONSE_TIMEOUT_MS = 500;
 const int SCD30_INFO_INTERVAL_MS = 20000;
@@ -69,7 +70,7 @@ WebServerManager webServerManager;
 VOCGasIndexAlgorithm voc_algorithm;
 NOxGasIndexAlgorithm nox_algorithm;
 GeigerCounter geigerCounter;
-ZMOD4510Manager zmod4510_manager;
+SensorTask sensorTask;
 RollingAverage<uint16_t> co2_avg(100);
 RollingAverage<uint16_t> voc_avg(100);
 RollingAverage<uint16_t> nox_avg(100);
@@ -81,6 +82,12 @@ RollingAverage<uint16_t> o3_avg(100);
 RollingAverage<uint16_t> no2_avg(100);
 RollingAverage<uint16_t> fast_aqi_avg(100);
 RollingAverage<uint16_t> epa_aqi_avg(100);
+RollingAverage<float> bmp280_pressure_avg(10); // Average over 10 readings for BMP280
+RollingAverage<float> bmp280_temperature_avg(10); // Average over 10 readings for BMP280 temperature
+#ifdef AHT20_ENABLED
+RollingAverage<float> aht20_temperature_avg(10); // Average over 10 readings for AHT20 temperature
+RollingAverage<float> aht20_humidity_avg(10); // Average over 10 readings for AHT20 humidity
+#endif
 
 TaskHandle_t mainTaskHandle = nullptr;
 
@@ -258,7 +265,7 @@ void process_packet(String packet) {
                 amps,
                 pm1_avg.getAverage(), pm25_avg.getAverage(), pm4_avg.getAverage(), pm10_avg.getAverage());
 
-            zmod4510_manager.setEnvironmentalData(t, h);
+            sensorTask.setEnvironmentalData(t, h);
             break;
         }
         case RSP_VERSION: {
@@ -590,7 +597,7 @@ void setup() {
     
     I2CBridge::begin();
     
-    zmod4510_manager.init();
+    sensorTask.init();
     vTaskPrioritySet(NULL, tskIDLE_PRIORITY + 3); // above ZMOD4510 task priority
 }
 
@@ -716,8 +723,12 @@ void loop() {
         send_command_to_nano(CMD_GET_SCD30_INFO);
     }
 
-    ZMOD4510Manager::Values zmod_values;
-    const bool freshValues = zmod4510_manager.process(is_sensor_module_connected, latest_first_time_flag, zmod_values);
+    // Update connection status for sensor task
+    sensorTask.updateConnectionStatus(is_sensor_module_connected, latest_first_time_flag);
+    
+    // Get ZMOD4510 sensor data
+    SensorTask::ZMOD4510Values zmod_values;
+    const bool freshValues = sensorTask.getZMOD4510Data(zmod_values);
     
     if(freshValues)
     {
@@ -725,9 +736,65 @@ void loop() {
         no2_avg.add(zmod_values.no2_conc_ppb);
         fast_aqi_avg.add(zmod_values.fast_aqi);
         epa_aqi_avg.add(zmod_values.epa_aqi);
-        haManager.publish_O3_NOx_Values(o3_avg.getAverage(), no2_avg.getAverage(), fast_aqi_avg.getAverage(), epa_aqi_avg.getAverage());
+        
+        // Get current temperature and pressure for conversion
+        float current_temperature = bmp280_temperature_avg.getAverage();
+        float current_pressure = bmp280_pressure_avg.getAverage();
+        
+        // Convert ppb values to µg/m³
+        float o3_ug_per_m3 = GasConcentrationConverter::convertO3PpbToUgPerM3(
+            o3_avg.getAverage(), current_temperature, current_pressure);
+        float no2_ug_per_m3 = GasConcentrationConverter::convertNO2PpbToUgPerM3(
+            no2_avg.getAverage(), current_temperature, current_pressure);
+        
+        // Debug logging for conversion
+        logger.debugf("Gas Conversion: O3=%u ppb -> %.2f µg/m³, NO2=%u ppb -> %.2f µg/m³ (T=%.1f°C, P=%.1f Pa)", 
+            o3_avg.getAverage(), o3_ug_per_m3, no2_avg.getAverage(), no2_ug_per_m3, 
+            current_temperature, current_pressure);
+        
+        // Publish converted values to Home Assistant
+        haManager.publish_O3_NOx_Values(
+            o3_ug_per_m3, 
+            no2_ug_per_m3, 
+            fast_aqi_avg.getAverage(), 
+            epa_aqi_avg.getAverage()
+        );
     }
+    
+    // Get BMP280 sensor data
+    SensorTask::BMP280Values bmp280_values;
+    const bool freshBMP280Values = sensorTask.getBMP280Data(bmp280_values);
+    
+    if(freshBMP280Values)
+    {
+        // Add to rolling average
+        bmp280_pressure_avg.add(bmp280_values.pressure_pa);
+        bmp280_temperature_avg.add(bmp280_values.temperature_degc);
+        
+        // Publish averaged value to Home Assistant
+        float averaged_pressure = bmp280_pressure_avg.getAverage();
+        float averaged_temperature = bmp280_temperature_avg.getAverage();
+        haManager.publishBMP280Data(averaged_pressure, averaged_temperature);
+        
+        logger.debugf("BMP280: P=%.1f Pa (avg: %.1f Pa), T=%.1f°C (avg: %.1f°C)", bmp280_values.pressure_pa, averaged_pressure, bmp280_values.temperature_degc, averaged_temperature);
+    }
+    
+    // Get AHT20 sensor data
+#ifdef AHT20_ENABLED
+    SensorTask::AHT20Values aht20_values;
+    const bool freshAHT20Values = sensorTask.getAHT20Data(aht20_values);
 
+    if(freshAHT20Values)
+    {
+        // Publish AHT20 data to Home Assistant
+        aht20_temperature_avg.add(aht20_values.temperature_degc);
+        aht20_humidity_avg.add(aht20_values.humidity_pct);
+        haManager.publishAHT20Data(aht20_temperature_avg.getAverage(), aht20_humidity_avg.getAverage());
+
+        logger.debugf("AHT20: T=%.1f°C (avg: %.1f°C), H=%.1f%% (avg: %.1f%%)", aht20_values.temperature_degc, aht20_temperature_avg.getAverage(), aht20_values.humidity_pct, aht20_humidity_avg.getAverage());
+    }
+#endif
+    
     if (millis() - last_stack_check_time > STACK_CHECK_INTERVAL_MS) {
         last_stack_check_time = millis();
         // Pass NULL to get the stack high water mark for the current task (the loop)

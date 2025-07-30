@@ -5,7 +5,8 @@ ZMOD4510Sensor::ZMOD4510Sensor()
     : state(STATE_IDLE), 
       new_data_available(false),
       temperature_degc(-300), // Default to use on-chip temperature sensor
-      humidity_pct(50)        // Default to 50% humidity
+      humidity_pct(50),       // Default to 50% humidity
+      measurement_start_time(0)
 {
     memset(&latest_results, 0, sizeof(Results));
     latest_results.valid = false;
@@ -65,7 +66,6 @@ void ZMOD4510Sensor::startMeasurement() {
         return;
     }
     
-    state = STATE_MEASURING;
     logger.debug("ZMOD4510: Measurement started");
 }
 
@@ -74,12 +74,18 @@ void ZMOD4510Sensor::process() {
         case STATE_IDLE:
             startMeasurement();
             state = STATE_MEASURING;
+            measurement_start_time = millis();
             break;
             
         case STATE_MEASURING:
-            delay(ZMOD4510_NO2_O3_SAMPLE_TIME);
-            logger.debug("ZMOD4510: Measurement complete");
-            state = STATE_READING_RESULTS;
+            // Check if measurement time has elapsed
+            if (millis() - measurement_start_time >= ZMOD4510_NO2_O3_SAMPLE_TIME) {
+                logger.debug("ZMOD4510: Measurement complete");
+                state = STATE_READING_RESULTS;
+            }
+            else {
+                delay(10); // Allow for context switch
+            }
             break;
             
         case STATE_READING_RESULTS:

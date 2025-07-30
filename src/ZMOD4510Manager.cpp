@@ -2,186 +2,126 @@
 #include "Logger.h"
 #include "SerialMutex.h"
 
-ZMOD4510Manager::ZMOD4510Manager() 
-    : state(STATE_WAITING_FOR_NANO),
+ZMOD4510Manager::ZMOD4510Manager()
+    : sensor(),
       latestValues(),
-      previousFirstTimeFlag(false),
-      taskHandle(nullptr),
-      sensorStackConnected(false),
-      firstTimeFlag(false),
-      stateMutex(nullptr)
-{
-}
-
-ZMOD4510Manager::~ZMOD4510Manager() {
-    if (taskHandle != nullptr) {
-        vTaskDelete(taskHandle);
-        taskHandle = nullptr;
-    }
-    
-    if (stateMutex != nullptr) {
-        vSemaphoreDelete(stateMutex);
-        stateMutex = nullptr;
-    }
+      initialized_(false),
+      healthy_(false),
+      new_data_available_(false),
+      nano_connected_(false),
+      nano_reboot_detected_(false),
+      previous_nano_connected_(false) {
 }
 
 void ZMOD4510Manager::init() {
-    // Initialize the serial mutex if not already done
-    SerialMutex::getInstance().init();
+    logger.info("ZMOD4510Manager: Initializing");
     
-    // Initialize HAL and data structures early
-    if (!sensor.initHAL()) {
-        logger.error("Failed to initialize ZMOD4510 HAL");
+    // Set initial state
+    initialized_ = false;
+    healthy_ = false;
+    nano_connected_ = false;
+    nano_reboot_detected_ = false;
+    previous_nano_connected_ = false;
+
+    sensor.initHAL();
+    
+    logger.info("ZMOD4510Manager: Ready for initialization");
+}
+
+void ZMOD4510Manager::process() {
+    // Handle nano reboot detection
+    if (nano_reboot_detected_) {
+        logger.warning("ZMOD4510Manager: Nano reboot detected, resetting sensor");
+        initialized_ = false;
+        healthy_ = false;
+        nano_reboot_detected_ = false;
+    }
+    
+    // Only process if initialized
+    if (!initialized_) {
+        // Attempt initialization if nano is connected
+        if (nano_connected_) {
+            attemptInitialization();
+        }
         return;
     }
     
-    // Create mutex for state variables
-    stateMutex = xSemaphoreCreateMutexStatic(&stateMutexBuffer);
-    if (stateMutex == nullptr) {
-        logger.error("Failed to create ZMOD4510Manager state mutex");
-        return;
-    }
+    // Process the sensor
+    sensor.process();
     
-    // Create the task
-    BaseType_t result = xTaskCreatePinnedToCore(
-        taskFunction,
-        "ZMOD4510Task",
-        3072,
-        this,
-        tskIDLE_PRIORITY + 2,
-        &taskHandle,
-        xPortGetCoreID()      // Core ID (use running core to avoid executing on WIFI core)
-    );
-    
-    if (result != pdPASS) {
-        logger.error("Failed to create ZMOD4510Manager task");
-        taskHandle = nullptr;
-    } else {
-        logger.info("ZMOD4510Manager task created successfully on core 1");
+    // Check for new data
+    if (sensor.hasNewData()) {
+        ZMOD4510Sensor::Results results = sensor.getResults();
+        
+        if (results.valid) {
+            latestValues.o3_conc_ppb = results.o3_conc_ppb;
+            latestValues.no2_conc_ppb = results.no2_conc_ppb;
+            latestValues.fast_aqi = results.fast_aqi;
+            latestValues.epa_aqi = results.epa_aqi;
+            latestValues.valid = true;
+            new_data_available_ = true;
+            
+            logger.debugf("ZMOD4510: O3=%d ppb, NO2=%d ppb, FastAQI=%d, EPAAQI=%d", 
+                         results.o3_conc_ppb, results.no2_conc_ppb, results.fast_aqi, results.epa_aqi);
+        } else {
+            logger.warning("ZMOD4510: Invalid measurement results");
+        }
     }
 }
 
-bool ZMOD4510Manager::process(bool connected, bool flag, Values& outValues) {
-    bool newValuesAvailable = false;
-    if (xSemaphoreTake(stateMutex, portMAX_DELAY) == pdTRUE) {
-        sensorStackConnected = connected;
-        firstTimeFlag = flag;
-        outValues = latestValues; // Copy latest values to output
-        newValuesAvailable = latestValues.valid; // Check if values are valid
-        latestValues.valid = false; // Reset valid flag after copying
-        xSemaphoreGive(stateMutex);
-    }
+bool ZMOD4510Manager::hasNewData() const {
+    return new_data_available_;
+}
 
-    return newValuesAvailable;
+ZMOD4510Manager::Values ZMOD4510Manager::getData() {
+    new_data_available_ = false;
+    return latestValues;
 }
 
 void ZMOD4510Manager::setEnvironmentalData(float temperature_degc, float humidity_pct) {
-    if (xSemaphoreTake(stateMutex, portMAX_DELAY) == pdTRUE) {
-        sensor.setEnvironmentalData(temperature_degc, humidity_pct);
-        xSemaphoreGive(stateMutex);
+    sensor.setEnvironmentalData(temperature_degc, humidity_pct);
+}
+
+void ZMOD4510Manager::attemptInitialization() {
+    static unsigned long last_attempt_time = 0;
+    const unsigned long INIT_RETRY_INTERVAL_MS = 5000; // 5 seconds
+    unsigned long current_time = millis();
+    
+    // Only attempt initialization if enough time has passed since last attempt
+    if (current_time - last_attempt_time >= INIT_RETRY_INTERVAL_MS) {
+        last_attempt_time = current_time;
+        
+        // Initialize the sensor
+        if (!sensor.init()) {
+            logger.error("Failed to initialize ZMOD4510 sensor");
+            return;
+        }
+        
+        initialized_ = true;
+        healthy_ = true;
+        logger.info("ZMOD4510Manager: Initialization successful");
     }
 }
 
-void ZMOD4510Manager::taskFunction(void* parameter) {
-    ZMOD4510Manager* manager = static_cast<ZMOD4510Manager*>(parameter);
+void ZMOD4510Manager::onConnectionStatusChanged(bool connected) {
+    // Only log if the connection status actually changed
+    if (connected != previous_nano_connected_) {
+        if (!connected) {
+            logger.warning("ZMOD4510Manager: Nano disconnected");
+        } else {
+            logger.info("ZMOD4510Manager: Nano connected");
+        }
+        previous_nano_connected_ = connected;
+    }
     
-    manager->taskLoop();
+    nano_connected_ = connected;
+    
+    if (!connected && initialized_) {
+        initialized_ = false;
+        healthy_ = false;
+    }
 }
 
-void ZMOD4510Manager::taskLoop() {
-    logger.info("ZMOD4510Manager task started");
-    
-    unsigned long lastInitAttemptTime = 0;
-    const unsigned long INIT_RETRY_INTERVAL_MS = 5000;
-
-    // Variables for periodic stack size logging
-    unsigned long lastStackCheckTime = 0;
-    const unsigned long STACK_CHECK_INTERVAL_MS = 60000;
-    
-    while (true) {
-        // Periodically log the remaining stack size for this task
-        if (millis() - lastStackCheckTime > STACK_CHECK_INTERVAL_MS) {
-            lastStackCheckTime = millis();
-            UBaseType_t remaining_stack = uxTaskGetStackHighWaterMark(NULL);
-            logger.debugf("ZMOD4510 task remaining stack: %u bytes", remaining_stack);
-        }
-
-        bool connected = false;
-        bool flag = false;
-        
-        if (xSemaphoreTake(stateMutex, portMAX_DELAY) == pdTRUE) {
-            connected = sensorStackConnected;
-            flag = firstTimeFlag;
-            xSemaphoreGive(stateMutex);
-        }
-        
-        // Detect SensorStack reboot (firstTimeFlag transition from 0 to 1)
-        bool nanoRebootDetected = !previousFirstTimeFlag && flag;
-        
-        // If SensorStack reboot detected, reset to initialization state
-        if (nanoRebootDetected && state != STATE_WAITING_FOR_NANO) {
-            logger.warning("Nano reboot detected, reinitializing ZMOD4510 sensor");
-            state = STATE_INITIALIZING;
-        }
-        
-        switch (state) {
-            case STATE_WAITING_FOR_NANO:
-                // Wait for SensorStack to connect
-                if (connected) {
-                    logger.info("Nano sensor hub connected, initializing ZMOD4510 sensor");
-                    state = STATE_INITIALIZING;
-                    lastInitAttemptTime = millis();
-                }
-                break;
-                
-            case STATE_INITIALIZING:{
-                // Only attempt initialization if the retry interval has passed
-                unsigned long currentTime = millis();
-                unsigned long timeSinceLastAttempt = currentTime - lastInitAttemptTime;
-                
-                if (timeSinceLastAttempt > INIT_RETRY_INTERVAL_MS) {
-                    logger.debugf("ZMOD4510: Time since last init attempt: %lu ms (waiting for %lu ms)", 
-                                  timeSinceLastAttempt, INIT_RETRY_INTERVAL_MS);
-                    lastInitAttemptTime = currentTime;
-                    
-                    if (sensor.init()) {
-                        state = STATE_READY;
-                    } else {
-                        logger.error("Failed to initialize ZMOD4510 sensor");
-                        // If SensorStack is disconnected, go back to waiting state
-                        if (!connected) {
-                            logger.warning("Nano disconnected during initialization, waiting for reconnection");
-                            state = STATE_WAITING_FOR_NANO;
-                        }
-                        // Otherwise stay in initializing state and retry after interval
-                    }
-                }
-                break;
-            }
-                
-            case STATE_READY:
-                // Sensor is initialized and ready for use
-                sensor.process();
-
-                if(sensor.hasNewData()) {
-                    ZMOD4510Sensor::Results results = sensor.getResults();
-                    
-                    if (results.valid) {
-                        latestValues.o3_conc_ppb = results.o3_conc_ppb;
-                        latestValues.no2_conc_ppb = results.no2_conc_ppb;
-                        latestValues.fast_aqi = results.fast_aqi;
-                        latestValues.epa_aqi = results.epa_aqi;
-                        latestValues.valid = true;
-                        
-                    } else {
-                        logger.warning("ZMOD4510: Invalid measurement results");
-                    }
-                }
-                break;
-        }
-                
-        previousFirstTimeFlag = flag;
-        
-        vTaskDelay(pdMS_TO_TICKS(200));
-    }
+void ZMOD4510Manager::onNanoReboot() {
+    nano_reboot_detected_ = true;
 }
