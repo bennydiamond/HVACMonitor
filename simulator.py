@@ -19,6 +19,22 @@ current_pm1_0 = 5.2
 current_pm2_5 = 8.9
 current_pm4_0 = 10.1
 current_pm10_0 = 12.5
+
+# I2C Bridge Sensor Data
+current_aht20_temp = 22.3  # AHT20 temperature (°C)
+current_aht20_humidity = 48.7  # AHT20 humidity (%)
+current_bmp280_pressure = 101325.0  # BMP280 pressure (Pa)
+current_bmp280_temp = 21.8  # BMP280 temperature (°C)
+current_zmod4510_o3 = 45  # ZMOD4510 O3 concentration (ppb)
+current_zmod4510_no2 = 12  # ZMOD4510 NO2 concentration (ppb)
+current_zmod4510_fast_aqi = 25  # ZMOD4510 Fast AQI
+current_zmod4510_epa_aqi = 30  # ZMOD4510 EPA AQI
+
+# I2C Bridge Sensor Addresses
+AHT20_ADDRESS = 0x38
+BMP280_ADDRESS = 0x77  # Could also be 0x76
+ZMOD4510_ADDRESS = 0x32
+
 stop_threads = False
 serial_buffer = ""
 
@@ -39,8 +55,10 @@ def calculate_checksum(data_str):
 
     return crc
 
-def format_packet(p, pulse_count, t, h, co2, voc, nox, amps, pm1, pm25, pm4, pm10):
-    """Formats the data into the <pressure,pulse_count,temp,humi,co2,voc,nox,amps,pm...,checksum>\\n protocol."""
+def format_packet(p, pulse_count, t, h, co2, voc, nox, amps, pm1, pm25, pm4, pm10, 
+                 aht20_temp, aht20_humidity, bmp280_pressure, bmp280_temp, 
+                 zmod4510_o3, zmod4510_no2, zmod4510_fast_aqi, zmod4510_epa_aqi):
+    """Formats the data into the <pressure,pulse_count,temp,humi,co2,voc,nox,amps,pm...,aht20_temp,aht20_humidity,bmp280_pressure,bmp280_temp,zmod4510_o3,zmod4510_no2,zmod4510_fast_aqi,zmod4510_epa_aqi,checksum>\n protocol."""
     # Scale float values to integers to match the Arduino Nano's new format
     p_val = int(p * 10)
     t_val = int(t * 10)
@@ -51,9 +69,19 @@ def format_packet(p, pulse_count, t, h, co2, voc, nox, amps, pm1, pm25, pm4, pm1
     pm25_val = int(pm25 * 10)
     pm4_val = int(pm4 * 10)
     pm10_val = int(pm10 * 10)
+    
+    # I2C Bridge sensor values (scaled to integers)
+    aht20_temp_val = int(aht20_temp * 10)
+    aht20_humidity_val = int(aht20_humidity * 10)
+    bmp280_pressure_val = int(bmp280_pressure / 10)  # Pressure in Pa, scale down
+    bmp280_temp_val = int(bmp280_temp * 10)
+    zmod4510_o3_val = int(zmod4510_o3)
+    zmod4510_no2_val = int(zmod4510_no2)
+    zmod4510_fast_aqi_val = int(zmod4510_fast_aqi)
+    zmod4510_epa_aqi_val = int(zmod4510_epa_aqi)
 
     # Format the data part with scaled integers
-    payload = f"{p_val},{pulse_count},{t_val},{h_val},{co2_val},{int(voc)},{int(nox)},{amps_val},{pm1_val},{pm25_val},{pm4_val},{pm10_val}"
+    payload = f"{p_val},{pulse_count},{t_val},{h_val},{co2_val},{int(voc)},{int(nox)},{amps_val},{pm1_val},{pm25_val},{pm4_val},{pm10_val},{aht20_temp_val},{aht20_humidity_val},{bmp280_pressure_val},{bmp280_temp_val},{zmod4510_o3_val},{zmod4510_no2_val},{zmod4510_fast_aqi_val},{zmod4510_epa_aqi_val}"
     data_part = f"S{payload}"
     checksum = calculate_checksum(data_part)
     return f"<{data_part},{checksum}>\n"
@@ -63,6 +91,8 @@ def user_input_thread():
     global current_pressure, current_pulse_count, current_temperature, current_humidity
     global current_co2, current_voc_raw, current_nox_raw, current_amps, stop_threads
     global current_pm1_0, current_pm2_5, current_pm4_0, current_pm10_0
+    global current_aht20_temp, current_aht20_humidity, current_bmp280_pressure, current_bmp280_temp
+    global current_zmod4510_o3, current_zmod4510_no2, current_zmod4510_fast_aqi, current_zmod4510_epa_aqi
     
     print("\n--- Interactive Simulator Control ---")
     print("Commands:")
@@ -78,6 +108,14 @@ def user_input_thread():
     print("  pm25 <number>     - Set PM2.5 (e.g., pm25 9.8)")
     print("  pm4 <number>      - Set PM4.0 (e.g., pm4 11.3)")
     print("  pm10 <number>     - Set PM10.0 (e.g., pm10 15.1)")
+    print("  aht20_temp <number> - Set AHT20 temperature (e.g., aht20_temp 24.5)")
+    print("  aht20_humi <number> - Set AHT20 humidity (e.g., aht20_humi 52.3)")
+    print("  bmp280_pressure <number> - Set BMP280 pressure in Pa (e.g., bmp280_pressure 101325)")
+    print("  bmp280_temp <number> - Set BMP280 temperature (e.g., bmp280_temp 22.1)")
+    print("  zmod4510_o3 <number> - Set ZMOD4510 O3 in ppb (e.g., zmod4510_o3 45)")
+    print("  zmod4510_no2 <number> - Set ZMOD4510 NO2 in ppb (e.g., zmod4510_no2 12)")
+    print("  zmod4510_fast_aqi <number> - Set ZMOD4510 Fast AQI (e.g., zmod4510_fast_aqi 25)")
+    print("  zmod4510_epa_aqi <number> - Set ZMOD4510 EPA AQI (e.g., zmod4510_epa_aqi 30)")
     print("  quit              - Exit the simulator")
     print("-------------------------------------\n")
     
@@ -124,6 +162,30 @@ def user_input_thread():
             elif cmd_type == 'pm10' and len(parts) > 1:
                 current_pm10_0 = float(parts[1])
                 print(f"--> [SIM] PM10.0 set to {current_pm10_0:.1f} µg/m³")
+            elif cmd_type == 'aht20_temp' and len(parts) > 1:
+                current_aht20_temp = float(parts[1])
+                print(f"--> [SIM] AHT20 Temperature set to {current_aht20_temp:.1f} C")
+            elif cmd_type == 'aht20_humi' and len(parts) > 1:
+                current_aht20_humidity = float(parts[1])
+                print(f"--> [SIM] AHT20 Humidity set to {current_aht20_humidity:.1f} %")
+            elif cmd_type == 'bmp280_pressure' and len(parts) > 1:
+                current_bmp280_pressure = float(parts[1])
+                print(f"--> [SIM] BMP280 Pressure set to {current_bmp280_pressure:.0f} Pa")
+            elif cmd_type == 'bmp280_temp' and len(parts) > 1:
+                current_bmp280_temp = float(parts[1])
+                print(f"--> [SIM] BMP280 Temperature set to {current_bmp280_temp:.1f} C")
+            elif cmd_type == 'zmod4510_o3' and len(parts) > 1:
+                current_zmod4510_o3 = int(parts[1])
+                print(f"--> [SIM] ZMOD4510 O3 set to {current_zmod4510_o3} ppb")
+            elif cmd_type == 'zmod4510_no2' and len(parts) > 1:
+                current_zmod4510_no2 = int(parts[1])
+                print(f"--> [SIM] ZMOD4510 NO2 set to {current_zmod4510_no2} ppb")
+            elif cmd_type == 'zmod4510_fast_aqi' and len(parts) > 1:
+                current_zmod4510_fast_aqi = int(parts[1])
+                print(f"--> [SIM] ZMOD4510 Fast AQI set to {current_zmod4510_fast_aqi}")
+            elif cmd_type == 'zmod4510_epa_aqi' and len(parts) > 1:
+                current_zmod4510_epa_aqi = int(parts[1])
+                print(f"--> [SIM] ZMOD4510 EPA AQI set to {current_zmod4510_epa_aqi}")
             else:
                 current_pressure = float(command)
                 print(f"--> [SIM] Pressure set to {current_pressure:.1f} Pa")
@@ -176,150 +238,146 @@ def serial_reader_thread(ser):
 
 def handle_command_packet(ser, packet_str):
     """Handle command packets from the ESP32."""
-    try:
-        # Parse the packet
-        packet_str = packet_str.strip()
-        if not packet_str.startswith('<') or not packet_str.endswith('>'):
-            return
-            
-        packet_str = packet_str[1:-1]  # Remove < and >
-        last_comma_idx = packet_str.rfind(',')
-        if last_comma_idx == -1:
-            return
-            
-        data_part = packet_str[:last_comma_idx]
-        received_checksum = int(packet_str[last_comma_idx + 1:])
-        
-        # Validate checksum
-        calculated_checksum = calculate_checksum(data_part)
-        if calculated_checksum != received_checksum:
-            print(f"--> [SIM-WARNING] Checksum mismatch in command: {packet_str}")
-            return
-            
-        # Process the command
-        cmd = data_part[0]
-        payload = data_part[1:] if len(data_part) > 1 else ""
-        
-        print(f"--> [SIM-RECEIVED]: Command '{cmd}' with payload '{payload}'")
-        
-        if cmd == 'V':  # Version request
-            response_data = "v1.0.0"
-            checksum = calculate_checksum(response_data)
-            response = f"<{response_data},{checksum}>"
-            print(f"--> [SIM-SENDING]: {response}")
-            ser.write(response.encode('ascii'))
-            
-        elif cmd == 'H':  # Health request
-            response_data = "h1,512,1"
-            checksum = calculate_checksum(response_data)
-            response = f"<{response_data},{checksum}>"
-            print(f"--> [SIM-SENDING]: {response}")
-            ser.write(response.encode('ascii'))
-            
-        elif cmd == 'I':  # I2C Read or Write-Read request
-            parts = payload.split(',')
-            if len(parts) >= 2:
-                addr = int(parts[0], 16)
-                
-                # Check if this is a simple read or a write-then-read
-                if len(parts) == 2:  # Simple read: I<addr>,<read_len>
-                    num_bytes = int(parts[1], 16)
-                    
-                    # Generate mock data
-                    data_bytes = [i + 0xA0 for i in range(num_bytes)]
-                    data_hex = ",".join([f"{b:02X}" for b in data_bytes])
-                    
-                    print(f"--> [SIM-SENDING I2C READ RESPONSE]: {num_bytes} bytes")
-                    
-                # --- Start of Restored Code ---
-                elif len(parts) >= 3:  # Write-then-read: I<addr>,<write_len>,<read_len>,<write_data...>
-                    write_len = int(parts[1], 16)
-                    read_len = int(parts[2], 16)
-                    
-                    # Extract write data if present
-                    write_data = [int(parts[3+i], 16) for i in range(write_len)] if len(parts) > 3 else []
-                    
-                    # Generate response data based on the write data (register address)
-                    data_bytes = []
-                    
-                    # ZMOD4510 specific responses
-                    if len(write_data) > 0:
-                        if write_data[0] == 0x94 and read_len == 1:
-                            data_bytes.append(0x0F)  # Response for register 0x94
-                            print(f"--> [SIM-ZMOD4510]: Responding with 0x0F for register 0x94")
-                        elif write_data[0] == 0x00 and read_len == 2:
-                            data_bytes = [0x63, 0x20]  # Response for register 0x00
-                            print(f"--> [SIM-ZMOD4510]: Responding with 0x63 0x20 for register 0x00")
-                        elif write_data[0] == 0x20 and read_len == 6:
-                            data_bytes = [0xD0, 0xD2, 0x39, 0xA7, 0x4D, 0x2C]  # Response for register 0x20
-                            print(f"--> [SIM-ZMOD4510]: Responding with D0 D2 39 A7 4D 2C for register 0x20")
-                        elif write_data[0] == 0xB7 and read_len == 1:
-                            data_bytes.append(0x00)  # Response for register 0xB7
-                            print(f"--> [SIM-ZMOD4510]: Responding with 0x00 for register 0xB7")
-                        else:
-                            # Default pattern for other registers
-                            for i in range(read_len):
-                                data_bytes.append(0xB0 + i)
-                    else:
-                        # Default pattern when no write data
-                        for i in range(read_len):
-                            data_bytes.append(0xB0 + i)
-                    
-                    data_hex = ",".join([f"{b:02X}" for b in data_bytes])
-                    
-                    print(f"--> [SIM-SENDING I2C WRITE-READ RESPONSE]: {read_len} bytes")
-                # --- End of Restored Code ---
-                
-                # Format response
-                response_bytes = read_len if len(parts) >= 3 else num_bytes
-                response_data = f"i00,{response_bytes:02X},{data_hex}"
-                checksum = calculate_checksum(response_data)
-                response = f"<{response_data},{checksum}>"
-                
-                print(f"--> [SIM-SENDING]: {response}")
-                ser.write(response.encode('ascii'))
-                
-        elif cmd == 'W':  # I2C Write request
-            response_data = "w00"  # Status 0 = success
-            checksum = calculate_checksum(response_data)
-            response = f"<{response_data},{checksum}>"
-            print(f"--> [SIM-SENDING I2C WRITE RESPONSE]: {response}")
-            ser.write(response.encode('ascii'))
-
-        elif cmd == 'P': # SPS30 Info Request
-            fw_status, fw_major, fw_minor = 0, 2, 2
-            interval_status, interval_secs = 0, 604800
-            days_status, interval_days = 0, 7
-            dev_status_status, dev_status_reg = 0, 0
-
-            response_data = f"p{fw_status},{fw_major},{fw_minor},{interval_status},{interval_secs},{days_status},{interval_days},{dev_status_status},{dev_status_reg}"
-            checksum = calculate_checksum(response_data)
-            response = f"<{response_data},{checksum}>"
-            print(f"--> [SIM-SENDING SPS30 INFO]: {response}")
-            ser.write(response.encode('ascii'))
-
-        elif cmd == 'D': # SCD30 Info Request
-            status = 0
-            measurement_interval, auto_calib_status, force_recalib_status = 2, 1, 400
-            temp_offset, alt_comp = 0, 0
-            fw_major, fw_minor = 3, 67
-
-            response_data = (
-                f"d{status:X},{measurement_interval:X},"
-                f"{status:X},{auto_calib_status:X},"
-                f"{status:X},{force_recalib_status:X},"
-                f"{status:X},{temp_offset:X},"
-                f"{status:X},{alt_comp:X},"
-                f",{status:X},{fw_major:X},{fw_minor:X}"
-            )
-            checksum = calculate_checksum(response_data)
-            response = f"<{response_data},{checksum}>"
-            print(f"--> [SIM-SENDING SCD30 INFO]: {response}")
-            ser.write(response.encode('ascii'))
-
-    except Exception as e:
-        print(f"--> [SIM-ERROR] Error handling command packet: {e}")
+    print(f"[CMD] Received: {packet_str.strip()}")
+    
+    # Check if this is an I2C bridge command
+    cmd_type, address, param1, param2 = parse_i2c_command(packet_str)
+    if cmd_type == 'read':
+        handle_i2c_read_request(ser, address, param1)
         return
+    elif cmd_type == 'write':
+        handle_i2c_write_request(ser, address, param2)
+        return
+    
+    # Handle other commands as before
+    try:
+        # Remove < > and split by comma
+        data_part = packet_str.strip('<>').split(',')
+        if len(data_part) < 2:
+            return
+        
+        cmd = data_part[0]
+        
+        if cmd.startswith('V'):  # Version request
+            response = "v1.0.0,I2C_Bridge_Simulator"
+            checksum = calculate_checksum(response)
+            packet = f"<{response},{checksum}>\n"
+            ser.write(packet.encode())
+            print(f"[CMD] Sent version response: {packet.strip()}")
+            
+        elif cmd.startswith('H'):  # Health request
+            response = "h1,1,1,1,1,1"  # All sensors healthy
+            checksum = calculate_checksum(response)
+            packet = f"<{response},{checksum}>\n"
+            ser.write(packet.encode())
+            print(f"[CMD] Sent health response: {packet.strip()}")
+            
+        elif cmd.startswith('A'):  # ACK Health
+            print("[CMD] Acknowledged health status")
+            
+        else:
+            print(f"[CMD] Unknown command: {cmd}")
+            
+    except Exception as e:
+        print(f"[CMD] Error handling command: {e}")
+
+def handle_i2c_read_request(ser, address, num_bytes):
+    """Handle I2C read request and respond with dummy sensor data."""
+    print(f"[I2C] Read request: address=0x{address:02X}, bytes={num_bytes}")
+    
+    # Generate dummy data based on sensor address
+    if address == AHT20_ADDRESS:
+        # AHT20 data: status byte + 6 bytes of temperature/humidity data
+        if num_bytes >= 7:
+            # Status byte (not busy, calibrated)
+            status = 0x08  # Calibrated bit set
+            # Temperature data (24-bit, scaled)
+            temp_raw = int(current_aht20_temp * 1048576 / 200 + 1048576)  # Convert to AHT20 format
+            # Humidity data (24-bit, scaled)
+            hum_raw = int(current_aht20_humidity * 1048576 / 100)
+            
+            data = [status, 
+                   (hum_raw >> 16) & 0xFF, (hum_raw >> 8) & 0xFF, hum_raw & 0xFF,
+                   (temp_raw >> 16) & 0xFF, (temp_raw >> 8) & 0xFF, temp_raw & 0xFF]
+            print(f"[I2C] AHT20 response: temp={current_aht20_temp:.1f}°C, hum={current_aht20_humidity:.1f}%")
+        else:
+            data = [0x08]  # Just status byte
+    elif address == BMP280_ADDRESS:
+        # BMP280 data: pressure and temperature registers
+        if num_bytes >= 6:
+            # Pressure data (24-bit)
+            pressure_raw = int(current_bmp280_pressure * 256 / 100000)  # Scale to BMP280 format
+            # Temperature data (20-bit)
+            temp_raw = int((current_bmp280_temp + 50) * 512)  # Convert to BMP280 format
+            
+            data = [(pressure_raw >> 16) & 0xFF, (pressure_raw >> 8) & 0xFF, pressure_raw & 0xFF,
+                   (temp_raw >> 12) & 0xFF, (temp_raw >> 4) & 0xFF, (temp_raw << 4) & 0xFF]
+            print(f"[I2C] BMP280 response: pressure={current_bmp280_pressure:.0f}Pa, temp={current_bmp280_temp:.1f}°C")
+        else:
+            data = [0x00]  # Default response
+    elif address == ZMOD4510_ADDRESS:
+        # ZMOD4510 data: measurement results
+        if num_bytes >= 4:
+            # Simplified ZMOD4510 response (O3 and NO2 concentrations)
+            data = [current_zmod4510_o3 & 0xFF, (current_zmod4510_o3 >> 8) & 0xFF,
+                   current_zmod4510_no2 & 0xFF, (current_zmod4510_no2 >> 8) & 0xFF]
+            print(f"[I2C] ZMOD4510 response: O3={current_zmod4510_o3}ppb, NO2={current_zmod4510_no2}ppb")
+        else:
+            data = [0x00]  # Default response
+    else:
+        # Unknown sensor, return zeros
+        data = [0x00] * min(num_bytes, 32)
+        print(f"[I2C] Unknown sensor address 0x{address:02X}, returning zeros")
+    
+    # Limit data length
+    data = data[:min(num_bytes, 32)]
+    
+    # Send I2C read response
+    data_hex = ','.join([f"{b:02X}" for b in data])
+    response = f"i{address:02X},{len(data):02X},{data_hex}"
+    checksum = calculate_checksum(response)
+    packet = f"<{response},{checksum}>\n"
+    ser.write(packet.encode())
+    print(f"[I2C] Sent read response: {packet.strip()}")
+
+def handle_i2c_write_request(ser, address, data):
+    """Handle I2C write request."""
+    print(f"[I2C] Write request: address=0x{address:02X}, data={[f'0x{b:02X}' for b in data]}")
+    
+    # Send I2C write response (success)
+    response = f"w{address:02X},00"  # 00 = no error
+    checksum = calculate_checksum(response)
+    packet = f"<{response},{checksum}>\n"
+    ser.write(packet.encode())
+    print(f"[I2C] Sent write response: {packet.strip()}")
+
+def parse_i2c_command(packet_str):
+    """Parse I2C bridge command from packet string."""
+    try:
+        # Remove < > and split by comma
+        data_part = packet_str.strip('<>').split(',')
+        if len(data_part) < 2:
+            return None, None, None, None
+        
+        cmd = data_part[0]
+        if cmd.startswith('I'):  # I2C Read
+            if len(data_part) >= 3:
+                address = int(data_part[0][1:], 16)
+                num_bytes = int(data_part[1], 16)
+                return 'read', address, num_bytes, None
+        elif cmd.startswith('W'):  # I2C Write
+            if len(data_part) >= 3:
+                address = int(data_part[0][1:], 16)
+                data_len = int(data_part[1], 16)
+                data = []
+                for i in range(2, min(2 + data_len, len(data_part))):
+                    data.append(int(data_part[i], 16))
+                return 'write', address, data_len, data
+        
+        return None, None, None, None
+    except (ValueError, IndexError) as e:
+        print(f"[I2C] Error parsing command: {e}")
+        return None, None, None, None
 
 
 def main():
@@ -353,7 +411,9 @@ def main():
             packet = format_packet(
                 current_pressure, current_pulse_count, current_temperature, current_humidity,
                 current_co2, current_voc_raw, current_nox_raw, current_amps,
-                current_pm1_0, current_pm2_5, current_pm4_0, current_pm10_0
+                current_pm1_0, current_pm2_5, current_pm4_0, current_pm10_0,
+                current_aht20_temp, current_aht20_humidity, current_bmp280_pressure, current_bmp280_temp,
+                current_zmod4510_o3, current_zmod4510_no2, current_zmod4510_fast_aqi, current_zmod4510_epa_aqi
             )
             
             print(f"--> [SIM Sending]: {packet.strip()}")

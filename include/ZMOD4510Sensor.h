@@ -45,6 +45,7 @@ private:
     enum State {
         STATE_IDLE,
         STATE_MEASURING,
+        STATE_WAITING,
         STATE_READING_RESULTS,
         STATE_DATA_READY
     };
@@ -71,6 +72,7 @@ private:
     State state;
     Results latest_results;
     bool new_data_available;
+    unsigned long measurement_start_time;
     
     // Helper methods
     int detect_and_configure();

@@ -25,6 +25,12 @@ HomeAssistantManager::HomeAssistantManager() :
     _geiger_dose("geiger_dose", HASensor::PrecisionP2),
     _temperatureSensor("temperature", HASensor::PrecisionP1),
     _humiditySensor("humidity", HASensor::PrecisionP1),
+    _bmp280PressureSensor("bmp280_pressure", HASensorNumber::PrecisionP1),
+    _bmp280TemperatureSensor("bmp280_temperature", HASensorNumber::PrecisionP1),
+#ifdef AHT20_ENABLED
+    _aht20TemperatureSensor("aht20_temperature", HASensorNumber::PrecisionP1),
+    _aht20HumiditySensor("aht20_humidity", HASensorNumber::PrecisionP1),
+#endif
     _sensorStatus("sensor_status"),
     _highPressureSensor("high_pressure_status"),
     _fanStatus("fan_status"),
@@ -66,6 +72,12 @@ HomeAssistantManager::HomeAssistantManager() :
     _lastPublishedVocIndex = -1;
     _lastPublishedNOxIndex = -1;
     _lastPublishedAmps = -1.0f;
+    _lastPublishedBMP280Pressure = -9999.0f;
+    _lastPublishedBMP280Temperature = -9999.0f;
+#ifdef AHT20_ENABLED
+    _lastPublishedAHT20Temperature = -9999.0f;
+    _lastPublishedAHT20Humidity = -1.0f;
+#endif
     _lastPublishedWifiRssi = 0;
     _lastPublishedWifiConnected = false;
     _lastPublishedSensorConnected = true;
@@ -77,8 +89,8 @@ HomeAssistantManager::HomeAssistantManager() :
     _lastPublishedPm2_5 = -1.0f;
     _lastPublishedPm4_0 = -1.0f;
     _lastPublishedPm10_0 = -1.0f;
-    _lastPublishedO3 = UINT16_MAX;
-    _lastPublishedNO2 = UINT16_MAX;
+    _lastPublishedO3 = -9999.0f;
+    _lastPublishedNO2 = -9999.0f;
     _lastPublishedFastAQI = UINT16_MAX;
     _lastPublishedEPAAQI = UINT16_MAX;
 
@@ -99,6 +111,12 @@ HomeAssistantManager::HomeAssistantManager() :
     _lastNOxPublishTime = 0;
     _lastAmpsPublishTime = 0;
     _lastFanStatusPublishTime = 0;
+    _lastBMP280PressurePublishTime = 0;
+    _lastBMP280TemperaturePublishTime = 0;
+#ifdef AHT20_ENABLED
+    _lastAHT20TemperaturePublishTime = 0;
+    _lastAHT20HumidityPublishTime = 0;
+#endif
 }
 
 HomeAssistantManager::~HomeAssistantManager() {
@@ -122,6 +140,18 @@ void HomeAssistantManager::init(ConfigManager* config, const char* firmware_vers
     _pressureSensor.setIcon("mdi:gauge");
     _pressureSensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
     
+    _bmp280PressureSensor.setName("BMP280 Pressure");
+    _bmp280PressureSensor.setDeviceClass("pressure");
+    _bmp280PressureSensor.setUnitOfMeasurement("Pa");
+    _bmp280PressureSensor.setIcon("mdi:gauge");
+    _bmp280PressureSensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
+    
+    _bmp280TemperatureSensor.setName("BMP280 Temperature");
+    _bmp280TemperatureSensor.setDeviceClass("temperature");
+    _bmp280TemperatureSensor.setUnitOfMeasurement("°C");
+    _bmp280TemperatureSensor.setIcon("mdi:thermometer");
+    _bmp280TemperatureSensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
+    
     _temperatureSensor.setName("Temperature");
     _temperatureSensor.setDeviceClass("temperature");
     _temperatureSensor.setUnitOfMeasurement("°C");
@@ -134,6 +164,19 @@ void HomeAssistantManager::init(ConfigManager* config, const char* firmware_vers
     _humiditySensor.setIcon("mdi:water-percent");
     _humiditySensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
     
+#ifdef AHT20_ENABLED
+    _aht20TemperatureSensor.setName("AHT20 Temperature");
+    _aht20TemperatureSensor.setDeviceClass("temperature");
+    _aht20TemperatureSensor.setUnitOfMeasurement("°C");
+    _aht20TemperatureSensor.setIcon("mdi:thermometer");
+    _aht20TemperatureSensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
+    
+    _aht20HumiditySensor.setName("AHT20 Humidity");
+    _aht20HumiditySensor.setDeviceClass("humidity");
+    _aht20HumiditySensor.setUnitOfMeasurement("%");
+    _aht20HumiditySensor.setIcon("mdi:water-percent");
+    _aht20HumiditySensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
+#endif
     _currentSensor.setName("Fan Current");
     _currentSensor.setDeviceClass("current");
     _currentSensor.setUnitOfMeasurement("A");
@@ -210,13 +253,13 @@ void HomeAssistantManager::init(ConfigManager* config, const char* firmware_vers
 
     _o3_sensor.setName("Ozone (O3)");
     _o3_sensor.setDeviceClass("ozone");
-    _o3_sensor.setUnitOfMeasurement("ppb");
+    _o3_sensor.setUnitOfMeasurement("µg/m³");
     _o3_sensor.setIcon("mdi:chemical-weapon");
     _o3_sensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
 
     _no2_sensor.setName("Nitrogen Dioxide (NO2)");
     _no2_sensor.setDeviceClass("nitrogen_dioxide");
-    _no2_sensor.setUnitOfMeasurement("ppb");
+    _no2_sensor.setUnitOfMeasurement("µg/m³");
     _no2_sensor.setIcon("mdi:smog");
     _no2_sensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
 
@@ -442,21 +485,21 @@ void HomeAssistantManager::publishSensorData(
 }
 
 void HomeAssistantManager::publish_O3_NOx_Values(
-        uint16_t o3_conc_ppb, uint16_t no2_conc_ppb, 
+        float o3_conc_ug_per_m3, float no2_conc_ug_per_m3, 
         uint16_t fast_aqi, uint16_t epa_aqi
     )
     {
         unsigned long currentTime = millis();
 
-        if(o3_conc_ppb != _lastPublishedO3 || (currentTime - _LastO3PublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
-            _o3_sensor.setValue(o3_conc_ppb, true);
-            _lastPublishedO3 = o3_conc_ppb;
+        if(o3_conc_ug_per_m3 != _lastPublishedO3 || (currentTime - _LastO3PublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+            _o3_sensor.setValue(o3_conc_ug_per_m3, true);
+            _lastPublishedO3 = o3_conc_ug_per_m3;
             _LastO3PublishTime = currentTime;
         }
 
-        if(no2_conc_ppb != _lastPublishedNO2 || (currentTime - _lastNO2PublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
-            _no2_sensor.setValue(no2_conc_ppb, true);
-            _lastPublishedNO2 = no2_conc_ppb;
+        if(no2_conc_ug_per_m3 != _lastPublishedNO2 || (currentTime - _lastNO2PublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+            _no2_sensor.setValue(no2_conc_ug_per_m3, true);
+            _lastPublishedNO2 = no2_conc_ug_per_m3;
             _lastNO2PublishTime = currentTime;
         }
 
@@ -472,6 +515,54 @@ void HomeAssistantManager::publish_O3_NOx_Values(
             _lastEPAAQIPublishTime = currentTime;
         }
     }
+
+void HomeAssistantManager::publishBMP280Data(float pressure_pa) {
+    unsigned long currentTime = millis();
+    
+    if(pressure_pa != _lastPublishedBMP280Pressure || (currentTime - _lastBMP280PressurePublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+        _bmp280PressureSensor.setValue(pressure_pa, true);
+        _lastPublishedBMP280Pressure = pressure_pa;
+        _lastBMP280PressurePublishTime = currentTime;
+    }
+}
+
+void HomeAssistantManager::publishBMP280Data(float pressure_pa, float temperature_degc) {
+    unsigned long currentTime = millis();
+    
+    // Publish pressure if changed or force interval reached
+    if(pressure_pa != _lastPublishedBMP280Pressure || (currentTime - _lastBMP280PressurePublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+        _bmp280PressureSensor.setValue(pressure_pa, true);
+        _lastPublishedBMP280Pressure = pressure_pa;
+        _lastBMP280PressurePublishTime = currentTime;
+    }
+    
+    // Publish temperature if changed or force interval reached
+    if(temperature_degc != _lastPublishedBMP280Temperature || (currentTime - _lastBMP280TemperaturePublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+        _bmp280TemperatureSensor.setValue(temperature_degc, true);
+        _lastPublishedBMP280Temperature = temperature_degc;
+        _lastBMP280TemperaturePublishTime = currentTime;
+    }
+}
+
+#ifdef AHT20_ENABLED
+void HomeAssistantManager::publishAHT20Data(float temperature_degc, float humidity_pct) {
+    unsigned long currentTime = millis();
+    
+    // Publish temperature if changed or force interval reached
+    if(temperature_degc != _lastPublishedAHT20Temperature || (currentTime - _lastAHT20TemperaturePublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+        _aht20TemperatureSensor.setValue(temperature_degc, true);
+        _lastPublishedAHT20Temperature = temperature_degc;
+        _lastAHT20TemperaturePublishTime = currentTime;
+    }
+    
+    // Publish humidity if changed or force interval reached
+    if(humidity_pct != _lastPublishedAHT20Humidity || (currentTime - _lastAHT20HumidityPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+        _aht20HumiditySensor.setValue(humidity_pct, true);
+        _lastPublishedAHT20Humidity = humidity_pct;
+        _lastAHT20HumidityPublishTime = currentTime;
+    }
+}
+#endif
 
 void HomeAssistantManager::publishWiFiStatus(bool connected, long rssi, const char* ssid, const char* ip) {
     unsigned long currentTime = millis();
