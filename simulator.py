@@ -15,6 +15,9 @@ current_co2 = 450
 current_voc_raw = 27500  # A typical raw VOC value
 current_nox_raw = 15000  # A typical raw NOx value for SGP41
 current_amps = 0.0 # <-- New variable for amps
+current_compressor_amps = 8.5
+current_geothermal_pump_amps = 2.1
+current_liquid_level_sensor_state = 1
 current_pm1_0 = 5.2
 current_pm2_5 = 8.9
 current_pm4_0 = 10.1
@@ -56,6 +59,7 @@ def calculate_checksum(data_str):
     return crc
 
 def format_packet(p, pulse_count, t, h, co2, voc, nox, amps, pm1, pm25, pm4, pm10, 
+                 compressor_amps, geothermal_pump_amps, liquid_level_sensor_state,
                  aht20_temp, aht20_humidity, bmp280_pressure, bmp280_temp, 
                  zmod4510_o3, zmod4510_no2, zmod4510_fast_aqi, zmod4510_epa_aqi):
     """Formats the data into the <pressure,pulse_count,temp,humi,co2,voc,nox,amps,pm...,aht20_temp,aht20_humidity,bmp280_pressure,bmp280_temp,zmod4510_o3,zmod4510_no2,zmod4510_fast_aqi,zmod4510_epa_aqi,checksum>\n protocol."""
@@ -81,7 +85,7 @@ def format_packet(p, pulse_count, t, h, co2, voc, nox, amps, pm1, pm25, pm4, pm1
     zmod4510_epa_aqi_val = int(zmod4510_epa_aqi)
 
     # Format the data part with scaled integers
-    payload = f"{p_val},{pulse_count},{t_val},{h_val},{co2_val},{int(voc)},{int(nox)},{amps_val},{pm1_val},{pm25_val},{pm4_val},{pm10_val},{aht20_temp_val},{aht20_humidity_val},{bmp280_pressure_val},{bmp280_temp_val},{zmod4510_o3_val},{zmod4510_no2_val},{zmod4510_fast_aqi_val},{zmod4510_epa_aqi_val}"
+    payload = f"{p_val},{pulse_count},{t_val},{h_val},{co2_val},{int(voc)},{int(nox)},{amps_val},{pm1_val},{pm25_val},{pm4_val},{pm10_val},{int(compressor_amps * 100)},{int(geothermal_pump_amps * 100)},{int(liquid_level_sensor_state)},{aht20_temp_val},{aht20_humidity_val},{bmp280_pressure_val},{bmp280_temp_val},{zmod4510_o3_val},{zmod4510_no2_val},{zmod4510_fast_aqi_val},{zmod4510_epa_aqi_val}"
     data_part = f"S{payload}"
     checksum = calculate_checksum(data_part)
     return f"<{data_part},{checksum}>\n"
@@ -90,6 +94,7 @@ def user_input_thread():
     """A separate thread to handle user input without blocking."""
     global current_pressure, current_pulse_count, current_temperature, current_humidity
     global current_co2, current_voc_raw, current_nox_raw, current_amps, stop_threads
+    global current_compressor_amps, current_geothermal_pump_amps, current_liquid_level_sensor_state
     global current_pm1_0, current_pm2_5, current_pm4_0, current_pm10_0
     global current_aht20_temp, current_aht20_humidity, current_bmp280_pressure, current_bmp280_temp
     global current_zmod4510_o3, current_zmod4510_no2, current_zmod4510_fast_aqi, current_zmod4510_epa_aqi
@@ -116,6 +121,9 @@ def user_input_thread():
     print("  zmod4510_no2 <number> - Set ZMOD4510 NO2 in ppb (e.g., zmod4510_no2 12)")
     print("  zmod4510_fast_aqi <number> - Set ZMOD4510 Fast AQI (e.g., zmod4510_fast_aqi 25)")
     print("  zmod4510_epa_aqi <number> - Set ZMOD4510 EPA AQI (e.g., zmod4510_epa_aqi 30)")
+    print("  compressor_amps <number> - Set compressor current in Amps (e.g., compressor_amps 8.5)")
+    print("  geothermal_amps <number> - Set geothermal pump current in Amps (e.g., geothermal_amps 2.1)")
+    print("  liquid_level <0|1> - Set liquid level sensor state (e.g., liquid_level 1)")
     print("  quit              - Exit the simulator")
     print("-------------------------------------\n")
     
@@ -186,6 +194,15 @@ def user_input_thread():
             elif cmd_type == 'zmod4510_epa_aqi' and len(parts) > 1:
                 current_zmod4510_epa_aqi = int(parts[1])
                 print(f"--> [SIM] ZMOD4510 EPA AQI set to {current_zmod4510_epa_aqi}")
+            elif cmd_type == 'compressor_amps' and len(parts) > 1:
+                current_compressor_amps = float(parts[1])
+                print(f"--> [SIM] Compressor current set to {current_compressor_amps:.2f} A")
+            elif cmd_type == 'geothermal_amps' and len(parts) > 1:
+                current_geothermal_pump_amps = float(parts[1])
+                print(f"--> [SIM] Geothermal pump current set to {current_geothermal_pump_amps:.2f} A")
+            elif cmd_type == 'liquid_level' and len(parts) > 1:
+                current_liquid_level_sensor_state = int(parts[1])
+                print(f"--> [SIM] Liquid level sensor state set to {current_liquid_level_sensor_state}")
             else:
                 current_pressure = float(command)
                 print(f"--> [SIM] Pressure set to {current_pressure:.1f} Pa")
@@ -407,11 +424,12 @@ def main():
 
     try:
         while not stop_threads:
-            # Pass all variables including NOx to the packet formatter
+            # Pass all variables including new sensors to the packet formatter
             packet = format_packet(
                 current_pressure, current_pulse_count, current_temperature, current_humidity,
                 current_co2, current_voc_raw, current_nox_raw, current_amps,
                 current_pm1_0, current_pm2_5, current_pm4_0, current_pm10_0,
+                current_compressor_amps, current_geothermal_pump_amps, current_liquid_level_sensor_state,
                 current_aht20_temp, current_aht20_humidity, current_bmp280_pressure, current_bmp280_temp,
                 current_zmod4510_o3, current_zmod4510_no2, current_zmod4510_fast_aqi, current_zmod4510_epa_aqi
             )

@@ -88,6 +88,8 @@ RollingAverage<float> bmp280_temperature_avg(10); // Average over 10 readings fo
 RollingAverage<float> aht20_temperature_avg(10); // Average over 10 readings for AHT20 temperature
 RollingAverage<float> aht20_humidity_avg(10); // Average over 10 readings for AHT20 humidity
 #endif
+RollingAverage<float> compressor_amps_avg(100); // Average over 100 readings for compressor CT clamp
+RollingAverage<float> geothermal_pump_amps_avg(100); // Average over 100 readings for geothermal pump CT clamp
 
 TaskHandle_t mainTaskHandle = nullptr;
 
@@ -220,6 +222,9 @@ void process_packet(String packet) {
             token = strtok(NULL, ","); if (!token) return; float pm25 = atof(token) / 10.0f;
             token = strtok(NULL, ","); if (!token) return; float pm4 = atof(token) / 10.0f;
             token = strtok(NULL, ","); if (!token) return; float pm10 = atof(token) / 10.0f;
+            token = strtok(NULL, ","); if (!token) return; float compressor_amps = atof(token) / 100.0f;
+            token = strtok(NULL, ","); if (!token) return; float geothermal_pump_amps = atof(token) / 100.0f;
+            token = strtok(NULL, ","); if (!token) return; bool liquid_level_sensor_state = (atoi(token) != 0);
             
             // Add the pulse count to the geiger counter object
             geigerCounter.addSample(pulse_count);
@@ -234,6 +239,8 @@ void process_packet(String packet) {
             pm25_avg.add(pm25);
             pm4_avg.add(pm4);
             pm10_avg.add(pm10);
+            compressor_amps_avg.add(compressor_amps);
+            geothermal_pump_amps_avg.add(geothermal_pump_amps);
 
             FanStatus fan_status;
             if (amps <= configManager.getFanOffCurrentThreshold()) {
@@ -263,7 +270,8 @@ void process_packet(String packet) {
                 co2_avg.getAverage(), 
                 voc_avg.getAverage(), nox_avg.getAverage(), 
                 amps,
-                pm1_avg.getAverage(), pm25_avg.getAverage(), pm4_avg.getAverage(), pm10_avg.getAverage());
+                pm1_avg.getAverage(), pm25_avg.getAverage(), pm4_avg.getAverage(), pm10_avg.getAverage(),
+                compressor_amps_avg.getAverage(), geothermal_pump_amps_avg.getAverage(), liquid_level_sensor_state);
 
             sensorTask.setEnvironmentalData(t, h);
             break;

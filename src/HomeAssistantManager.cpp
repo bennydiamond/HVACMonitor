@@ -117,6 +117,9 @@ HomeAssistantManager::HomeAssistantManager() :
     _lastAHT20TemperaturePublishTime = 0;
     _lastAHT20HumidityPublishTime = 0;
 #endif
+    _lastCompressorAmpsPublishTime = 0;
+    _lastGeothermalPumpAmpsPublishTime = 0;
+    _lastLiquidLevelPublishTime = 0;
 }
 
 HomeAssistantManager::~HomeAssistantManager() {
@@ -182,6 +185,23 @@ void HomeAssistantManager::init(ConfigManager* config, const char* firmware_vers
     _currentSensor.setUnitOfMeasurement("A");
     _currentSensor.setIcon("mdi:current-ac");
     _currentSensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
+
+    _compressorCurrentSensor.setName("Compressor Current");
+    _compressorCurrentSensor.setDeviceClass("current");
+    _compressorCurrentSensor.setUnitOfMeasurement("A");
+    _compressorCurrentSensor.setIcon("mdi:current-ac");
+    _compressorCurrentSensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
+
+    _geothermalPumpCurrentSensor.setName("Geothermal Pump Current");
+    _geothermalPumpCurrentSensor.setDeviceClass("current");
+    _geothermalPumpCurrentSensor.setUnitOfMeasurement("A");
+    _geothermalPumpCurrentSensor.setIcon("mdi:current-ac");
+    _geothermalPumpCurrentSensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
+
+    _liquidLevelSensor.setName("Liquid Level Sensor");
+    _liquidLevelSensor.setDeviceClass("moisture");
+    _liquidLevelSensor.setIcon("mdi:water");
+    _liquidLevelSensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
 
     _wifi_rssi.setName("WiFi RSSI");
     _wifi_rssi.setDeviceClass("signal_strength");
@@ -416,7 +436,8 @@ void HomeAssistantManager::publishSensorData(
     float pressure, int cpm, float temp, float humi,
     float co2, int32_t voc_index, int32_t nox_index, 
     float amps,
-    float pm1, float pm25, float pm4, float pm10
+    float pm1, float pm25, float pm4, float pm10,
+    float compressor_amps, float geothermal_pump_amps, bool liquid_level_sensor_state
 ) {
     unsigned long currentTime = millis();
     char data_str[10];
@@ -481,6 +502,27 @@ void HomeAssistantManager::publishSensorData(
         _lastPublishedPm1_0 = pm1; _lastPublishedPm2_5 = pm25;
         _lastPublishedPm4_0 = pm4; _lastPublishedPm10_0 = pm10;
         _lastPmPublishTime = currentTime;
+    }
+    
+    // Publish compressor current
+    if (fabs(compressor_amps - _lastPublishedCompressorAmps) > 0.01f || (currentTime - _lastCompressorAmpsPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+        _compressorCurrentSensor.setValue(compressor_amps, true);
+        _lastPublishedCompressorAmps = compressor_amps;
+        _lastCompressorAmpsPublishTime = currentTime;
+    }
+    
+    // Publish geothermal pump current
+    if (fabs(geothermal_pump_amps - _lastPublishedGeothermalPumpAmps) > 0.01f || (currentTime - _lastGeothermalPumpAmpsPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+        _geothermalPumpCurrentSensor.setValue(geothermal_pump_amps, true);
+        _lastPublishedGeothermalPumpAmps = geothermal_pump_amps;
+        _lastGeothermalPumpAmpsPublishTime = currentTime;
+    }
+    
+    // Publish liquid level sensor state
+    if (liquid_level_sensor_state != _lastPublishedLiquidLevelState || (currentTime - _lastLiquidLevelPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+        _liquidLevelSensor.setState(liquid_level_sensor_state);
+        _lastPublishedLiquidLevelState = liquid_level_sensor_state;
+        _lastLiquidLevelPublishTime = currentTime;
     }
 }
 

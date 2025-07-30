@@ -21,7 +21,8 @@ public:
         float pressure, int cpm, float temp, float humi,
         float co2, int32_t voc_index, int32_t nox_index,
         float amps,
-        float pm1, float pm25, float pm4, float pm10
+        float pm1, float pm25, float pm4, float pm10,
+        float compressor_amps, float geothermal_pump_amps, bool liquid_level_sensor_state
     );
     void publish_O3_NOx_Values(
         float o3_conc_ug_per_m3, float no2_conc_ug_per_m3, 
@@ -93,6 +94,9 @@ private:
     HASensor _voc_index_sensor;
     HASensor _nox_index_sensor;
     HASensor _currentSensor;
+    HASensorNumber _compressorCurrentSensor;
+    HASensorNumber _geothermalPumpCurrentSensor;
+    HABinarySensor _liquidLevelSensor;
     HASensor _sensorStackResetCauseSensor;
     HAButton _getSps30InfoButton;
     HAButton _Sps30ManualCleanButton;
@@ -106,6 +110,9 @@ private:
     // State tracking for publishing
     float _lastPublishedPressure, _lastPublishedTemp, _lastPublishedHumi, _lastPublishedCo2;
     float _lastPublishedAmps;
+    float _lastPublishedCompressorAmps;
+    float _lastPublishedGeothermalPumpAmps;
+    bool _lastPublishedLiquidLevelState;
     int _lastPublishedCpm;
     int32_t _lastPublishedVocIndex;
     int32_t _lastPublishedNOxIndex;
@@ -136,6 +143,9 @@ private:
     unsigned long _lastAHT20HumidityPublishTime;
 #endif
     unsigned long _lastSensorStackUptimePublishTime;
+    unsigned long _lastCompressorAmpsPublishTime;
+    unsigned long _lastGeothermalPumpAmpsPublishTime;
+    unsigned long _lastLiquidLevelPublishTime;
 
     // Static callbacks for ArduinoHA
     static void onMqttConnected();

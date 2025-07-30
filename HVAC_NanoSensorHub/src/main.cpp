@@ -297,13 +297,11 @@ void read_all_sensors() {
   // Check and recover I2C bus before sensor readings
   checkAndRecoverI2C();
   
-  
+  // ADC read 1, space out ADC reads to avoid noise
+  temp_val = analogRead(PRESSURE_SENSOR_PIN);
   float voltage = (temp_val / 1023.0) * 5.0; 
   float current_ma = (voltage / SHUNT_RESISTOR) * 1000.0;
   current_pressure_pa = (current_ma > 4.0) ? (current_ma - 4.0) * (300.0 / 16.0) : 0.0;
-  
-  // ADC read 1, space out ADC reads to avoid noise
-  temp_val = analogRead(PRESSURE_SENSOR_PIN);
   
   // Check I2C bus before SPS30 operations
   checkAndRecoverI2C();
@@ -382,9 +380,10 @@ void send_data_packet() {
   long pm10_val = (long)(current_sps_data.mc_10p0 * 10);
   
   char data_buffer[MAX_SENSOR_DATA_PACKET_LEN];
-  sprintf(data_buffer, "%c%ld,%u,%ld,%ld,%ld,%u,%u,%ld,%ld,%ld,%ld,%ld",
+  sprintf(data_buffer, "%c%ld,%u,%ld,%ld,%ld,%u,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%u",
           CMD_BROADCAST_SENSORS, p_val, pulse_count, t_val, h_val, co2_val, current_voc_raw, current_nox_raw,
-          amps_val, pm1_val, pm25_val, pm4_val, pm10_val
+          amps_val, pm1_val, pm25_val, pm4_val, pm10_val,
+          (long)(compressor_amps * 100), (long)(geothermal_pump_amps * 100), liquid_level_sensor_state
           );
 
   uint8_t checksum = calculate_checksum(data_buffer);
