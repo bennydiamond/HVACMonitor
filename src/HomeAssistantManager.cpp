@@ -59,7 +59,10 @@ HomeAssistantManager::HomeAssistantManager() :
     _scd30AutoCalSwitch("scd30_autocal"),
     _scd30ForceCalNumber("scd30_forcecal", HANumber::PrecisionP0),
     _esp32FreeRamSensor("esp32_free_ram", HASensor::PrecisionP0),
-    _esp32UptimeSensor("esp32_uptime", HASensorNumber::PrecisionP0)
+    _esp32UptimeSensor("esp32_uptime", HASensorNumber::PrecisionP0),
+    _compressorCurrentSensor("compressor_current", HASensorNumber::PrecisionP2),
+    _geothermalPumpCurrentSensor("geothermal_pump_current", HASensorNumber::PrecisionP2),
+    _liquidLevelSensor("liquid_level_sensor")
 {
     _instance = this;
 
@@ -520,7 +523,7 @@ void HomeAssistantManager::publishSensorData(
     
     // Publish liquid level sensor state
     if (liquid_level_sensor_state != _lastPublishedLiquidLevelState || (currentTime - _lastLiquidLevelPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
-        _liquidLevelSensor.setState(liquid_level_sensor_state);
+        _liquidLevelSensor.setState(liquid_level_sensor_state, true);
         _lastPublishedLiquidLevelState = liquid_level_sensor_state;
         _lastLiquidLevelPublishTime = currentTime;
     }

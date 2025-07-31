@@ -190,6 +190,20 @@ void process_packet(String packet) {
         return;
     }
 
+    // Log all received packets for debugging
+    logger.debugf("ESP32: Received packet from Nano: %s", packet.c_str());
+
+    // Special handling for I2C recovery events
+    if (data_part.startsWith("E,I2C_RECOVER")) {
+        if (data_part.endsWith(",1")) {
+            logger.warning("ESP32: Nano reports I2C recovery started");
+        } else if (data_part.endsWith(",0")) {
+            logger.info("ESP32: Nano reports I2C recovery completed");
+        } else {
+            logger.warningf("ESP32: Unknown I2C recovery status: %s", data_part.c_str());
+        }
+    }
+
     last_sensor_data_time = millis();
 
     if (!is_sensor_module_connected) {
@@ -224,7 +238,7 @@ void process_packet(String packet) {
             token = strtok(NULL, ","); if (!token) return; float pm10 = atof(token) / 10.0f;
             token = strtok(NULL, ","); if (!token) return; float compressor_amps = atof(token) / 100.0f;
             token = strtok(NULL, ","); if (!token) return; float geothermal_pump_amps = atof(token) / 100.0f;
-            token = strtok(NULL, ","); if (!token) return; bool liquid_level_sensor_state = (atoi(token) != 0);
+            token = strtok(NULL, ","); if (!token) return; bool liquid_level_sensor_state = (atoi(token) == 0); // GPIO at 0 == sensor triggered
             
             // Add the pulse count to the geiger counter object
             geigerCounter.addSample(pulse_count);

@@ -76,7 +76,7 @@ const unsigned long SCD30_INVALIDATE_TIMEOUT_MS = 60000;
 // --- Buffer Sizes ---
 #define MAX_COMMAND_LEN 150
 #define MAX_RESPONSE_LEN 150
-#define MAX_SENSOR_DATA_PACKET_LEN 64
+#define MAX_SENSOR_DATA_PACKET_LEN 72
 
 // --- Hardware & Behavior Constants ---
 #define SERIAL_BAUD_RATE            19200
@@ -333,7 +333,6 @@ void read_all_sensors() {
   uint16_t temp = static_cast<uint16_t>((current_temp_c + 45.0f) * 65535.0f / 175.0f);
   
   // ADC read 3
-  // TODO add to data packet
   compressor_amps = readCurrentRMS_Generic(COMPRESSOR_CT_CLAMP_PIN, COMPRESSOR_CT_VOLTS_PER_AMP);
 
   // Check I2C bus before SGP41 operations
@@ -351,7 +350,6 @@ void read_all_sensors() {
   }
 
   // ADC read 4
-  // TODO add to data packet
   geothermal_pump_amps = readCurrentRMS_Generic(GEOTHERMAL_PUMP_CT_CLAMP_PIN, GEOTHERMAL_PUMP_CT_VOLTS_PER_AMP);
 }
 
@@ -366,7 +364,6 @@ void send_data_packet() {
   geiger_pulse_count = 0;
   interrupts();
 
-  // TODO add to data packet
   bool liquid_level_sensor_state = digitalRead(LIQUID_LEVEL_SENSOR_PIN);
   
   long p_val = (long)(current_pressure_pa * 10);
@@ -552,6 +549,8 @@ void process_command(const char* buffer) {
 
             if (i2c_result != 0) {
                 i2c_status = (i2c_result == 2) ? I2C_ERROR_ADDR_NACK : I2C_ERROR_OTHER;
+                // Trigger I2C recovery on write failure
+                recoverI2Cbus();
             } else {
                 delay(I2C_WRITE_READ_DELAY_MS);
             }
@@ -562,6 +561,8 @@ void process_command(const char* buffer) {
             if (bytes_read != i2c_num_bytes) {
                 i2c_status = I2C_ERROR_DATA_NACK;
                 i2c_num_bytes = bytes_read;
+                // Trigger I2C recovery on read failure
+                recoverI2Cbus();
             }
             for (uint8_t i = 0; i < bytes_read; i++) {
                 i2c_data[i] = Wire.read();
@@ -623,6 +624,11 @@ void process_command(const char* buffer) {
             case 3: i2c_status = I2C_ERROR_OTHER; break;
             case 4: i2c_status = I2C_ERROR_TIMEOUT; break;
             default: i2c_status = I2C_ERROR_OTHER; break;
+        }
+        
+        // Trigger I2C recovery on any write failure
+        if (i2c_status != I2C_ERROR_NONE) {
+            recoverI2Cbus();
         }
         
         sprintf(response_buffer, "%c%02X", RSP_I2C_WRITE, i2c_status);
@@ -712,11 +718,13 @@ void recoverI2Cbus() {
  * @return false if the bus is OK.
  */
 bool checkAndRecoverI2C() {
+  /*
     pinMode(SDA, INPUT_PULLUP);
     if (digitalRead(SDA) == LOW) { // If SDA is stuck low
         recoverI2Cbus();
         // Re-check after recovery attempt
         return (digitalRead(SDA) == LOW); // Returns true if still stuck
     }
+        */
     return false; // Bus was not stuck
 }

@@ -30,7 +30,7 @@ bool BMP280Sensor::begin() {
     writeFilterSetting(BMx280MI::FILTER_x16);
     
     // Set to normal mode for continuous measurements
-    writeStandbyTime(BMx280MI::T_SB_7); // 4000ms standby time
+    writeStandbyTime(BMx280MI::T_SB_6); // 2000ms standby time
     writePowerMode(BMx280MI::BMx280_MODE_NORMAL);
     
     return true;
