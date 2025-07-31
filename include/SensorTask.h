@@ -4,7 +4,9 @@
 #include <freertos/task.h>
 #include <freertos/semphr.h>
 #include "ZMOD4510Manager.h"
+#ifdef BMP280_ENABLED
 #include "BMP280Manager.h"
+#endif
 #ifdef AHT20_ENABLED
 #include "AHT20Manager.h"
 #endif
@@ -22,12 +24,14 @@ public:
     } ZMOD4510Values;
     
     // BMP280 sensor data structure
+#ifdef BMP280_ENABLED
     typedef struct BMP280Values {
         BMP280Values() : pressure_pa(0), temperature_degc(0), valid(false) {}
         float pressure_pa;
         float temperature_degc;
         bool valid;
     } BMP280Values;
+#endif
 #ifdef AHT20_ENABLED
     // AHT20 sensor data structure
     typedef struct AHT20Values {
@@ -47,7 +51,9 @@ public:
     bool getZMOD4510Data(ZMOD4510Values& outValues);
     
     // Get BMP280 sensor data (thread-safe)
+#ifdef BMP280_ENABLED
     bool getBMP280Data(BMP280Values& outValues);
+#endif
 #ifdef AHT20_ENABLED
     // Get AHT20 sensor data (thread-safe)
     bool getAHT20Data(AHT20Values& outValues);
@@ -63,7 +69,9 @@ private:
     void taskLoop();
     
     ZMOD4510Values latestZMOD4510Values;
+#ifdef BMP280_ENABLED
     BMP280Values latestBMP280Values;
+#endif
 #ifdef AHT20_ENABLED
     AHT20Values latestAHT20Values;
 #endif

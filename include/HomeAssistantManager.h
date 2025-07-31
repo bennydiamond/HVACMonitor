@@ -28,8 +28,10 @@ public:
         float o3_conc_ug_per_m3, float no2_conc_ug_per_m3, 
         uint16_t fast_aqi, uint16_t epa_aqi
     );
+#ifdef BMP280_ENABLED
     void publishBMP280Data(float pressure_pa);
     void publishBMP280Data(float pressure_pa, float temperature_degc);
+#endif
 #ifdef AHT20_ENABLED
     void publishAHT20Data(float temperature_degc, float humidity_pct);
 #endif
@@ -74,8 +76,10 @@ private:
     HASensor _geiger_dose;
     HASensor _temperatureSensor;
     HASensor _humiditySensor;
+#ifdef BMP280_ENABLED
     HASensorNumber _bmp280PressureSensor;
     HASensorNumber _bmp280TemperatureSensor;
+#endif
 #ifdef AHT20_ENABLED
     HASensorNumber _aht20TemperatureSensor;
     HASensorNumber _aht20HumiditySensor;
@@ -116,8 +120,10 @@ private:
     int _lastPublishedCpm;
     int32_t _lastPublishedVocIndex;
     int32_t _lastPublishedNOxIndex;
+#ifdef BMP280_ENABLED
     float _lastPublishedBMP280Pressure;
     float _lastPublishedBMP280Temperature;
+#endif
 #ifdef AHT20_ENABLED
     float _lastPublishedAHT20Temperature;
     float _lastPublishedAHT20Humidity;
@@ -136,8 +142,10 @@ private:
     unsigned long _lastWifiStatusPublishTime, _lastSensorStatusPublishTime, _lastHighPressurePublishTime;
     unsigned long _lastPmPublishTime, _lastCo2PublishTime, _lastVocPublishTime, _lastNOxPublishTime;
     unsigned long _lastAmpsPublishTime, _lastFanStatusPublishTime;
+#ifdef BMP280_ENABLED
     unsigned long _lastBMP280PressurePublishTime;
     unsigned long _lastBMP280TemperaturePublishTime;
+#endif
 #ifdef AHT20_ENABLED
     unsigned long _lastAHT20TemperaturePublishTime;
     unsigned long _lastAHT20HumidityPublishTime;

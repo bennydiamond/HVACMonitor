@@ -82,8 +82,10 @@ RollingAverage<uint16_t> o3_avg(100);
 RollingAverage<uint16_t> no2_avg(100);
 RollingAverage<uint16_t> fast_aqi_avg(100);
 RollingAverage<uint16_t> epa_aqi_avg(100);
+#ifdef BMP280_ENABLED
 RollingAverage<float> bmp280_pressure_avg(10); // Average over 10 readings for BMP280
 RollingAverage<float> bmp280_temperature_avg(10); // Average over 10 readings for BMP280 temperature
+#endif
 #ifdef AHT20_ENABLED
 RollingAverage<float> aht20_temperature_avg(10); // Average over 10 readings for AHT20 temperature
 RollingAverage<float> aht20_humidity_avg(10); // Average over 10 readings for AHT20 humidity
@@ -202,6 +204,25 @@ void process_packet(String packet) {
         } else {
             logger.warningf("ESP32: Unknown I2C recovery status: %s", data_part.c_str());
         }
+    }
+    // Special handling for sensor error events
+    else if (data_part.startsWith("E,SPS30_DATA_READY_ERROR")) {
+        logger.errorf("SensorStack: Failed! reports SPS30 data ready error");
+    }
+    else if (data_part.startsWith("E,SPS30_MEASUREMENT_ERROR")) {
+        logger.errorf("SensorStack: Failed! reports SPS30 measurement error");
+    }
+    else if (data_part.startsWith("E,SCD30_DATA_READY_ERROR")) {
+        logger.errorf("SensorStack: Failed! reports SCD30 data ready error");
+    }
+    else if (data_part.startsWith("E,SCD30_MEASUREMENT_ERROR")) {
+        logger.errorf("SensorStack: Failed! reports SCD30 measurement error");
+    }
+    else if (data_part.startsWith("E,SGP41_CONDITIONING_ERROR")) {
+        logger.errorf("SensorStack: Failed! reports SGP41 conditioning error");
+    }
+    else if (data_part.startsWith("E,SGP41_MEASUREMENT_ERROR")) {
+        logger.errorf("SensorStack: Failed! reports SGP41 measurement error");
     }
 
     last_sensor_data_time = millis();
@@ -760,8 +781,14 @@ void loop() {
         epa_aqi_avg.add(zmod_values.epa_aqi);
         
         // Get current temperature and pressure for conversion
+#ifdef BMP280_ENABLED
         float current_temperature = bmp280_temperature_avg.getAverage();
         float current_pressure = bmp280_pressure_avg.getAverage();
+#else
+        // Use dummy values when BMP280 is disabled
+        float current_temperature = 20.0f; // Default temperature 20°C
+        float current_pressure = 101325.0f; // Standard atmospheric pressure 101325 Pa
+#endif
         
         // Convert ppb values to µg/m³
         float o3_ug_per_m3 = GasConcentrationConverter::convertO3PpbToUgPerM3(
@@ -784,9 +811,10 @@ void loop() {
     }
     
     // Get BMP280 sensor data
+#ifdef BMP280_ENABLED
     SensorTask::BMP280Values bmp280_values;
     const bool freshBMP280Values = sensorTask.getBMP280Data(bmp280_values);
-    
+
     if(freshBMP280Values)
     {
         // Add to rolling average
@@ -800,6 +828,7 @@ void loop() {
         
         logger.debugf("BMP280: P=%.1f Pa (avg: %.1f Pa), T=%.1f°C (avg: %.1f°C)", bmp280_values.pressure_pa, averaged_pressure, bmp280_values.temperature_degc, averaged_temperature);
     }
+#endif
     
     // Get AHT20 sensor data
 #ifdef AHT20_ENABLED

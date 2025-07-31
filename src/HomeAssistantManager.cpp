@@ -25,8 +25,10 @@ HomeAssistantManager::HomeAssistantManager() :
     _geiger_dose("geiger_dose", HASensor::PrecisionP2),
     _temperatureSensor("temperature", HASensor::PrecisionP1),
     _humiditySensor("humidity", HASensor::PrecisionP1),
+#ifdef BMP280_ENABLED
     _bmp280PressureSensor("bmp280_pressure", HASensorNumber::PrecisionP1),
     _bmp280TemperatureSensor("bmp280_temperature", HASensorNumber::PrecisionP1),
+#endif
 #ifdef AHT20_ENABLED
     _aht20TemperatureSensor("aht20_temperature", HASensorNumber::PrecisionP1),
     _aht20HumiditySensor("aht20_humidity", HASensorNumber::PrecisionP1),
@@ -75,8 +77,10 @@ HomeAssistantManager::HomeAssistantManager() :
     _lastPublishedVocIndex = -1;
     _lastPublishedNOxIndex = -1;
     _lastPublishedAmps = -1.0f;
+#ifdef BMP280_ENABLED
     _lastPublishedBMP280Pressure = -9999.0f;
     _lastPublishedBMP280Temperature = -9999.0f;
+#endif
 #ifdef AHT20_ENABLED
     _lastPublishedAHT20Temperature = -9999.0f;
     _lastPublishedAHT20Humidity = -1.0f;
@@ -114,8 +118,10 @@ HomeAssistantManager::HomeAssistantManager() :
     _lastNOxPublishTime = 0;
     _lastAmpsPublishTime = 0;
     _lastFanStatusPublishTime = 0;
+#ifdef BMP280_ENABLED
     _lastBMP280PressurePublishTime = 0;
     _lastBMP280TemperaturePublishTime = 0;
+#endif
 #ifdef AHT20_ENABLED
     _lastAHT20TemperaturePublishTime = 0;
     _lastAHT20HumidityPublishTime = 0;
@@ -146,6 +152,7 @@ void HomeAssistantManager::init(ConfigManager* config, const char* firmware_vers
     _pressureSensor.setIcon("mdi:gauge");
     _pressureSensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
     
+#ifdef BMP280_ENABLED
     _bmp280PressureSensor.setName("BMP280 Pressure");
     _bmp280PressureSensor.setDeviceClass("pressure");
     _bmp280PressureSensor.setUnitOfMeasurement("Pa");
@@ -157,6 +164,7 @@ void HomeAssistantManager::init(ConfigManager* config, const char* firmware_vers
     _bmp280TemperatureSensor.setUnitOfMeasurement("°C");
     _bmp280TemperatureSensor.setIcon("mdi:thermometer");
     _bmp280TemperatureSensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
+#endif
     
     _temperatureSensor.setName("Temperature");
     _temperatureSensor.setDeviceClass("temperature");
@@ -561,6 +569,7 @@ void HomeAssistantManager::publish_O3_NOx_Values(
         }
     }
 
+#ifdef BMP280_ENABLED
 void HomeAssistantManager::publishBMP280Data(float pressure_pa) {
     unsigned long currentTime = millis();
     
@@ -588,6 +597,7 @@ void HomeAssistantManager::publishBMP280Data(float pressure_pa, float temperatur
         _lastBMP280TemperaturePublishTime = currentTime;
     }
 }
+#endif
 
 #ifdef AHT20_ENABLED
 void HomeAssistantManager::publishAHT20Data(float temperature_degc, float humidity_pct) {

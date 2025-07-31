@@ -91,6 +91,7 @@ const unsigned long SCD30_INVALIDATE_TIMEOUT_MS = 60000;
 // ======================================================================
 
 unsigned long last_sensor_read_time = 0;
+unsigned long last_data_send_time = 0;
 bool first_health_status_sent = true;
 volatile uint16_t geiger_pulse_count = 0;
 float    current_pressure_pa = 0.0;
@@ -250,7 +251,14 @@ void loop() {
   if (current_time - last_sensor_read_time >= SENSOR_READ_INTERVAL_MS) {
     last_sensor_read_time = current_time;
     read_all_sensors();
-    send_data_packet();
+  }
+
+  // Send data packet 500ms after sensor reading
+  if (last_sensor_read_time > 0 && (current_time - last_sensor_read_time >= 500)) {
+    if (last_data_send_time < last_sensor_read_time) {
+      last_data_send_time = current_time;
+      send_data_packet();
+    }
   }
 
   if (in_command && (current_time - command_start_time > COMMAND_TIMEOUT_MS)) {
@@ -306,8 +314,14 @@ void read_all_sensors() {
   // Check I2C bus before SPS30 operations
   checkAndRecoverI2C();
   int16_t ret_sps_read = sps30_read_data_ready(&temp_uval);
+  if (ret_sps_read != 0) {
+    Serial.println(F("<E,SPS30_DATA_READY_ERROR,1>"));
+  }
   if (ret_sps_read == 0 && temp_uval) {
-    sps30_read_measurement(&current_sps_data);
+    int16_t ret_sps_measurement = sps30_read_measurement(&current_sps_data);
+    if (ret_sps_measurement != 0) {
+      Serial.println(F("<E,SPS30_MEASUREMENT_ERROR,1>"));
+    }
   }
   
   // ADC read 2
@@ -316,8 +330,14 @@ void read_all_sensors() {
   // Check I2C bus before SCD30 operations
   checkAndRecoverI2C();
   temp_val = scd30_sensor.getDataReady(temp_uval);
+  if (temp_val != 0) {
+    Serial.println(F("<E,SCD30_DATA_READY_ERROR,1>"));
+  }
   if (temp_val == 0 && temp_uval) {
     temp_val = scd30_sensor.readMeasurementData(current_co2, current_temp_c, current_humi);
+    if (temp_val != 0) {
+      Serial.println(F("<E,SCD30_MEASUREMENT_ERROR,1>"));
+    }
     if (temp_val == 0) {
       last_scd30_update = millis();
     }
@@ -339,9 +359,15 @@ void read_all_sensors() {
   checkAndRecoverI2C();
   if (conditioning_s > 0) {
     temp_uval = sgp41_sensor.executeConditioning(rh, temp, current_voc_raw);
+    if (temp_uval != 0) {
+      Serial.println(F("<E,SGP41_CONDITIONING_ERROR,1>"));
+    }
     conditioning_s--;
   } else {
     temp_uval = sgp41_sensor.measureRawSignals(rh, temp, current_voc_raw, current_nox_raw);
+    if (temp_uval != 0) {
+      Serial.println(F("<E,SGP41_MEASUREMENT_ERROR,1>"));
+    }
   }
   
   if (temp_uval) {

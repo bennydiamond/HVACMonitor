@@ -3,7 +3,7 @@
 #include "Logger.h"
 #include "SerialMutex.h"
 
-//#define I2C_BRIDGE_DEBUG // Uncomment for debug output
+#define I2C_BRIDGE_DEBUG // Uncomment for debug output
 
 // Private member variables for the singleton
 unsigned long I2CBridge::_timeout_ms = 1000;
