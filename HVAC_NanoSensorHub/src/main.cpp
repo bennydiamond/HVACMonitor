@@ -18,7 +18,8 @@
 
 // --- Firmware & Protocol ---
 #define NANO_FIRMWARE_VERSION "1.2.0"
-#define CMD_BROADCAST_SENSORS 'S'
+#define CMD_GET_SENSORS        'S' // Request sensor data (changed from CMD_BROADCAST_SENSORS)
+#define RSP_SENSORS            's' // Response with sensor data
 #define CMD_GET_VERSION       'V'
 #define CMD_GET_HEALTH        'H'
 #define RSP_HEALTH            'h' // Overall health status response
@@ -62,7 +63,6 @@
 #define GEOTHERMAL_PUMP_CT_CLAMP_PIN A7
 
 // --- Timing Constants ---
-const int SENSOR_READ_INTERVAL_MS = 2000;
 const unsigned long COMMAND_TIMEOUT_MS = 250;
 const unsigned long SCD30_INVALIDATE_TIMEOUT_MS = 60000;
 
@@ -76,7 +76,6 @@ const unsigned long SCD30_INVALIDATE_TIMEOUT_MS = 60000;
 // --- Buffer Sizes ---
 #define MAX_COMMAND_LEN 150
 #define MAX_RESPONSE_LEN 150
-#define MAX_SENSOR_DATA_PACKET_LEN 72
 
 // --- Hardware & Behavior Constants ---
 #define SERIAL_BAUD_RATE            19200
@@ -90,8 +89,6 @@ const unsigned long SCD30_INVALIDATE_TIMEOUT_MS = 60000;
 //  GLOBAL VARIABLES & OBJECTS
 // ======================================================================
 
-unsigned long last_sensor_read_time = 0;
-unsigned long last_data_send_time = 0;
 bool first_health_status_sent = true;
 volatile uint16_t geiger_pulse_count = 0;
 float    current_pressure_pa = 0.0;
@@ -110,8 +107,8 @@ SensirionI2CSgp41 sgp41_sensor;
 uint8_t conditioning_s = 10;
 
 // --- Forward Declarations ---
-void read_all_sensors();
-void send_data_packet();
+unsigned long read_all_sensors();
+void send_data_packet(unsigned long timestamp);
 void process_command(const char* buffer);
 int freeRam();
 void recoverI2Cbus();
@@ -248,19 +245,6 @@ void loop() {
     checkAndRecoverI2C();
   }
 
-  if (current_time - last_sensor_read_time >= SENSOR_READ_INTERVAL_MS) {
-    last_sensor_read_time = current_time;
-    read_all_sensors();
-  }
-
-  // Send data packet 500ms after sensor reading
-  if (last_sensor_read_time > 0 && (current_time - last_sensor_read_time >= 500)) {
-    if (last_data_send_time < last_sensor_read_time) {
-      last_data_send_time = current_time;
-      send_data_packet();
-    }
-  }
-
   if (in_command && (current_time - command_start_time > COMMAND_TIMEOUT_MS)) {
     in_command = false;
     command_len = 0;
@@ -294,7 +278,7 @@ void loop() {
 //  SENSOR & DATA FUNCTIONS
 // ======================================================================
 
-void read_all_sensors() {
+unsigned long read_all_sensors() {
   static bool led_state = LOW;
   int temp_val;
   uint16_t temp_uval;
@@ -377,9 +361,10 @@ void read_all_sensors() {
 
   // ADC read 4
   geothermal_pump_amps = readCurrentRMS_Generic(GEOTHERMAL_PUMP_CT_CLAMP_PIN, GEOTHERMAL_PUMP_CT_VOLTS_PER_AMP);
+  return millis(); // Return the timestamp
 }
 
-void send_data_packet() {
+void send_data_packet(unsigned long timestamp) {
   static bool led_state = LOW;
   led_state = !led_state;
   digitalWrite(DEBUG_LED_PIN, led_state);
@@ -402,9 +387,9 @@ void send_data_packet() {
   long pm4_val = (long)(current_sps_data.mc_4p0 * 10);
   long pm10_val = (long)(current_sps_data.mc_10p0 * 10);
   
-  char data_buffer[MAX_SENSOR_DATA_PACKET_LEN];
-  sprintf(data_buffer, "%c%ld,%u,%ld,%ld,%ld,%u,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%u",
-          CMD_BROADCAST_SENSORS, p_val, pulse_count, t_val, h_val, co2_val, current_voc_raw, current_nox_raw,
+  char data_buffer[MAX_RESPONSE_LEN];
+  sprintf(data_buffer, "%c%lu,%ld,%u,%ld,%ld,%ld,%u,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%u",
+          RSP_SENSORS, timestamp, p_val, pulse_count, t_val, h_val, co2_val, current_voc_raw, current_nox_raw,
           amps_val, pm1_val, pm25_val, pm4_val, pm10_val,
           (long)(compressor_amps * 100), (long)(geothermal_pump_amps * 100), liquid_level_sensor_state
           );
@@ -464,6 +449,12 @@ void process_command(const char* buffer) {
       wdt_enable(WDTO_15MS);
       while(1);
       break;
+
+    case CMD_GET_SENSORS: {
+      unsigned long timestamp = read_all_sensors();
+      send_data_packet(timestamp);
+      break;
+    }
 
     case CMD_GET_SPS30_INFO: {
       strcpy(response_buffer, "p");

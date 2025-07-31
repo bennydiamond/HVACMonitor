@@ -37,6 +37,7 @@ const int NANO_PACKET_TIMEOUT_MS = 7000;
 const int HEALTH_RESPONSE_TIMEOUT_MS = 500;
 const int SCD30_INFO_INTERVAL_MS = 20000;
 const int STACK_CHECK_INTERVAL_MS = 60000;
+const int SENSOR_QUERY_INTERVAL_MS = 2000;  // Query sensor data every 2 seconds
 
 enum InitCommand { CMD_NONE, CMD_VERSION, CMD_HEALTH, CMD_SPS30_INFO, CMD_SCD30_INFO };
 InitCommand pending_init_commands[] = {CMD_VERSION, CMD_HEALTH, CMD_SPS30_INFO, CMD_SCD30_INFO, CMD_NONE};
@@ -51,6 +52,7 @@ unsigned long last_debug_update_time = 0;
 unsigned long last_sensor_data_time = 0;
 unsigned long last_health_request_time = 0;
 unsigned long last_stack_check_time = 0;
+unsigned long last_sensor_query_time = 0;
 unsigned long nano_boot_millis = 0;
 unsigned long last_scd30_info_time = 0;
 bool is_sensor_module_connected = false;
@@ -61,6 +63,7 @@ static bool latest_first_time_flag = false;
 String serial_buffer = "";
 String last_nano_version = "";
 uint16_t last_nano_ram = 0;
+unsigned long last_received_timestamp = 0; // Store last received timestamp for comparison
 
 ConfigManager configManager;
 HomeAssistantManager haManager;
@@ -227,12 +230,17 @@ void process_packet(String packet) {
 
     last_sensor_data_time = millis();
 
+    // Mark connection as established when we receive any valid packet
     if (!is_sensor_module_connected) {
         is_sensor_module_connected = true;
         nano_boot_millis = millis();
+        last_received_timestamp = 0; // Reset timestamp on new connection
         logger.info("Sensor module connection established.");
-        init_sequence_active = true;
-        current_init_command_index = 0;
+        // Start init sequence if not already active
+        if (!init_sequence_active) {
+            init_sequence_active = true;
+            current_init_command_index = 0;
+        }
     }
 
     UITask::getInstance().update_sensor_status(true);
@@ -242,10 +250,11 @@ void process_packet(String packet) {
     String payload = data_part.substring(1);
 
     switch (cmd) {
-        case CMD_BROADCAST_SENSORS: {
+        case RSP_SENSORS: {
             char data_cstr[payload.length() + 1];
             strcpy(data_cstr, payload.c_str());
-            char* token = strtok(data_cstr, ","); if (!token) return; float p = atof(token) / 10.0f;
+            char* token = strtok(data_cstr, ","); if (!token) return; unsigned long timestamp = atol(token);
+            token = strtok(NULL, ","); if (!token) return; float p = atof(token) / 10.0f;
             token = strtok(NULL, ","); if (!token) return; uint16_t pulse_count = atoi(token);
             token = strtok(NULL, ","); if (!token) return; float t = atof(token) / 10.0f;
             token = strtok(NULL, ","); if (!token) return; float h = atof(token) / 10.0f;
@@ -260,6 +269,23 @@ void process_packet(String packet) {
             token = strtok(NULL, ","); if (!token) return; float compressor_amps = atof(token) / 100.0f;
             token = strtok(NULL, ","); if (!token) return; float geothermal_pump_amps = atof(token) / 100.0f;
             token = strtok(NULL, ","); if (!token) return; bool liquid_level_sensor_state = (atoi(token) == 0); // GPIO at 0 == sensor triggered
+            
+
+            
+            // Check if timestamp is the same or too close to previous (duplicate or very recent data)
+            if (last_received_timestamp > 0) {
+                unsigned long timestamp_diff = timestamp - last_received_timestamp;
+                if (timestamp_diff == 0) {
+                    logger.warningf("Received duplicate sensor data: timestamp=%lu (same as previous)", timestamp);
+                    return; // Skip processing duplicate data
+                } else if (timestamp_diff < 1000) { // Less than 1 second apart
+                    logger.warningf("Received very recent sensor data: timestamp=%lu, diff=%lu ms (expected ~2000ms)", 
+                                   timestamp, timestamp_diff);
+                }
+            }
+            
+            // Store the timestamp for next comparison
+            last_received_timestamp = timestamp;
             
             // Add the pulse count to the geiger counter object
             geigerCounter.addSample(pulse_count);
@@ -642,6 +668,11 @@ void setup() {
     
     sensorTask.init();
     vTaskPrioritySet(NULL, tskIDLE_PRIORITY + 3); // above ZMOD4510 task priority
+    
+    // Start init sequence immediately on boot
+    init_sequence_active = true;
+    current_init_command_index = 0;
+    logger.info("Starting init sequence with Sensor Stack...");
 }
 
 
@@ -698,6 +729,36 @@ void loop() {
         health_request_pending = false;
     }
 
+    // Handle init sequence - send commands even if sensor module not connected
+    if (init_sequence_active) {
+        if (pending_init_commands[current_init_command_index] == CMD_NONE) {
+            init_sequence_active = false;
+            logger.info("Init sequence completed successfully.");
+        } else if (millis() - last_init_command_time > INIT_COMMAND_TIMEOUT_MS) {
+            char cmd_to_send = 0;
+            switch (pending_init_commands[current_init_command_index]) {
+                case CMD_VERSION: cmd_to_send = CMD_GET_VERSION; break;
+                case CMD_HEALTH: cmd_to_send = CMD_GET_HEALTH; break;
+                case CMD_SPS30_INFO: cmd_to_send = CMD_GET_SPS30_INFO; break;
+                case CMD_SCD30_INFO: cmd_to_send = CMD_GET_SCD30_INFO; break;
+            }
+            if (cmd_to_send) {
+                logger.infof("Sending init command %d/%d: %c", current_init_command_index + 1, 4, cmd_to_send);
+                send_command_to_nano(cmd_to_send);
+                last_init_command_time = millis();
+                serial_command_sent_this_loop = true;
+            }
+        }
+    }
+
+    // Send sensor query every 2 seconds after init sequence is complete
+    if (!serial_command_sent_this_loop && is_sensor_module_connected && !init_sequence_active && 
+        (millis() - last_sensor_query_time > SENSOR_QUERY_INTERVAL_MS)) {
+        last_sensor_query_time = millis();
+        send_command_to_nano(CMD_GET_SENSORS);
+        serial_command_sent_this_loop = true;
+    }
+
     if (millis() - last_debug_update_time > DEBUG_UPDATE_INTERVAL_MS) {
         last_debug_update_time = millis();
         uint32_t seconds_since_packet = (millis() - last_sensor_data_time) / 1000;
@@ -732,6 +793,7 @@ void loop() {
     if (millis() - last_sensor_data_time > NANO_PACKET_TIMEOUT_MS) {
         if (is_sensor_module_connected) {
             is_sensor_module_connected = false;
+            last_received_timestamp = 0; // Reset timestamp on disconnection
             logger.warning("Sensor data timeout. Marking as disconnected.");
             UITask::getInstance().update_sensor_status(false);
             haManager.publishSensorConnectionStatus(false);
@@ -743,25 +805,7 @@ void loop() {
         }
     }
 
-    if (init_sequence_active && is_sensor_module_connected) {
-        if (pending_init_commands[current_init_command_index] == CMD_NONE) {
-            init_sequence_active = false;
-        } else if (millis() - last_init_command_time > INIT_COMMAND_TIMEOUT_MS) {
-            char cmd_to_send = 0;
-            switch (pending_init_commands[current_init_command_index]) {
-                case CMD_VERSION: cmd_to_send = CMD_GET_VERSION; break;
-                case CMD_HEALTH: cmd_to_send = CMD_GET_HEALTH; break;
-                case CMD_SPS30_INFO: cmd_to_send = CMD_GET_SPS30_INFO; break;
-                case CMD_SCD30_INFO: cmd_to_send = CMD_GET_SCD30_INFO; break;
-            }
-            if (cmd_to_send) {
-                send_command_to_nano(cmd_to_send);
-                last_init_command_time = millis();
-            }
-        }
-    }
-
-    if (!serial_command_sent_this_loop && is_sensor_module_connected && !init_sequence_active && (millis() - last_scd30_info_time > SCD30_INFO_INTERVAL_MS)) {
+    if (!serial_command_sent_this_loop && is_sensor_module_connected && (millis() - last_scd30_info_time > SCD30_INFO_INTERVAL_MS)) {
         last_scd30_info_time = millis();
         send_command_to_nano(CMD_GET_SCD30_INFO);
     }
