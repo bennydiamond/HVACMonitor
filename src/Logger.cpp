@@ -41,6 +41,12 @@ void Logger::log(AppLogLevel level, const char* message) {
     
     size_t totalLen = offsetof(LogMessage, message) + msgLen;
 
+#ifdef SERIAL_OUT_DEBUG
+    SerialMutex::getInstance().lock();
+    Serial.printf("[%s] %s\n", _getLogLevelString(level), message);
+    SerialMutex::getInstance().unlock();
+#endif
+
     if (xStreamBufferSpacesAvailable(_logStreamBufferHandle) < totalLen) {
         return;
     }
@@ -88,12 +94,6 @@ void Logger::loop() {
             }
 
             receivedEntry.message[msgBytesRead] = '\0';
-
-            #ifdef SERIAL_OUT_DEBUG
-            SerialMutex::getInstance().lock();
-            Serial.printf("[%s] %s\n", _getLogLevelString(receivedEntry.level), receivedEntry.message);
-            SerialMutex::getInstance().unlock();
-            #endif
 
             if (_mqtt != nullptr && _mqtt->isConnected()) {
                 char payload[MAX_MESSAGE_LENGTH + 128];

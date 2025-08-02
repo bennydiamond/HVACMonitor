@@ -1,5 +1,6 @@
 #include "ui.h"
 #include "ui/custom_icons.h"
+#include "ConfigManager.h"
 
 const lv_color_t COLOR_GREEN = lv_color_hex(0x7AE13B);
 const lv_color_t COLOR_MID = lv_color_hex(0xFFC107);
@@ -10,7 +11,6 @@ const lv_color_t COLOR_DEFAULT_ICON = lv_color_hex(0x9E9E9E);
 
 LGFX* UI::_tft = nullptr;
 CST820* UI::_touch = nullptr;
-ConfigManager* UI::_config = nullptr;
 lv_disp_draw_buf_t UI::draw_buf;
 lv_color_t* UI::buf1 = nullptr;
 lv_disp_drv_t UI::disp_drv;
@@ -29,10 +29,9 @@ UI& UI::getInstance() {
     return *_instance;
 }
 
-void UI::init(LGFX* tft_instance, CST820* touch_instance, ConfigManager* config_instance) {
+void UI::init(LGFX* tft_instance, CST820* touch_instance) {
     _tft = tft_instance;
     _touch = touch_instance;
-    _config = config_instance;
 
     lv_init();
     lv_disp_t * disp = lv_disp_get_default();
@@ -61,7 +60,7 @@ void UI::create_widgets() {
     create_status_bar();
     
     tileManager = new UITileManager();
-    tileManager->create_all_tiles(tileview, _config, fan_icon_label);
+    tileManager->create_all_tiles(tileview, fan_icon_label);
 
     lv_timer_create(inactivity_timer_cb_static, 1000, this);
     high_pressure_blink_timer = lv_timer_create(UIRuntimeTile::high_pressure_blink_cb, 750, air_filter_icon_label);
@@ -235,7 +234,12 @@ void UI::inactivity_timer_cb_static(lv_timer_t *timer) {
 }
 
 void UI::inactivity_timer_cb(lv_timer_t *timer) {
-    if (lv_disp_get_inactive_time(NULL) > 30000) {
+    // Get the delay from ConfigManager - this is safe to call from UITask context
+    // since ConfigManagerAccessor is thread-safe
+    ConfigManagerAccessor config;
+    unsigned long delay = config->getInactivityTimerDelay()  * 1000; // Convert seconds to milliseconds
+    
+    if (lv_disp_get_inactive_time(NULL) > delay) {
         if (tileManager && lv_tileview_get_tile_act(tileview) != tileManager->get_tile1()) {
             lv_obj_set_tile_id(tileview, 0, 0, LV_ANIM_ON);
         }

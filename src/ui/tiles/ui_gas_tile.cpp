@@ -3,7 +3,7 @@
 
 const int SCROLL_SPEED_MS_PX_SEC = 5;
 
-UIGasTile::UIGasTile(ConfigManager* config) : _config(config) {}
+UIGasTile::UIGasTile() {}
 
 lv_obj_t* UIGasTile::create_tile(lv_obj_t* parent_tv) {
     lv_obj_t* tile = lv_tileview_add_tile(parent_tv, 0, 2, LV_DIR_VER);
@@ -104,11 +104,11 @@ void UIGasTile::clear_readings() {
 
 void UIGasTile::update_no2(float no2) {
     lv_label_set_text_fmt(no2_label, "NO2: %.0f µg/m³", no2);
-    
     lv_color_t color;
-    if (no2 <= _config->getNo2WarnThreshold()) { // Good air quality
+    ConfigManagerAccessor config;
+    if (no2 <= config->getNo2WarnThreshold()) { // Good air quality
         color = COLOR_GREEN;
-    } else if (no2 <= _config->getNo2DangerThreshold()) { // Moderate
+    } else if (no2 <= config->getNo2DangerThreshold()) { // Moderate
         color = COLOR_MID;
     } else { // Poor air quality
         color = COLOR_HIGH;
@@ -118,12 +118,12 @@ void UIGasTile::update_no2(float no2) {
 }
 
 void UIGasTile::update_o3(float o3) {
-    lv_label_set_text_fmt(o3_label, "O3:  %.0f µg/m³", o3);
-    
+    lv_label_set_text_fmt(o3_label, "O3: %.0f µg/m³", o3);
     lv_color_t color;
-    if (o3 <= _config->getO3WarnThreshold()) { // Good air quality
+    ConfigManagerAccessor config;
+    if (o3 <= config->getO3WarnThreshold()) { // Good air quality
         color = COLOR_GREEN;
-    } else if (o3 <= _config->getO3DangerThreshold()) { // Moderate
+    } else if (o3 <= config->getO3DangerThreshold()) { // Moderate
         color = COLOR_MID;
     } else { // Poor air quality
         color = COLOR_HIGH;
@@ -134,11 +134,11 @@ void UIGasTile::update_o3(float o3) {
 
 void UIGasTile::update_nox(float nox) {
     lv_label_set_text_fmt(nox_label, "NOx: %.0f", nox);
-    
     lv_color_t color;
-    if (nox <= _config->getNoxWarnThreshold()) { // Excellent air quality
+    ConfigManagerAccessor config;
+    if (nox <= config->getNoxWarnThreshold()) { // Excellent air quality
         color = COLOR_GREEN;
-    } else if (nox <= _config->getNoxDangerThreshold()) { // Good air quality
+    } else if (nox <= config->getNoxDangerThreshold()) { // Good air quality
         color = COLOR_MID;
     } else { // Poor air quality
         color = COLOR_HIGH;
@@ -148,12 +148,12 @@ void UIGasTile::update_nox(float nox) {
 }
 
 void UIGasTile::update_co(float co) {
-    lv_label_set_text_fmt(co_label, "CO:   %.1f ppm", co);
-    
+    lv_label_set_text_fmt(co_label, "CO: %.1f ppm", co);
     lv_color_t color;
-    if (co <= _config->getCoWarnThreshold()) { // Good air quality
+    ConfigManagerAccessor config;
+    if (co <= config->getCoWarnThreshold()) { // Good air quality
         color = COLOR_GREEN;
-    } else if (co <= _config->getCoDangerThreshold()) { // Moderate
+    } else if (co <= config->getCoDangerThreshold()) { // Moderate
         color = COLOR_MID;
     } else { // Poor air quality
         color = COLOR_HIGH;

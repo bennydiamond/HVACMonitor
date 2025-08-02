@@ -1,9 +1,10 @@
 #include "ui/tiles/ui_powerdraw_tile.h"
 #include "ui/custom_icons.h"
+#include "ConfigManager.h"
 
 const int SCROLL_SPEED_MS_PX_SEC = 5;
 
-UIPowerdrawTile::UIPowerdrawTile(ConfigManager* config) : _config(config) {}
+UIPowerdrawTile::UIPowerdrawTile() {}
 
 lv_obj_t* UIPowerdrawTile::create_tile(lv_obj_t* parent_tv) {
     lv_obj_t* tile = lv_tileview_add_tile(parent_tv, 0, 3, LV_DIR_VER);
@@ -136,10 +137,11 @@ void UIPowerdrawTile::update_compressor_current(float amps) {
     lv_label_set_text_fmt(compressor_label, "Comp: %.2f A", amps);
     
     lv_color_t color;
-    if (amps <= 0.1) { // Assuming compressor off threshold
+    ConfigManagerAccessor config;
+    if (amps <= config->getCompressorOffCurrentThreshold()) {
         color = COLOR_DEFAULT_ICON;
         lv_obj_set_style_text_color(compressor_icon, COLOR_DEFAULT_ICON, 0);
-    } else if (amps < 15.0) { // Normal operating range
+    } else if (amps < config->getCompressorHighCurrentThreshold()) {
         color = COLOR_GREEN;
         lv_obj_set_style_text_color(compressor_icon, COLOR_GREEN, 0);
     } else { // High current alert
@@ -153,10 +155,11 @@ void UIPowerdrawTile::update_pump_current(float amps) {
     lv_label_set_text_fmt(pump_label, "Pompe: %.2f A", amps);
     
     lv_color_t color;
-    if (amps <= 0.1) { // Assuming pump off threshold
+    ConfigManagerAccessor config;
+    if (amps <= config->getPumpOffCurrentThreshold()) {
         color = COLOR_DEFAULT_ICON;
         lv_obj_set_style_text_color(pump_icon, COLOR_DEFAULT_ICON, 0);
-    } else if (amps < 5.0) { // Normal operating range
+    } else if (amps < config->getPumpHighCurrentThreshold()) {
         color = COLOR_GREEN;
         lv_obj_set_style_text_color(pump_icon, COLOR_GREEN, 0);
     } else { // High current alert

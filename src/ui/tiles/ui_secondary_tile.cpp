@@ -1,9 +1,10 @@
 #include "ui/tiles/ui_secondary_tile.h"
 #include "ui/custom_icons.h"
+#include "ConfigManager.h"
 
 const int SCROLL_SPEED_MS_PX_SEC = 5;
 
-UISecondaryTile::UISecondaryTile(ConfigManager* config) : _config(config) {}
+UISecondaryTile::UISecondaryTile() {}
 
 lv_obj_t* UISecondaryTile::create_tile(lv_obj_t* parent_tv) {
     lv_obj_t* tile = lv_tileview_add_tile(parent_tv, 0, 1, LV_DIR_VER);
@@ -104,30 +105,31 @@ void UISecondaryTile::update_pm_values(float pm1, float pm25, float pm4, float p
     lv_label_set_text_fmt(pm4_label, "PM4.0: %.1f µg/m³", pm4);
     lv_label_set_text_fmt(pm10_label, "PM10:  %.1f µg/m³", pm10);
 
+    ConfigManagerAccessor config;
     lv_color_t pm1_color;
-    if (pm1 < _config->getPm1WarnThreshold()) { pm1_color = COLOR_GREEN; }
-    else if (pm1 < _config->getPm1DangerThreshold()) { pm1_color = COLOR_MID; }
+    if (pm1 < config->getPm1WarnThreshold()) { pm1_color = COLOR_GREEN; }
+    else if (pm1 < config->getPm1DangerThreshold()) { pm1_color = COLOR_MID; }
     else { pm1_color = COLOR_HIGH; }
     lv_obj_set_style_text_color(pm1_label, pm1_color, 0);
     lv_obj_set_style_text_color(pm1_icon, pm1_color, 0);
 
     lv_color_t pm25_color;
-    if (pm25 < _config->getPm25WarnThreshold()) { pm25_color = COLOR_GREEN; }
-    else if (pm25 < _config->getPm25DangerThreshold()) { pm25_color = COLOR_MID; }
+    if (pm25 < config->getPm25WarnThreshold()) { pm25_color = COLOR_GREEN; }
+    else if (pm25 < config->getPm25DangerThreshold()) { pm25_color = COLOR_MID; }
     else { pm25_color = COLOR_HIGH; }
     lv_obj_set_style_text_color(pm25_label, pm25_color, 0);
     lv_obj_set_style_text_color(pm25_icon, pm25_color, 0);
 
     lv_color_t pm4_color;
-    if (pm4 < _config->getPm4WarnThreshold()) { pm4_color = COLOR_GREEN; }
-    else if (pm4 < _config->getPm4DangerThreshold()) { pm4_color = COLOR_MID; }
+    if (pm4 < config->getPm4WarnThreshold()) { pm4_color = COLOR_GREEN; }
+    else if (pm4 < config->getPm4DangerThreshold()) { pm4_color = COLOR_MID; }
     else { pm4_color = COLOR_HIGH; }
     lv_obj_set_style_text_color(pm4_label, pm4_color, 0);
     lv_obj_set_style_text_color(pm4_icon, pm4_color, 0);
 
     lv_color_t pm10_color;
-    if (pm10 < _config->getPm10WarnThreshold()) { pm10_color = COLOR_GREEN; }
-    else if (pm10 < _config->getPm10DangerThreshold()) { pm10_color = COLOR_MID; }
+    if (pm10 < config->getPm10WarnThreshold()) { pm10_color = COLOR_GREEN; }
+    else if (pm10 < config->getPm10DangerThreshold()) { pm10_color = COLOR_MID; }
     else { pm10_color = COLOR_HIGH; }
     lv_obj_set_style_text_color(pm10_label, pm10_color, 0);
     lv_obj_set_style_text_color(pm10_icon, pm10_color, 0);
@@ -135,10 +137,10 @@ void UISecondaryTile::update_pm_values(float pm1, float pm25, float pm4, float p
 
 void UISecondaryTile::update_pm1(float pm1) {
     lv_label_set_text_fmt(pm1_label, "PM1.0: %.1f µg/m³", pm1);
-    
     lv_color_t pm1_color;
-    if (pm1 < _config->getPm1WarnThreshold()) { pm1_color = COLOR_GREEN; }
-    else if (pm1 < _config->getPm1DangerThreshold()) { pm1_color = COLOR_MID; }
+    ConfigManagerAccessor config;
+    if (pm1 < config->getPm1WarnThreshold()) { pm1_color = COLOR_GREEN; }
+    else if (pm1 < config->getPm1DangerThreshold()) { pm1_color = COLOR_MID; }
     else { pm1_color = COLOR_HIGH; }
     lv_obj_set_style_text_color(pm1_label, pm1_color, 0);
     lv_obj_set_style_text_color(pm1_icon, pm1_color, 0);
@@ -146,10 +148,10 @@ void UISecondaryTile::update_pm1(float pm1) {
 
 void UISecondaryTile::update_pm25(float pm25) {
     lv_label_set_text_fmt(pm25_label, "PM2.5: %.1f µg/m³", pm25);
-    
     lv_color_t pm25_color;
-    if (pm25 < _config->getPm25WarnThreshold()) { pm25_color = COLOR_GREEN; }
-    else if (pm25 < _config->getPm25DangerThreshold()) { pm25_color = COLOR_MID; }
+    ConfigManagerAccessor config;
+    if (pm25 < config->getPm25WarnThreshold()) { pm25_color = COLOR_GREEN; }
+    else if (pm25 < config->getPm25DangerThreshold()) { pm25_color = COLOR_MID; }
     else { pm25_color = COLOR_HIGH; }
     lv_obj_set_style_text_color(pm25_label, pm25_color, 0);
     lv_obj_set_style_text_color(pm25_icon, pm25_color, 0);
@@ -157,21 +159,21 @@ void UISecondaryTile::update_pm25(float pm25) {
 
 void UISecondaryTile::update_pm4(float pm4) {
     lv_label_set_text_fmt(pm4_label, "PM4.0: %.1f µg/m³", pm4);
-    
     lv_color_t pm4_color;
-    if (pm4 < _config->getPm4WarnThreshold()) { pm4_color = COLOR_GREEN; }
-    else if (pm4 < _config->getPm4DangerThreshold()) { pm4_color = COLOR_MID; }
+    ConfigManagerAccessor config;
+    if (pm4 < config->getPm4WarnThreshold()) { pm4_color = COLOR_GREEN; }
+    else if (pm4 < config->getPm4DangerThreshold()) { pm4_color = COLOR_MID; }
     else { pm4_color = COLOR_HIGH; }
     lv_obj_set_style_text_color(pm4_label, pm4_color, 0);
     lv_obj_set_style_text_color(pm4_icon, pm4_color, 0);
 }
 
 void UISecondaryTile::update_pm10(float pm10) {
-    lv_label_set_text_fmt(pm10_label, "PM10:  %.1f µg/m³", pm10);
-    
+    lv_label_set_text_fmt(pm10_label, "PM10: %.1f µg/m³", pm10);
     lv_color_t pm10_color;
-    if (pm10 < _config->getPm10WarnThreshold()) { pm10_color = COLOR_GREEN; }
-    else if (pm10 < _config->getPm10DangerThreshold()) { pm10_color = COLOR_MID; }
+    ConfigManagerAccessor config;
+    if (pm10 < config->getPm10WarnThreshold()) { pm10_color = COLOR_GREEN; }
+    else if (pm10 < config->getPm10DangerThreshold()) { pm10_color = COLOR_MID; }
     else { pm10_color = COLOR_HIGH; }
     lv_obj_set_style_text_color(pm10_label, pm10_color, 0);
     lv_obj_set_style_text_color(pm10_icon, pm10_color, 0);

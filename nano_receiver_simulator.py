@@ -151,6 +151,7 @@ def user_input_thread():
     print("  compressor_amps <number> - Set compressor current in Amps (e.g., compressor_amps 8.5)")
     print("  geothermal_amps <number> - Set geothermal pump current in Amps (e.g., geothermal_amps 2.1)")
     print("  liquid_level <0|1> - Set liquid level sensor state (e.g., liquid_level 1)")
+    print("  zmod4510_init     - Send initialization sequence to ZMOD4510")
     print("  quit              - Exit the simulator")
     print("-------------------------------------\n")
     
@@ -257,6 +258,9 @@ def user_input_thread():
             elif cmd_type == 'liquid_level' and len(parts) > 1:
                 current_liquid_level_sensor_state = int(parts[1])
                 print(f"--> [SIM] Liquid level sensor state set to {current_liquid_level_sensor_state}")
+            elif cmd_type == 'zmod4510_init':
+                zmod4510_init_sequence(ser)
+                print("--> [SIM] ZMOD4510 init sequence sent.")
             else:
                 current_pressure = float(command)
                 print(f"--> [SIM] Pressure set to {current_pressure:.1f} Pa")
@@ -291,6 +295,112 @@ def serial_reader_thread(ser):
             stop_threads = True
             break
         time.sleep(0.01)
+
+def zmod4510_init_sequence(ser):
+    """Simulate the ZMOD4510 initialization sequence as seen in the logs."""
+    # All addresses are 0x33 (hex), which is 51 decimal
+    addr = 0x33
+
+    # 1. W33,00
+    send_i2c_write_command(ser, addr, [])
+
+    # 2. W33,02,93,00
+    send_i2c_write_command(ser, addr, [0x93, 0x00])
+
+    # 3. I33,01,01,94 (write 94, read 1)
+    # Custom: I<addr>,<writeLen>,<readLen>,<writeData...>
+    command = f"I{addr:02X},01,01,94"
+    checksum = calculate_checksum(command)
+    packet = f"<{command},{checksum}>\n"
+    print(f"[ESP32] Sending I2C write-read: {packet.strip()}")
+    if ser and ser.is_open:
+        ser.write(packet.encode('ascii'))
+
+    # 4. I33,01,02,00 (write 00, read 2)
+    command = f"I{addr:02X},01,02,00"
+    checksum = calculate_checksum(command)
+    packet = f"<{command},{checksum}>\n"
+    print(f"[ESP32] Sending I2C write-read: {packet.strip()}")
+    if ser and ser.is_open:
+        ser.write(packet.encode('ascii'))
+
+    # 5. I33,01,06,20 (write 20, read 6)
+    command = f"I{addr:02X},01,06,20"
+    checksum = calculate_checksum(command)
+    packet = f"<{command},{checksum}>\n"
+    print(f"[ESP32] Sending I2C write-read: {packet.strip()}")
+    if ser and ser.is_open:
+        ser.write(packet.encode('ascii'))
+
+    # 6. I33,01,0A,26 (write 26, read 10)
+    command = f"I{addr:02X},01,0A,26"
+    checksum = calculate_checksum(command)
+    packet = f"<{command},{checksum}>\n"
+    print(f"[ESP32] Sending I2C write-read: {packet.strip()}")
+    if ser and ser.is_open:
+        ser.write(packet.encode('ascii'))
+
+    # 7. I33,01,06,3A (write 3A, read 6)
+    command = f"I{addr:02X},01,06,3A"
+    checksum = calculate_checksum(command)
+    packet = f"<{command},{checksum}>\n"
+    print(f"[ESP32] Sending I2C write-read: {packet.strip()}")
+    if ser and ser.is_open:
+        ser.write(packet.encode('ascii'))
+
+    # 8. I33,01,01,B7 (write B7, read 1)
+    command = f"I{addr:02X},01,01,B7"
+    checksum = calculate_checksum(command)
+    packet = f"<{command},{checksum}>\n"
+    print(f"[ESP32] Sending I2C write-read: {packet.strip()}")
+    if ser and ser.is_open:
+        ser.write(packet.encode('ascii'))
+
+    # 9. W33,03,40,01,FC
+    send_i2c_write_command(ser, addr, [0x40, 0x01, 0xFC])
+
+    # 10. W33,03,50,00,28
+    send_i2c_write_command(ser, addr, [0x50, 0x00, 0x28])
+
+    # 11. W33,03,60,C3,E3
+    send_i2c_write_command(ser, addr, [0x60, 0xC3, 0xE3])
+
+    # 12. W33,05,68,00,00,80,40
+    send_i2c_write_command(ser, addr, [0x68, 0x00, 0x00, 0x80, 0x40])
+
+    # 13. W33,02,93,80
+    send_i2c_write_command(ser, addr, [0x93, 0x80])
+
+    # 14. I33,01,01,94 (write 94, read 1)
+    command = f"I{addr:02X},01,01,94"
+    checksum = calculate_checksum(command)
+    packet = f"<{command},{checksum}>\n"
+    print(f"[ESP32] Sending I2C write-read: {packet.strip()}")
+    if ser and ser.is_open:
+        ser.write(packet.encode('ascii'))
+
+    # 15. I33,01,04,97 (write 97, read 4)
+    command = f"I{addr:02X},01,04,97"
+    checksum = calculate_checksum(command)
+    packet = f"<{command},{checksum}>\n"
+    print(f"[ESP32] Sending I2C write-read: {packet.strip()}")
+    if ser and ser.is_open:
+        ser.write(packet.encode('ascii'))
+
+    # 16. W33,09,40,01,FC,03,18,03,6E,03,C4
+    send_i2c_write_command(ser, addr, [0x40, 0x01, 0xFC, 0x03, 0x18, 0x03, 0x6E, 0x03, 0xC4])
+
+    # 17. W33,09,50,00,10,00,52,3F,66,00,42
+    send_i2c_write_command(ser, addr, [0x50, 0x00, 0x10, 0x00, 0x52, 0x3F, 0x66, 0x00, 0x42])
+
+    # 18. W33,03,60,23,03
+    send_i2c_write_command(ser, addr, [0x60, 0x23, 0x03])
+
+    # 19. W33,21,68,00,00,02,41,00,41,00,41,00,49,00,50,02,42,00,42,00,42,00,4A,00,50,02,43,00,43,00,43,00,43,80,5B
+    send_i2c_write_command(ser, addr, [
+        0x68, 0x00, 0x00, 0x02, 0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0x49, 0x00, 0x50, 0x02, 0x42, 0x00,
+        0x42, 0x00, 0x42, 0x00, 0x4A, 0x00, 0x50, 0x02, 0x43, 0x00, 0x43, 0x00, 0x43, 0x00, 0x43, 0x80, 0x5B
+    ])
 
 def main():
     """Main function to run the simulator."""
