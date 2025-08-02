@@ -59,7 +59,7 @@ void UIMainTile::create_voc_widgets(lv_obj_t* parent) {
     lv_obj_set_grid_cell(voc_icon, LV_GRID_ALIGN_CENTER, 1, 1, LV_GRID_ALIGN_CENTER, 2, 1);
 
     voc_label = lv_label_create(parent);
-    lv_label_set_text(voc_label, "---");
+    lv_label_set_text(voc_label, "VOC: ---");
     lv_obj_set_style_text_font(voc_label, &custom_font_30, 0);
     lv_obj_set_grid_cell(voc_label, LV_GRID_ALIGN_START, 2, 1, LV_GRID_ALIGN_CENTER, 2, 1);
     lv_obj_set_style_pad_left(voc_label, -5, 0);
@@ -129,7 +129,7 @@ void UIMainTile::clear_readings() {
     lv_label_set_text(temp_label, "--.- °C");
     lv_label_set_text(humi_label, "-- %");
     lv_label_set_text(co2_label, "---- ppm");
-    lv_label_set_text(voc_label, "---");
+    lv_label_set_text(voc_label, "VOC: ---");
 }
 
 void UIMainTile::update_pressure(float p) {
@@ -167,7 +167,7 @@ void UIMainTile::update_co2(float co2) {
 }
 
 void UIMainTile::update_voc(int32_t voc) {
-    lv_label_set_text_fmt(voc_label, "%ld", voc);
+    lv_label_set_text_fmt(voc_label, "VOC: %ld", voc);
     lv_color_t color;
     if (voc < _config->getVocWarnThreshold()) { color = COLOR_GREEN; } 
     else if (voc < _config->getVocDangerThreshold()) { color = COLOR_MID; } 
@@ -184,10 +184,35 @@ void UIMainTile::update_geiger_usvh(float usv) {
     char usv_str[10];
     dtostrf(usv, 4, 2, usv_str);
     lv_label_set_text_fmt(usv_label, "%s µSv/h", usv_str);
+    
+    lv_color_t color;
+    if (usv >= 0.00 && usv <= 0.04) { color = COLOR_HIGH; }      // Abnormal (red)
+    else if (usv >= 0.05 && usv <= 0.30) { color = COLOR_GREEN; }  // Normal (green)
+    else if (usv >= 0.30 && usv <= 0.90) { color = COLOR_MID; }    // Elevated (yellow)
+    else { color = COLOR_HIGH; }                                     // Danger (red)
+    
+    lv_obj_set_style_text_color(usv_label, color, 0);
+    lv_obj_set_style_text_color(usv_icon, color, 0);
 }
 void UIMainTile::update_temp(float temp) {
     lv_label_set_text_fmt(temp_label, "%.1f °C", temp);
+    
+    lv_color_t color;
+    if (temp >= 15.0 && temp <= 25.0) { color = COLOR_GREEN; }     // Comfortable range
+    else if (temp >= 10.0 && temp <= 30.0) { color = COLOR_MID; }   // Acceptable range
+    else { color = COLOR_HIGH; }                                     // Extreme temperatures
+    
+    lv_obj_set_style_text_color(temp_label, color, 0);
+    lv_obj_set_style_text_color(temp_icon, color, 0);
 }
 void UIMainTile::update_humi(float humi) {
     lv_label_set_text_fmt(humi_label, "%.0f %%", humi);
+    
+    lv_color_t color;
+    if (humi >= 30.0 && humi <= 60.0) { color = COLOR_GREEN; }     // Comfortable range
+    else if (humi >= 20.0 && humi <= 70.0) { color = COLOR_MID; }   // Acceptable range
+    else { color = COLOR_HIGH; }                                     // Too dry or too humid
+    
+    lv_obj_set_style_text_color(humi_label, color, 0);
+    lv_obj_set_style_text_color(humi_icon, color, 0);
 }

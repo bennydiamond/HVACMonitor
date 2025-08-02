@@ -19,9 +19,17 @@
 #define ICON_BLUR          "\xF3\xB0\x82\xB5"  // U+F00B5
 #define ICON_MOLECULE_CO2  "\xF3\xB0\x9F\xA4"  // U+F07E4
 #define ICON_LUNGS         "\xF3\xB1\x82\x84"  // U+F1084
+#define ICON_MOLECULE_CO   "\xF3\xB1\x8B\xBE"  // U+F12FE
+#define ICON_MOLECULE      "\xF3\xB0\xAE\xAC"  // U+F0BAC
+#define ICON_CAR_SIDE      "\xF3\xB0\x9E\xAB"  // U+F07AB
+#define ICON_SMOKE         "\xF3\xB1\x9E\x99"  // U+F1799
 #define ICON_FAN           "\xF3\xB0\x88\x90"  // U+F0210
 #define ICON_FAN_ALERT     "\xF3\xB1\x91\xAC"  // U+F146C
 #define ICON_FAN_OFF       "\xF3\xB0\xA0\x9D"  // U+F081D
+#define ICON_ENGINE        "\xF3\xB0\x87\xBA"  // U+F01FA
+#define ICON_WATER_PUMP    "\xF3\xB1\x90\x82"  // U+F1402
+#define ICON_WATER_ALERT "\xF3\xB1\x94\x82"    // U+F1502
+#define ICON_WATER       "\xF3\xB0\x96\x8C"    // U+F058C
 
 // Status Bar Icons (from mdi_30.c)
 #define ICON_LAN_CONNECT        "\xF3\xB0\x8C\x98"  // U+F0318

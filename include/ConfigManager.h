@@ -25,6 +25,14 @@ public:
     int getCo2DangerThreshold();
     int getVocWarnThreshold();
     int getVocDangerThreshold();
+    int getNo2WarnThreshold();
+    int getNo2DangerThreshold();
+    int getO3WarnThreshold();
+    int getO3DangerThreshold();
+    int getNoxWarnThreshold();
+    int getNoxDangerThreshold();
+    int getCoWarnThreshold();
+    int getCoDangerThreshold();
     int getPm1WarnThreshold();
     int getPm1DangerThreshold();
     int getPm25WarnThreshold();
@@ -50,6 +58,14 @@ public:
     void setCo2DangerThreshold(int value);
     void setVocWarnThreshold(int value);
     void setVocDangerThreshold(int value);
+    void setNo2WarnThreshold(int value);
+    void setNo2DangerThreshold(int value);
+    void setO3WarnThreshold(int value);
+    void setO3DangerThreshold(int value);
+    void setNoxWarnThreshold(int value);
+    void setNoxDangerThreshold(int value);
+    void setCoWarnThreshold(int value);
+    void setCoDangerThreshold(int value);
     void setPm1WarnThreshold(int value);
     void setPm1DangerThreshold(int value);
     void setPm25WarnThreshold(int value);
@@ -68,6 +84,7 @@ private:
     float highPressureThreshold, fanOnCurrentThreshold, fanOffCurrentThreshold, fanHighCurrentThreshold;
     float pressureLowThreshold, pressureMidThreshold;
     int cpmWarnThreshold, cpmDangerThreshold, co2WarnThreshold, co2DangerThreshold, vocWarnThreshold, vocDangerThreshold;
+    int no2WarnThreshold, no2DangerThreshold, o3WarnThreshold, o3DangerThreshold, noxWarnThreshold, noxDangerThreshold, coWarnThreshold, coDangerThreshold;
     int pm1WarnThreshold, pm1DangerThreshold, pm25WarnThreshold, pm25DangerThreshold, pm4WarnThreshold, pm4DangerThreshold, pm10WarnThreshold, pm10DangerThreshold;
     
     // NVS Keys
@@ -84,6 +101,14 @@ private:
     static const char* KEY_CO2_DANGER;
     static const char* KEY_VOC_WARN;
     static const char* KEY_VOC_DANGER;
+    static const char* KEY_NO2_WARN;
+    static const char* KEY_NO2_DANGER;
+    static const char* KEY_O3_WARN;
+    static const char* KEY_O3_DANGER;
+    static const char* KEY_NOX_WARN;
+    static const char* KEY_NOX_DANGER;
+    static const char* KEY_CO_WARN;
+    static const char* KEY_CO_DANGER;
     static const char* KEY_PM1_WARN;
     static const char* KEY_PM1_DANGER;
     static const char* KEY_PM25_WARN;
@@ -107,6 +132,14 @@ private:
     static const int DEFAULT_CO2_DANGER_THRESHOLD;
     static const int DEFAULT_VOC_WARN_THRESHOLD;
     static const int DEFAULT_VOC_DANGER_THRESHOLD;
+    static const int DEFAULT_NO2_WARN_THRESHOLD;
+    static const int DEFAULT_NO2_DANGER_THRESHOLD;
+    static const int DEFAULT_O3_WARN_THRESHOLD;
+    static const int DEFAULT_O3_DANGER_THRESHOLD;
+    static const int DEFAULT_NOX_WARN_THRESHOLD;
+    static const int DEFAULT_NOX_DANGER_THRESHOLD;
+    static const int DEFAULT_CO_WARN_THRESHOLD;
+    static const int DEFAULT_CO_DANGER_THRESHOLD;
     static const int DEFAULT_PM1_WARN_THRESHOLD;
     static const int DEFAULT_PM1_DANGER_THRESHOLD;
     static const int DEFAULT_PM25_WARN_THRESHOLD;

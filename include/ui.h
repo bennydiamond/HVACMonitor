@@ -32,6 +32,9 @@ public:
     void update_pm4(float pm4) override;
     void update_pm10(float pm10) override;
     void update_fan_amps(float amps) override;
+    void update_compressor_amps(float amps) override;
+    void update_pump_amps(float amps) override;
+    void update_water_sensor(bool water_ok) override;
     void update_fan_status(FanStatus status) override;
     void update_high_pressure_status(bool is_high) override;
     void update_wifi_status(bool connected, int8_t rssi) override;
@@ -39,6 +42,10 @@ public:
     void update_sensor_status(bool connected) override;
     void update_co2(float co2_ppm) override;
     void update_voc(int32_t voc_index) override;
+    void update_no2(float no2_ppb) override;
+    void update_o3(float o3_ppb) override;
+    void update_nox(float nox_ppb) override;
+    void update_co(float co_ppm) override;
     void set_initial_debug_info(const char* version, const char* reason) override;
     void update_scd30_autocal(bool enabled) override;
     void update_scd30_forcecal(uint16_t ppm) override;

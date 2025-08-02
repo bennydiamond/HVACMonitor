@@ -59,8 +59,8 @@
 #define FAN_CT_CLAMP_PIN    A1
 #define DEBUG_LED_PIN       13
 #define LIQUID_LEVEL_SENSOR_PIN 8
-#define COMPRESSOR_CT_CLAMP_PIN A6
-#define GEOTHERMAL_PUMP_CT_CLAMP_PIN A7
+#define COMPRESSOR_CT_CLAMP_PIN A3
+#define GEOTHERMAL_PUMP_CT_CLAMP_PIN A2
 
 // --- Timing Constants ---
 const unsigned long COMMAND_TIMEOUT_MS = 250;
@@ -75,7 +75,7 @@ const unsigned long SCD30_INVALIDATE_TIMEOUT_MS = 60000;
 
 // --- Buffer Sizes ---
 #define MAX_COMMAND_LEN 150
-#define MAX_RESPONSE_LEN 150
+#define MAX_RESPONSE_LEN 200
 
 // --- Hardware & Behavior Constants ---
 #define SERIAL_BAUD_RATE            19200
@@ -105,6 +105,7 @@ unsigned long last_scd30_update = 0;
 SensirionI2cScd30 scd30_sensor;
 SensirionI2CSgp41 sgp41_sensor;
 uint8_t conditioning_s = 10;
+char tx_command_buffer[MAX_RESPONSE_LEN];
 
 // --- Forward Declarations ---
 unsigned long read_all_sensors();
@@ -192,9 +193,11 @@ void setup() {
 
     pinMode(DEBUG_LED_PIN, OUTPUT);
     digitalWrite(DEBUG_LED_PIN, HIGH);
+/*
     delay(STARTUP_BLINK_DELAY_MS);
     digitalWrite(DEBUG_LED_PIN, LOW);
     delay(STARTUP_BLINK_DELAY_MS);
+*/
 
     // Check and recover I2C bus before initializing sensors
     checkAndRecoverI2C();
@@ -223,6 +226,11 @@ void setup() {
 
     pinMode(GEIGER_PIN, INPUT);
     attachInterrupt(digitalPinToInterrupt(GEIGER_PIN), on_geiger_pulse, RISING);
+
+    pinMode(PRESSURE_SENSOR_PIN, INPUT);
+    pinMode(FAN_CT_CLAMP_PIN, INPUT); 
+    pinMode(COMPRESSOR_CT_CLAMP_PIN, INPUT);
+    pinMode(GEOTHERMAL_PUMP_CT_CLAMP_PIN, INPUT);
 }
 
 // ======================================================================
@@ -279,11 +287,9 @@ void loop() {
 // ======================================================================
 
 unsigned long read_all_sensors() {
-  static bool led_state = LOW;
   int temp_val;
   uint16_t temp_uval;
-  led_state = !led_state;
-  digitalWrite(DEBUG_LED_PIN, led_state);
+  digitalWrite(DEBUG_LED_PIN, !digitalRead(DEBUG_LED_PIN));
   
   
   // Check and recover I2C bus before sensor readings
@@ -365,9 +371,7 @@ unsigned long read_all_sensors() {
 }
 
 void send_data_packet(unsigned long timestamp) {
-  static bool led_state = LOW;
-  led_state = !led_state;
-  digitalWrite(DEBUG_LED_PIN, led_state);
+  digitalWrite(DEBUG_LED_PIN, !digitalRead(DEBUG_LED_PIN));
 
   uint16_t pulse_count;
   noInterrupts();
@@ -387,17 +391,16 @@ void send_data_packet(unsigned long timestamp) {
   long pm4_val = (long)(current_sps_data.mc_4p0 * 10);
   long pm10_val = (long)(current_sps_data.mc_10p0 * 10);
   
-  char data_buffer[MAX_RESPONSE_LEN];
-  sprintf(data_buffer, "%c%lu,%ld,%u,%ld,%ld,%ld,%u,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%u",
+  sprintf(tx_command_buffer, "%c%lu,%ld,%u,%ld,%ld,%ld,%u,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%u",
           RSP_SENSORS, timestamp, p_val, pulse_count, t_val, h_val, co2_val, current_voc_raw, current_nox_raw,
           amps_val, pm1_val, pm25_val, pm4_val, pm10_val,
           (long)(compressor_amps * 100), (long)(geothermal_pump_amps * 100), liquid_level_sensor_state
           );
 
-  uint8_t checksum = calculate_checksum(data_buffer);
+  uint8_t checksum = calculate_checksum(tx_command_buffer);
 
   Serial.print('<');
-  Serial.print(data_buffer);
+  Serial.print(tx_command_buffer);
   Serial.print(',');
   Serial.print(checksum);
   Serial.println('>');
@@ -416,7 +419,6 @@ void process_command(const char* buffer) {
   if (received_checksum != calculated_checksum) return;
 
   char command = buffer[0];
-  char response_buffer[MAX_RESPONSE_LEN];
   uint8_t checksum;
   uint32_t uint32_val = 0;
   uint8_t uint8_val1 = 0, uint8_val2 = 0;
@@ -430,15 +432,15 @@ void process_command(const char* buffer) {
 
   switch (command) {
     case CMD_GET_VERSION:
-      sprintf(response_buffer, "%c%s", RSP_VERSION, NANO_FIRMWARE_VERSION);
-      checksum = calculate_checksum(response_buffer);
-      Serial.print('<'); Serial.print(response_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
+      sprintf(tx_command_buffer, "%c%s", RSP_VERSION, NANO_FIRMWARE_VERSION);
+      checksum = calculate_checksum(tx_command_buffer);
+      Serial.print('<'); Serial.print(tx_command_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
       break;
 
     case CMD_GET_HEALTH:
-      sprintf(response_buffer, "%c%d,%d,%d", RSP_HEALTH, first_health_status_sent ? 0 : 1, freeRam(), last_reset_cause);
-      checksum = calculate_checksum(response_buffer);
-      Serial.print('<'); Serial.print(response_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
+      sprintf(tx_command_buffer, "%c%d,%d,%d", RSP_HEALTH, first_health_status_sent ? 0 : 1, freeRam(), last_reset_cause);
+      checksum = calculate_checksum(tx_command_buffer);
+      Serial.print('<'); Serial.print(tx_command_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
       break;
 
     case CMD_ACK_HEALTH:
@@ -457,8 +459,8 @@ void process_command(const char* buffer) {
     }
 
     case CMD_GET_SPS30_INFO: {
-      strcpy(response_buffer, "p");
-      char* pos = response_buffer + 1;
+      strcpy(tx_command_buffer, "p");
+      char* pos = tx_command_buffer + 1;
       int_val = sps30_read_firmware_version(&uint8_val1, &uint8_val2);
       pos += sprintf(pos, "%d,%u,%u,", int_val, uint8_val1, uint8_val2);
       int_val = sps30_get_fan_auto_cleaning_interval(&uint32_val);
@@ -467,27 +469,27 @@ void process_command(const char* buffer) {
       pos += sprintf(pos, "%d,%lu,", int_val, (unsigned long)uint8_val1);
       int_val = sps30_read_device_status_register(&uint32_val);
       sprintf(pos, "%d,%lu", int_val, (unsigned long)uint32_val);
-      checksum = calculate_checksum(response_buffer);
-      Serial.print('<'); Serial.print(response_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
+      checksum = calculate_checksum(tx_command_buffer);
+      Serial.print('<'); Serial.print(tx_command_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
       break;
     }
     case CMD_SPS30_CLEAN: {
       int_val = sps30_start_manual_fan_cleaning();
-      sprintf(response_buffer, "%c%d", RSP_SPS30_CLEAN, int_val);
-      checksum = calculate_checksum(response_buffer);
-      Serial.print('<'); Serial.print(response_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
+      sprintf(tx_command_buffer, "%c%d", RSP_SPS30_CLEAN, int_val);
+      checksum = calculate_checksum(tx_command_buffer);
+      Serial.print('<'); Serial.print(tx_command_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
       break;
     }
     case CMD_SGP41_TEST: {
       uint16_t sgp41_ret = sgp41_sensor.executeSelfTest(uint_val);
-      sprintf(response_buffer, "%c%d,0x%4X", RSP_SGP41_TEST, sgp41_ret, uint_val);
-      checksum = calculate_checksum(response_buffer);
-      Serial.print('<'); Serial.print(response_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
+      sprintf(tx_command_buffer, "%c%d,0x%4X", RSP_SGP41_TEST, sgp41_ret, uint_val);
+      checksum = calculate_checksum(tx_command_buffer);
+      Serial.print('<'); Serial.print(tx_command_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
       break;
     }
     case CMD_GET_SCD30_INFO: {
-      strcpy(response_buffer, "d");
-      char* pos = response_buffer + 1;
+      strcpy(tx_command_buffer, "d");
+      char* pos = tx_command_buffer + 1;
       int_val = scd30_sensor.getMeasurementInterval(uint_val);
       pos += sprintf(pos, "%X,%X,", int_val, uint_val);
       int_val = scd30_sensor.getAutoCalibrationStatus(uint_val);
@@ -500,17 +502,17 @@ void process_command(const char* buffer) {
       pos += sprintf(pos, "%X,%X,", int_val, uint_val);
       int_val = scd30_sensor.readFirmwareVersion(uint8_val1, uint8_val2);
       sprintf(pos, ",%X,%X,%X", int_val, uint8_val1, uint8_val2);
-      checksum = calculate_checksum(response_buffer);
-      Serial.print('<'); Serial.print(response_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
+      checksum = calculate_checksum(tx_command_buffer);
+      Serial.print('<'); Serial.print(tx_command_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
       break;
     }
     case CMD_SET_SCD30_AUTOCAL: {
       uint_val = (data_len > 1 && buffer[1] == '1');
       int_val = scd30_sensor.activateAutoCalibration(uint_val);
       uint_val2 = scd30_sensor.getAutoCalibrationStatus(uint_val);
-      sprintf(response_buffer, "%c%X,%X,%X", RSP_SCD30_AUTOCAL, int_val, uint_val2, uint_val);
-      checksum = calculate_checksum(response_buffer);
-      Serial.print('<'); Serial.print(response_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
+      sprintf(tx_command_buffer, "%c%X,%X,%X", RSP_SCD30_AUTOCAL, int_val, uint_val2, uint_val);
+      checksum = calculate_checksum(tx_command_buffer);
+      Serial.print('<'); Serial.print(tx_command_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
       break;
     }
     case CMD_SET_SCD30_FORCECAL: {
@@ -520,9 +522,9 @@ void process_command(const char* buffer) {
       }
       int_val = scd30_sensor.forceRecalibration(uint_val);
       uint_val2 = scd30_sensor.getForceRecalibrationStatus(uint_val);
-      sprintf(response_buffer, "%c%X,%X,%X", RSP_SCD30_FORCECAL, int_val, uint_val2, uint_val);
-      checksum = calculate_checksum(response_buffer);
-      Serial.print('<'); Serial.print(response_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
+      sprintf(tx_command_buffer, "%c%X,%X,%X", RSP_SCD30_FORCECAL, int_val, uint_val2, uint_val);
+      checksum = calculate_checksum(tx_command_buffer);
+      Serial.print('<'); Serial.print(tx_command_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
       break;
     }
     
@@ -586,16 +588,16 @@ void process_command(const char* buffer) {
             }
         }
         
-        sprintf(response_buffer, "%c%02X,%02X", RSP_I2C_READ, i2c_status, i2c_num_bytes);
+        sprintf(tx_command_buffer, "%c%02X,%02X", RSP_I2C_READ, i2c_status, i2c_num_bytes);
         if (i2c_status == I2C_ERROR_NONE && i2c_num_bytes > 0) {
-            char* pos = response_buffer + strlen(response_buffer);
+            char* pos = tx_command_buffer + strlen(tx_command_buffer);
             for (uint8_t i = 0; i < i2c_num_bytes; i++) {
                 pos += sprintf(pos, ",%02X", i2c_data[i]);
             }
         }
         
-        checksum = calculate_checksum(response_buffer);
-        Serial.print('<'); Serial.print(response_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
+        checksum = calculate_checksum(tx_command_buffer);
+        Serial.print('<'); Serial.print(tx_command_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
         break;
     }
     
@@ -648,10 +650,10 @@ void process_command(const char* buffer) {
             recoverI2Cbus();
         }
         
-        sprintf(response_buffer, "%c%02X", RSP_I2C_WRITE, i2c_status);
+        sprintf(tx_command_buffer, "%c%02X", RSP_I2C_WRITE, i2c_status);
         
-        checksum = calculate_checksum(response_buffer);
-        Serial.print('<'); Serial.print(response_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
+        checksum = calculate_checksum(tx_command_buffer);
+        Serial.print('<'); Serial.print(tx_command_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
         break;
     }
 
@@ -735,13 +737,11 @@ void recoverI2Cbus() {
  * @return false if the bus is OK.
  */
 bool checkAndRecoverI2C() {
-  /*
     pinMode(SDA, INPUT_PULLUP);
     if (digitalRead(SDA) == LOW) { // If SDA is stuck low
         recoverI2Cbus();
         // Re-check after recovery attempt
         return (digitalRead(SDA) == LOW); // Returns true if still stuck
     }
-        */
     return false; // Bus was not stuck
 }

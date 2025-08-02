@@ -44,7 +44,7 @@ InitCommand pending_init_commands[] = {CMD_VERSION, CMD_HEALTH, CMD_SPS30_INFO, 
 bool init_sequence_active = false;
 int current_init_command_index = 0;
 unsigned long last_init_command_time = 0;
-const int INIT_COMMAND_TIMEOUT_MS = 1000;
+const int INIT_COMMAND_TIMEOUT_MS = 100;
 
 unsigned long last_wifi_check_time = 0;
 unsigned long last_health_check_time = 0;
@@ -236,11 +236,6 @@ void process_packet(String packet) {
         nano_boot_millis = millis();
         last_received_timestamp = 0; // Reset timestamp on new connection
         logger.info("Sensor module connection established.");
-        // Start init sequence if not already active
-        if (!init_sequence_active) {
-            init_sequence_active = true;
-            current_init_command_index = 0;
-        }
     }
 
     UITask::getInstance().update_sensor_status(true);
@@ -321,8 +316,11 @@ void process_packet(String packet) {
 
             UITask::getInstance().update_temp_humi(t, h);
             UITask::getInstance().update_fan_current(amps, fan_status);
+            UITask::getInstance().update_compressor_amps(compressor_amps_avg.getAverage());
+            UITask::getInstance().update_pump_amps(geothermal_pump_amps_avg.getAverage());
             UITask::getInstance().update_co2(co2_avg.getAverage());
             UITask::getInstance().update_voc(voc_avg.getAverage());
+            UITask::getInstance().update_nox(nox_avg.getAverage());
             UITask::getInstance().update_pm_values(pm1_avg.getAverage(), pm25_avg.getAverage(), pm4_avg.getAverage(), pm10_avg.getAverage());
 
             haManager.publishHighPressureStatus(is_pressure_high);
@@ -734,7 +732,7 @@ void loop() {
         if (pending_init_commands[current_init_command_index] == CMD_NONE) {
             init_sequence_active = false;
             logger.info("Init sequence completed successfully.");
-        } else if (millis() - last_init_command_time > INIT_COMMAND_TIMEOUT_MS) {
+        } else if ((millis() - last_init_command_time > INIT_COMMAND_TIMEOUT_MS) || (last_init_command_time == 0)) {
             char cmd_to_send = 0;
             switch (pending_init_commands[current_init_command_index]) {
                 case CMD_VERSION: cmd_to_send = CMD_GET_VERSION; break;
@@ -800,7 +798,8 @@ void loop() {
             haManager.setSensorStackVersionUnavailable();
             haManager.publishSensorStackUptime(0, true);
             UITask::getInstance().clearSensorReadings();
-            
+            init_sequence_active = true;
+            current_init_command_index = 0;
             // Nano disconnected status will be handled in main loop
         }
     }
@@ -828,30 +827,38 @@ void loop() {
 #ifdef BMP280_ENABLED
         float current_temperature = bmp280_temperature_avg.getAverage();
         float current_pressure = bmp280_pressure_avg.getAverage();
+        bool values_fresh = !bmp280_temperature_avg.isEmpty() && !bmp280_pressure_avg.isEmpty();
 #else
         // Use dummy values when BMP280 is disabled
         float current_temperature = 20.0f; // Default temperature 20°C
         float current_pressure = 101325.0f; // Standard atmospheric pressure 101325 Pa
+        bool values_fresh = true; // Assume fresh values for dummy case
 #endif
         
         // Convert ppb values to µg/m³
-        float o3_ug_per_m3 = GasConcentrationConverter::convertO3PpbToUgPerM3(
-            o3_avg.getAverage(), current_temperature, current_pressure);
-        float no2_ug_per_m3 = GasConcentrationConverter::convertNO2PpbToUgPerM3(
-            no2_avg.getAverage(), current_temperature, current_pressure);
-        
-        // Debug logging for conversion
-        logger.debugf("Gas Conversion: O3=%u ppb -> %.2f µg/m³, NO2=%u ppb -> %.2f µg/m³ (T=%.1f°C, P=%.1f Pa)", 
-            o3_avg.getAverage(), o3_ug_per_m3, no2_avg.getAverage(), no2_ug_per_m3, 
-            current_temperature, current_pressure);
-        
-        // Publish converted values to Home Assistant
-        haManager.publish_O3_NOx_Values(
-            o3_ug_per_m3, 
-            no2_ug_per_m3, 
-            fast_aqi_avg.getAverage(), 
-            epa_aqi_avg.getAverage()
-        );
+        if(values_fresh){
+            float o3_ug_per_m3 = GasConcentrationConverter::convertO3PpbToUgPerM3(
+                o3_avg.getAverage(), current_temperature, current_pressure);
+            float no2_ug_per_m3 = GasConcentrationConverter::convertNO2PpbToUgPerM3(
+                no2_avg.getAverage(), current_temperature, current_pressure);
+            
+            // Debug logging for conversion
+            logger.debugf("Gas Conversion: O3=%u ppb -> %.2f µg/m³, NO2=%u ppb -> %.2f µg/m³ (T=%.1f°C, P=%.1f Pa)", 
+                o3_avg.getAverage(), o3_ug_per_m3, no2_avg.getAverage(), no2_ug_per_m3, 
+                current_temperature, current_pressure);
+            
+            // Update UI with converted values
+            UITask::getInstance().update_no2(no2_ug_per_m3);
+            UITask::getInstance().update_o3(o3_ug_per_m3);
+            
+            // Publish converted values to Home Assistant
+            haManager.publish_O3_NOx_Values(
+                o3_ug_per_m3, 
+                no2_ug_per_m3, 
+                fast_aqi_avg.getAverage(), 
+                epa_aqi_avg.getAverage()
+            );
+        }
     }
     
     // Get BMP280 sensor data
