@@ -96,6 +96,15 @@ public:
         return sum / count;
     }
 
+    /**
+     * @brief Returns if the history buffer is empty.
+     * @return True if the history buffer is empty, false otherwise.
+     */
+    bool isEmpty() const {
+        // Check if the history buffer is empty
+        return count == 0;
+    }
+
 private:
     // A structure to hold a sensor value and its timestamp.
     struct DataPoint {

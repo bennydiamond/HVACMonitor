@@ -8,7 +8,13 @@ void UITileManager::create_all_tiles(lv_obj_t* parent_tv, ConfigManager* config,
 
     secondary_tile = new UISecondaryTile(config);
     secondary_tile_obj = secondary_tile->create_tile(parent_tv);
-    secondary_tile->set_fan_status_icon(fan_status_icon);
+
+    gas_tile = new UIGasTile(config);
+    gas_tile_obj = gas_tile->create_tile(parent_tv);
+
+    powerdraw_tile = new UIPowerdrawTile(config);
+    powerdraw_tile_obj = powerdraw_tile->create_tile(parent_tv);
+    powerdraw_tile->set_fan_status_icon(fan_status_icon);
 
     runtime_tile = new UIRuntimeTile();
     runtime_tile_obj = runtime_tile->create_tile(parent_tv);
@@ -32,12 +38,18 @@ void UITileManager::create_all_tiles(lv_obj_t* parent_tv, ConfigManager* config,
 void UITileManager::clear_all_readings() {
     if (main_tile) main_tile->clear_readings();
     if (secondary_tile) secondary_tile->clear_readings();
+    if (gas_tile) gas_tile->clear_readings();
+    if (powerdraw_tile) powerdraw_tile->clear_readings();
 }
 
 void UITileManager::update_pressure(float p) { if (main_tile) main_tile->update_pressure(p); }
 void UITileManager::update_co2(float co2) { if (main_tile) main_tile->update_co2(co2); }
 void UITileManager::update_voc(int32_t voc) { if (main_tile) main_tile->update_voc(voc); }
-void UITileManager::update_fan_status(FanStatus status) { if (secondary_tile) secondary_tile->update_fan_status(status); }
+void UITileManager::update_no2(float no2) { if (gas_tile) gas_tile->update_no2(no2); }
+void UITileManager::update_o3(float o3) { if (gas_tile) gas_tile->update_o3(o3); }
+void UITileManager::update_nox(float nox) { if (gas_tile) gas_tile->update_nox(nox); }
+void UITileManager::update_co(float co) { if (gas_tile) gas_tile->update_co(co); }
+void UITileManager::update_fan_status(FanStatus status) { if (powerdraw_tile) powerdraw_tile->update_fan_status(status); }
 void UITileManager::set_initial_debug_info(const char* ver, const char* rst_reason) { if (runtime_tile) runtime_tile->set_initial_info(ver, rst_reason); }
 void UITileManager::update_scd30_autocal(bool enabled) { if (scd30_tile) scd30_tile->update_autocal_state(enabled); }
 void UITileManager::update_scd30_forcecal(uint16_t ppm) { if (scd30_tile) scd30_tile->update_forcecal_value(ppm); }
@@ -50,7 +62,10 @@ void UITileManager::update_pm1(float pm1) { if (secondary_tile) secondary_tile->
 void UITileManager::update_pm25(float pm25) { if (secondary_tile) secondary_tile->update_pm25(pm25); }
 void UITileManager::update_pm4(float pm4) { if (secondary_tile) secondary_tile->update_pm4(pm4); }
 void UITileManager::update_pm10(float pm10) { if (secondary_tile) secondary_tile->update_pm10(pm10); }
-void UITileManager::update_fan_amps(float amps) { if (secondary_tile) secondary_tile->update_fan_amps(amps); }
+void UITileManager::update_fan_amps(float amps) { if (powerdraw_tile) powerdraw_tile->update_fan_current(amps, FAN_STATUS_NORMAL); }
+void UITileManager::update_compressor_amps(float amps) { if (powerdraw_tile) powerdraw_tile->update_compressor_current(amps); }
+void UITileManager::update_pump_amps(float amps) { if (powerdraw_tile) powerdraw_tile->update_pump_current(amps); }
+void UITileManager::update_water_sensor(bool water_ok) { if (powerdraw_tile) powerdraw_tile->update_water_sensor(water_ok); }
 void UITileManager::update_sps30_fan_interval(unsigned long v) { if (sps30_tile) sps30_tile->update_sps30_fan_interval(v); }
 void UITileManager::update_sps30_fan_days(unsigned long v) { if (sps30_tile) sps30_tile->update_sps30_fan_days(v); }
 void UITileManager::update_sgp41_test_status(int v) { if (sgp41_tile) sgp41_tile->update_sgp41_test_status(v); }

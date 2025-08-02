@@ -19,6 +19,9 @@ public:
     virtual void update_pm4(float pm4) = 0;
     virtual void update_pm10(float pm10) = 0;
     virtual void update_fan_amps(float amps) = 0;
+    virtual void update_compressor_amps(float amps) = 0;
+    virtual void update_pump_amps(float amps) = 0;
+    virtual void update_water_sensor(bool water_ok) = 0;
     virtual void update_fan_status(FanStatus status) = 0;
     virtual void update_high_pressure_status(bool is_high) = 0;
     virtual void update_wifi_status(bool connected, int8_t rssi) = 0;
@@ -26,6 +29,10 @@ public:
     virtual void update_sensor_status(bool connected) = 0;
     virtual void update_co2(float co2_ppm) = 0;
     virtual void update_voc(int32_t voc_index) = 0;
+    virtual void update_no2(float no2_ppb) = 0;
+    virtual void update_o3(float o3_ppb) = 0;
+    virtual void update_nox(float nox_ppb) = 0;
+    virtual void update_co(float co_ppm) = 0;
     virtual void set_initial_debug_info(const char* version, const char* reason) = 0;
     virtual void update_sps30_fan_interval(unsigned long fan_interval) = 0;
     virtual void update_sps30_fan_days(unsigned long fan_days) = 0;

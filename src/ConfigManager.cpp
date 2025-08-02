@@ -14,6 +14,14 @@ const char* ConfigManager::KEY_CO2_WARN = "co2_warn_ui";
 const char* ConfigManager::KEY_CO2_DANGER = "co2_danger_ui";
 const char* ConfigManager::KEY_VOC_WARN = "voc_warn_ui";
 const char* ConfigManager::KEY_VOC_DANGER = "voc_danger_ui";
+const char* ConfigManager::KEY_NO2_WARN = "no2_warn_ui";
+const char* ConfigManager::KEY_NO2_DANGER = "no2_danger_ui";
+const char* ConfigManager::KEY_O3_WARN = "o3_warn_ui";
+const char* ConfigManager::KEY_O3_DANGER = "o3_danger_ui";
+const char* ConfigManager::KEY_NOX_WARN = "nox_warn_ui";
+const char* ConfigManager::KEY_NOX_DANGER = "nox_danger_ui";
+const char* ConfigManager::KEY_CO_WARN = "co_warn_ui";
+const char* ConfigManager::KEY_CO_DANGER = "co_danger_ui";
 const char* ConfigManager::KEY_PM1_WARN = "pm1_warn_ui";
 const char* ConfigManager::KEY_PM1_DANGER = "pm1_danger_ui";
 const char* ConfigManager::KEY_PM25_WARN = "pm25_warn_ui";
@@ -38,6 +46,14 @@ const int ConfigManager::DEFAULT_CO2_WARN_THRESHOLD = 1000;
 const int ConfigManager::DEFAULT_CO2_DANGER_THRESHOLD = 2000;
 const int ConfigManager::DEFAULT_VOC_WARN_THRESHOLD = 200;
 const int ConfigManager::DEFAULT_VOC_DANGER_THRESHOLD = 300;
+const int ConfigManager::DEFAULT_NO2_WARN_THRESHOLD = 40;
+const int ConfigManager::DEFAULT_NO2_DANGER_THRESHOLD = 100;
+const int ConfigManager::DEFAULT_O3_WARN_THRESHOLD = 60;
+const int ConfigManager::DEFAULT_O3_DANGER_THRESHOLD = 120;
+const int ConfigManager::DEFAULT_NOX_WARN_THRESHOLD = 100;
+const int ConfigManager::DEFAULT_NOX_DANGER_THRESHOLD = 200;
+const int ConfigManager::DEFAULT_CO_WARN_THRESHOLD = 4;
+const int ConfigManager::DEFAULT_CO_DANGER_THRESHOLD = 9;
 const int ConfigManager::DEFAULT_PM1_WARN_THRESHOLD = 25;
 const int ConfigManager::DEFAULT_PM1_DANGER_THRESHOLD = 35;
 const int ConfigManager::DEFAULT_PM25_WARN_THRESHOLD = 25;
@@ -65,6 +81,14 @@ void ConfigManager::init() {
         co2DangerThreshold = DEFAULT_CO2_DANGER_THRESHOLD;
         vocWarnThreshold = DEFAULT_VOC_WARN_THRESHOLD;
         vocDangerThreshold = DEFAULT_VOC_DANGER_THRESHOLD;
+        no2WarnThreshold = DEFAULT_NO2_WARN_THRESHOLD;
+        no2DangerThreshold = DEFAULT_NO2_DANGER_THRESHOLD;
+        o3WarnThreshold = DEFAULT_O3_WARN_THRESHOLD;
+        o3DangerThreshold = DEFAULT_O3_DANGER_THRESHOLD;
+        noxWarnThreshold = DEFAULT_NOX_WARN_THRESHOLD;
+        noxDangerThreshold = DEFAULT_NOX_DANGER_THRESHOLD;
+        coWarnThreshold = DEFAULT_CO_WARN_THRESHOLD;
+        coDangerThreshold = DEFAULT_CO_DANGER_THRESHOLD;
         pm1WarnThreshold = DEFAULT_PM1_WARN_THRESHOLD;
         pm1DangerThreshold = DEFAULT_PM1_DANGER_THRESHOLD;
         pm25WarnThreshold = DEFAULT_PM25_WARN_THRESHOLD;
@@ -94,6 +118,14 @@ void ConfigManager::init() {
     co2DangerThreshold = preferences.getInt(KEY_CO2_DANGER, DEFAULT_CO2_DANGER_THRESHOLD);
     vocWarnThreshold = preferences.getInt(KEY_VOC_WARN, DEFAULT_VOC_WARN_THRESHOLD);
     vocDangerThreshold = preferences.getInt(KEY_VOC_DANGER, DEFAULT_VOC_DANGER_THRESHOLD);
+    no2WarnThreshold = preferences.getInt(KEY_NO2_WARN, DEFAULT_NO2_WARN_THRESHOLD);
+    no2DangerThreshold = preferences.getInt(KEY_NO2_DANGER, DEFAULT_NO2_DANGER_THRESHOLD);
+    o3WarnThreshold = preferences.getInt(KEY_O3_WARN, DEFAULT_O3_WARN_THRESHOLD);
+    o3DangerThreshold = preferences.getInt(KEY_O3_DANGER, DEFAULT_O3_DANGER_THRESHOLD);
+    noxWarnThreshold = preferences.getInt(KEY_NOX_WARN, DEFAULT_NOX_WARN_THRESHOLD);
+    noxDangerThreshold = preferences.getInt(KEY_NOX_DANGER, DEFAULT_NOX_DANGER_THRESHOLD);
+    coWarnThreshold = preferences.getInt(KEY_CO_WARN, DEFAULT_CO_WARN_THRESHOLD);
+    coDangerThreshold = preferences.getInt(KEY_CO_DANGER, DEFAULT_CO_DANGER_THRESHOLD);
     pm1WarnThreshold = preferences.getInt(KEY_PM1_WARN, DEFAULT_PM1_WARN_THRESHOLD);
     pm1DangerThreshold = preferences.getInt(KEY_PM1_DANGER, DEFAULT_PM1_DANGER_THRESHOLD);
     pm25WarnThreshold = preferences.getInt(KEY_PM25_WARN, DEFAULT_PM25_WARN_THRESHOLD);
@@ -176,6 +208,14 @@ int ConfigManager::getCo2WarnThreshold() { return co2WarnThreshold; }
 int ConfigManager::getCo2DangerThreshold() { return co2DangerThreshold; }
 int ConfigManager::getVocWarnThreshold() { return vocWarnThreshold; }
 int ConfigManager::getVocDangerThreshold() { return vocDangerThreshold; }
+int ConfigManager::getNo2WarnThreshold() { return no2WarnThreshold; }
+int ConfigManager::getNo2DangerThreshold() { return no2DangerThreshold; }
+int ConfigManager::getO3WarnThreshold() { return o3WarnThreshold; }
+int ConfigManager::getO3DangerThreshold() { return o3DangerThreshold; }
+int ConfigManager::getNoxWarnThreshold() { return noxWarnThreshold; }
+int ConfigManager::getNoxDangerThreshold() { return noxDangerThreshold; }
+int ConfigManager::getCoWarnThreshold() { return coWarnThreshold; }
+int ConfigManager::getCoDangerThreshold() { return coDangerThreshold; }
 int ConfigManager::getPm1WarnThreshold() { return pm1WarnThreshold; }
 int ConfigManager::getPm1DangerThreshold() { return pm1DangerThreshold; }
 int ConfigManager::getPm25WarnThreshold() { return pm25WarnThreshold; }
@@ -263,6 +303,86 @@ void ConfigManager::setVocDangerThreshold(int value) {
             logger.infof("Saved new VOC DANGER threshold: %d", value);
         } else {
             logger.errorf("Failed to save key '%s' to NVS.", KEY_VOC_DANGER);
+        }
+    }
+}
+void ConfigManager::setNo2WarnThreshold(int value) {
+    if (no2WarnThreshold != value) {
+        no2WarnThreshold = value;
+        if (preferences.putInt(KEY_NO2_WARN, value) > 0) {
+            logger.infof("Saved new NO2 WARN threshold: %d", value);
+        } else {
+            logger.errorf("Failed to save key '%s' to NVS.", KEY_NO2_WARN);
+        }
+    }
+}
+void ConfigManager::setNo2DangerThreshold(int value) {
+    if (no2DangerThreshold != value) {
+        no2DangerThreshold = value;
+        if (preferences.putInt(KEY_NO2_DANGER, value) > 0) {
+            logger.infof("Saved new NO2 DANGER threshold: %d", value);
+        } else {
+            logger.errorf("Failed to save key '%s' to NVS.", KEY_NO2_DANGER);
+        }
+    }
+}
+void ConfigManager::setO3WarnThreshold(int value) {
+    if (o3WarnThreshold != value) {
+        o3WarnThreshold = value;
+        if (preferences.putInt(KEY_O3_WARN, value) > 0) {
+            logger.infof("Saved new O3 WARN threshold: %d", value);
+        } else {
+            logger.errorf("Failed to save key '%s' to NVS.", KEY_O3_WARN);
+        }
+    }
+}
+void ConfigManager::setO3DangerThreshold(int value) {
+    if (o3DangerThreshold != value) {
+        o3DangerThreshold = value;
+        if (preferences.putInt(KEY_O3_DANGER, value) > 0) {
+            logger.infof("Saved new O3 DANGER threshold: %d", value);
+        } else {
+            logger.errorf("Failed to save key '%s' to NVS.", KEY_O3_DANGER);
+        }
+    }
+}
+void ConfigManager::setNoxWarnThreshold(int value) {
+    if (noxWarnThreshold != value) {
+        noxWarnThreshold = value;
+        if (preferences.putInt(KEY_NOX_WARN, value) > 0) {
+            logger.infof("Saved new NOx WARN threshold: %d", value);
+        } else {
+            logger.errorf("Failed to save key '%s' to NVS.", KEY_NOX_WARN);
+        }
+    }
+}
+void ConfigManager::setNoxDangerThreshold(int value) {
+    if (noxDangerThreshold != value) {
+        noxDangerThreshold = value;
+        if (preferences.putInt(KEY_NOX_DANGER, value) > 0) {
+            logger.infof("Saved new NOx DANGER threshold: %d", value);
+        } else {
+            logger.errorf("Failed to save key '%s' to NVS.", KEY_NOX_DANGER);
+        }
+    }
+}
+void ConfigManager::setCoWarnThreshold(int value) {
+    if (coWarnThreshold != value) {
+        coWarnThreshold = value;
+        if (preferences.putInt(KEY_CO_WARN, value) > 0) {
+            logger.infof("Saved new CO WARN threshold: %d", value);
+        } else {
+            logger.errorf("Failed to save key '%s' to NVS.", KEY_CO_WARN);
+        }
+    }
+}
+void ConfigManager::setCoDangerThreshold(int value) {
+    if (coDangerThreshold != value) {
+        coDangerThreshold = value;
+        if (preferences.putInt(KEY_CO_DANGER, value) > 0) {
+            logger.infof("Saved new CO DANGER threshold: %d", value);
+        } else {
+            logger.errorf("Failed to save key '%s' to NVS.", KEY_CO_DANGER);
         }
     }
 }

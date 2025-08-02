@@ -3,7 +3,7 @@
 #include "Logger.h"
 #include "SerialMutex.h"
 
-//#define I2C_BRIDGE_DEBUG // Uncomment for debug output
+#define I2C_BRIDGE_DEBUG // Uncomment for debug output
 
 // Private member variables for the singleton
 unsigned long I2CBridge::_timeout_ms = 1000;
@@ -185,7 +185,7 @@ I2CBridge::Result I2CBridge::readBytes(uint8_t addr, uint8_t len) {
 #endif
     
     // Wait for response with timeout
-    if (xQueueReceive(_response_queue, &result, pdMS_TO_TICKS(500)) == pdTRUE) {
+    if (xQueueReceive(_response_queue, &result, pdMS_TO_TICKS(1000)) == pdTRUE) {
         // Log the received data
         if (result.data_len > 0) {
             String hexData;
@@ -236,7 +236,7 @@ I2CBridge::Result I2CBridge::writeBytes(uint8_t addr, uint8_t* data, uint8_t len
     logger.debugf("I2CBridge: Waiting for write response (addr=0x%02X, data=%s)", addr, hexData.c_str());
 #endif
     // Wait for response with timeout
-    if (xQueueReceive(_response_queue, &result, pdMS_TO_TICKS(500)) == pdTRUE) {
+    if (xQueueReceive(_response_queue, &result, pdMS_TO_TICKS(1000)) == pdTRUE) {
 #ifdef I2C_BRIDGE_DEBUG
         logger.debugf("I2CBridge: Write response received - addr=0x%02X, status=%d", addr, result.error_code);
 #endif
@@ -271,7 +271,10 @@ I2CBridge::Result I2CBridge::writeReadBytes(uint8_t addr, uint8_t* writeData, ui
     send_i2c_write_read_request(addr, writeData, writeLen, readLen);
     
     // Wait for response with timeout
-    if (xQueueReceive(_response_queue, &result, pdMS_TO_TICKS(500)) == pdTRUE) {
+#ifdef I2C_BRIDGE_DEBUG
+    uint32_t start_time = millis();
+#endif
+    if (xQueueReceive(_response_queue, &result, pdMS_TO_TICKS(1000)) == pdTRUE) {
         // Log the received data
         if (result.data_len > 0) {
             String readHexData;
@@ -282,21 +285,27 @@ I2CBridge::Result I2CBridge::writeReadBytes(uint8_t addr, uint8_t* writeData, ui
                 readHexData += hex;
             }
 #ifdef I2C_BRIDGE_DEBUG
-            logger.debugf("I2CBridge: Write-read response received - addr=0x%02X, status=%d, data=%s", 
-                         addr, result.error_code, readHexData.c_str());
+            logger.debugf("I2CBridge: Write-read response received (%u ms round trip) - addr=0x%02X, status=%d, data=%s", 
+                         millis() - start_time, addr, result.error_code, readHexData.c_str());
 #endif
         } 
 #ifdef I2C_BRIDGE_DEBUG
         else if (result.error_code == I2C_ERROR_NONE) {
-            logger.debugf("I2CBridge: Write-read response received - addr=0x%02X, status=%d, no data", 
-                         addr, result.error_code);
+            logger.debugf("I2CBridge: Write-read response received (%u ms round trip) - addr=0x%02X, status=%d, no data", 
+                         millis() - start_time, addr, result.error_code);
         } else {
-            logger.debugf("I2CBridge: Write-read response received - addr=0x%02X, status=%d, no data", 
-                         addr, result.error_code);
+            logger.debugf("I2CBridge: Failed Write-read response received (%u ms round trip) - addr=0x%02X, status=%d, no data", 
+                         millis() - start_time, addr, result.error_code);
         }
 #endif
         return result;
     }
+#ifdef I2C_BRIDGE_DEBUG
+    else {
+        logger.debugf("I2CBridge: Failed Write-read response timeout (%u ms round trip) for addr=0x%02X, reg=0x%02X", 
+                  millis() - start_time, addr, writeLen > 0 ? writeData[0] : 0);
+    }
+#endif
     
     // Timeout occurred
     logger.warningf("I2CBridge: Write-read response timeout for addr=0x%02X, reg=0x%02X", 
@@ -339,6 +348,11 @@ void I2CBridge::processReadResponse(uint8_t status, uint8_t* data, uint8_t len) 
     }
 #endif
     
+    // Log I2C read response received from Nano
+    if (status != I2C_ERROR_NONE) {
+        logger.warningf("ESP32: Received I2C read error from Nano - status: %d, data_len: %d", status, len);
+    }
+    
     // Send to queue for any waiting tasks
     BaseType_t result_sent = xQueueSend(_response_queue, &result, 0);
     if (result_sent != pdTRUE) {
@@ -357,6 +371,12 @@ void I2CBridge::processWriteResponse(uint8_t status) {
 #ifdef I2C_BRIDGE_DEBUG
     logger.debugf("I2CBridge: Sending write response to queue - status: %d", status);
 #endif
+    
+    // Log I2C write response received from Nano
+    if (status != I2C_ERROR_NONE) {
+        logger.warningf("ESP32: Received I2C write error from Nano - status: %d", status);
+    }
+    
     // Send to queue for any waiting tasks
     BaseType_t result_sent = xQueueSend(_response_queue, &result, 0);
     if (result_sent != pdTRUE) {

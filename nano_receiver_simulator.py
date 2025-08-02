@@ -15,6 +15,9 @@ current_co2 = 450
 current_voc_raw = 27500
 current_nox_raw = 15000
 current_amps = 0.0
+current_compressor_amps = 8.5
+current_geothermal_pump_amps = 2.1
+current_liquid_level_sensor_state = 1
 current_pm1_0 = 5.2
 current_pm2_5 = 8.9
 current_pm4_0 = 10.1
@@ -54,13 +57,15 @@ def calculate_checksum(data_str):
         crc &= 0xFF
     return crc
 
-def format_packet(p, pulse_count, t, h, co2, voc, nox, amps, pm1, pm25, pm4, pm10):
-    """Formats the data into the <pressure,pulse_count,temp,humi,co2,voc,nox,amps,pm...,checksum>\n protocol."""
+def format_packet(p, pulse_count, t, h, co2, voc, nox, amps, pm1, pm25, pm4, pm10, compressor_amps, geothermal_pump_amps, liquid_level_sensor_state):
+    """Formats the data into the <pressure,pulse_count,temp,humi,co2,voc,nox,amps,pm...,compressor_amps,geothermal_pump_amps,liquid_level_sensor_state,checksum>\n protocol."""
     p_val, t_val, h_val = int(p * 10), int(t * 10), int(h * 10)
     co2_val, amps_val = int(co2), int(amps * 100)
     pm1_val, pm25_val = int(pm1 * 10), int(pm25 * 10)
     pm4_val, pm10_val = int(pm4 * 10), int(pm10 * 10)
-    payload = f"{p_val},{pulse_count},{t_val},{h_val},{co2_val},{int(voc)},{int(nox)},{amps_val},{pm1_val},{pm25_val},{pm4_val},{pm10_val}"
+    compressor_amps_val = int(compressor_amps * 100)
+    geothermal_pump_amps_val = int(geothermal_pump_amps * 100)
+    payload = f"{p_val},{pulse_count},{t_val},{h_val},{co2_val},{int(voc)},{int(nox)},{amps_val},{pm1_val},{pm25_val},{pm4_val},{pm10_val},{compressor_amps_val},{geothermal_pump_amps_val},{int(liquid_level_sensor_state)}"
     data_part = f"S{payload}"
     checksum = calculate_checksum(data_part)
     return f"<{data_part},{checksum}>\n"
@@ -125,6 +130,7 @@ def user_input_thread():
     """A separate thread to handle user input without blocking."""
     global current_pressure, current_pulse_count, current_temperature, current_humidity
     global current_co2, current_voc_raw, current_nox_raw, current_amps, stop_threads, ser
+    global current_compressor_amps, current_geothermal_pump_amps, current_liquid_level_sensor_state
     global current_pm1_0, current_pm2_5, current_pm4_0, current_pm10_0
     global current_aht20_temp, current_aht20_humidity, current_bmp280_pressure, current_bmp280_temp
     global current_zmod4510_o3, current_zmod4510_no2, current_zmod4510_fast_aqi, current_zmod4510_epa_aqi
@@ -142,6 +148,9 @@ def user_input_thread():
     print("  write_zmod4510    - Send I2C write to ZMOD4510 (trigger measurement)")
     print("  I<addr>,<bytes>   - Send custom I2C read (e.g., I38,07)")
     print("  W<addr>,<len>,<data> - Send custom I2C write (e.g., W38,03,AC,33,00)")
+    print("  compressor_amps <number> - Set compressor current in Amps (e.g., compressor_amps 8.5)")
+    print("  geothermal_amps <number> - Set geothermal pump current in Amps (e.g., geothermal_amps 2.1)")
+    print("  liquid_level <0|1> - Set liquid level sensor state (e.g., liquid_level 1)")
     print("  quit              - Exit the simulator")
     print("-------------------------------------\n")
     
@@ -239,6 +248,15 @@ def user_input_thread():
             elif cmd_type == 'zmod4510_epa_aqi' and len(parts) > 1:
                 current_zmod4510_epa_aqi = int(parts[1])
                 print(f"--> [SIM] ZMOD4510 EPA AQI set to {current_zmod4510_epa_aqi}")
+            elif cmd_type == 'compressor_amps' and len(parts) > 1:
+                current_compressor_amps = float(parts[1])
+                print(f"--> [SIM] Compressor current set to {current_compressor_amps:.2f} A")
+            elif cmd_type == 'geothermal_amps' and len(parts) > 1:
+                current_geothermal_pump_amps = float(parts[1])
+                print(f"--> [SIM] Geothermal pump current set to {current_geothermal_pump_amps:.2f} A")
+            elif cmd_type == 'liquid_level' and len(parts) > 1:
+                current_liquid_level_sensor_state = int(parts[1])
+                print(f"--> [SIM] Liquid level sensor state set to {current_liquid_level_sensor_state}")
             else:
                 current_pressure = float(command)
                 print(f"--> [SIM] Pressure set to {current_pressure:.1f} Pa")

@@ -83,9 +83,16 @@ void UI::update_pm25(float pm25) { if (tileManager) tileManager->update_pm25(pm2
 void UI::update_pm4(float pm4) { if (tileManager) tileManager->update_pm4(pm4); }
 void UI::update_pm10(float pm10) { if (tileManager) tileManager->update_pm10(pm10); }
 void UI::update_fan_amps(float amps) { if (tileManager) tileManager->update_fan_amps(amps); }
+void UI::update_compressor_amps(float amps) { if (tileManager) tileManager->update_compressor_amps(amps); }
+void UI::update_pump_amps(float amps) { if (tileManager) tileManager->update_pump_amps(amps); }
+void UI::update_water_sensor(bool water_ok) { if (tileManager) tileManager->update_water_sensor(water_ok); }
 void UI::update_fan_status(FanStatus s) { if (tileManager) tileManager->update_fan_status(s); }
 void UI::update_co2(float co2) { if (tileManager) tileManager->update_co2(co2); }
-void UI::update_voc(int32_t voc) { if (tileManager) tileManager->update_voc(voc); }
+void UI::update_voc(int32_t voc_index) { if (tileManager) tileManager->update_voc(voc_index); }
+void UI::update_no2(float no2_ppb) { if (tileManager) tileManager->update_no2(no2_ppb); }
+void UI::update_o3(float o3_ppb) { if (tileManager) tileManager->update_o3(o3_ppb); }
+void UI::update_nox(float nox_ppb) { if (tileManager) tileManager->update_nox(nox_ppb); }
+void UI::update_co(float co_ppm) { if (tileManager) tileManager->update_co(co_ppm); }
 void UI::set_initial_debug_info(const char* v, const char* r) { if (tileManager) tileManager->set_initial_debug_info(v, r); }
 void UI::update_scd30_autocal(bool enabled) { if (tileManager) tileManager->update_scd30_autocal(enabled); }
 void UI::update_scd30_forcecal(uint16_t ppm) { if (tileManager) tileManager->update_scd30_forcecal(ppm); }
@@ -149,6 +156,7 @@ void UI::create_main_tileview() {
     lv_obj_align(tileview, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_pad_all(tileview, 5, 0);
     lv_obj_set_scrollbar_mode(tileview, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_scroll_dir(tileview, LV_DIR_VER | LV_DIR_RIGHT);
     lv_obj_add_event_cb(tileview, tile_change_event_cb_static, LV_EVENT_VALUE_CHANGED, this);
 }
 
@@ -249,7 +257,7 @@ void UI::tile_change_event_cb(lv_event_t * e) {
     }
     prev_tile = active_tile;
     
-    if (tileManager && (active_tile == tileManager->get_tile1() || active_tile == tileManager->get_secondary_tile())) {
+    if (tileManager && (active_tile == tileManager->get_tile1() || active_tile == tileManager->get_secondary_tile() || active_tile == tileManager->get_gas_tile() || active_tile == tileManager->get_powerdraw_tile())) {
         // Show status bar for first column tiles
         if(status_bar) lv_obj_clear_flag(status_bar, LV_OBJ_FLAG_HIDDEN);
         // Force grid layout refresh to maintain proper alignment
