@@ -5,7 +5,9 @@
 
 SensorTask::SensorTask() 
     : latestZMOD4510Values(),
+#ifdef BMP280_ENABLED
       latestBMP280Values(),
+#endif
 #ifdef AHT20_ENABLED
       latestAHT20Values(),
 #endif
@@ -40,7 +42,9 @@ void SensorTask::init() {
     
     // Initialize managers (simple initialization that cannot fail)
     ZMOD4510Manager::getInstance().init();
+#ifdef BMP280_ENABLED
     BMP280Manager::getInstance().begin();
+#endif
 #ifdef AHT20_ENABLED
     AHT20Manager::getInstance().init();
 #endif
@@ -82,6 +86,7 @@ bool SensorTask::getZMOD4510Data(ZMOD4510Values& outValues) {
     return newValuesAvailable;
 }
 
+#ifdef BMP280_ENABLED
 bool SensorTask::getBMP280Data(BMP280Values& outValues) {
     bool newValuesAvailable = false;
     if (xSemaphoreTake(stateMutex, portMAX_DELAY) == pdTRUE) {
@@ -92,6 +97,7 @@ bool SensorTask::getBMP280Data(BMP280Values& outValues) {
     }
     return newValuesAvailable;
 }
+#endif
 #ifdef AHT20_ENABLED
 bool SensorTask::getAHT20Data(AHT20Values& outValues) {
     bool newValuesAvailable = false;
@@ -177,7 +183,9 @@ void SensorTask::taskLoop() {
         } else if (nanoRebootDetected) {
             logger.warning("Nano reboot detected, notifying managers");
             ZMOD4510Manager::getInstance().onNanoReboot();
+#ifdef BMP280_ENABLED
             BMP280Manager::getInstance().onNanoReboot();
+#endif
 #ifdef AHT20_ENABLED
             AHT20Manager::getInstance().onNanoReboot();
 #endif
@@ -187,7 +195,9 @@ void SensorTask::taskLoop() {
         
         // Signal managers about connection status
         ZMOD4510Manager::getInstance().onConnectionStatusChanged(connected);
+#ifdef BMP280_ENABLED
         BMP280Manager::getInstance().onConnectionStatusChanged(connected);
+#endif
 #ifdef AHT20_ENABLED
         AHT20Manager::getInstance().onConnectionStatusChanged(connected);
 #endif
@@ -195,6 +205,7 @@ void SensorTask::taskLoop() {
         // Only process sensors if Nano is connected and alive
         if (connected) {
             // Process BMP280 sensor
+#ifdef BMP280_ENABLED
             BMP280Manager::getInstance().process();
             
             // Check for new BMP280 data
@@ -210,6 +221,7 @@ void SensorTask::taskLoop() {
                     }
                 }
             }
+#endif
             
             // Process AHT20 sensor
 #ifdef AHT20_ENABLED

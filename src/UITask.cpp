@@ -30,10 +30,24 @@ const UITask::UIUpdateFunc UITask::updateTable[UI_MSG_COUNT] = {
     [](IUIUpdater* u, const UIMessage& m) { u->update_humi(m.value.f); },
     // UI_FAN_CURRENT
     [](IUIUpdater* u, const UIMessage& m) { u->update_fan_amps(m.value.f); },
+    // UI_COMPRESSOR_AMPS
+    [](IUIUpdater* u, const UIMessage& m) { u->update_compressor_amps(m.value.f); },
+    // UI_PUMP_AMPS
+    [](IUIUpdater* u, const UIMessage& m) { u->update_pump_amps(m.value.f); },
+    // UI_WATER_SENSOR
+    [](IUIUpdater* u, const UIMessage& m) { u->update_water_sensor(m.value.b); },
     // UI_CO2
     [](IUIUpdater* u, const UIMessage& m) { u->update_co2(m.value.f); },
     // UI_VOC
     [](IUIUpdater* u, const UIMessage& m) { u->update_voc(m.value.f); },
+    // UI_NO2
+    [](IUIUpdater* u, const UIMessage& m) { u->update_no2(m.value.f); },
+    // UI_O3
+    [](IUIUpdater* u, const UIMessage& m) { u->update_o3(m.value.f); },
+    // UI_NOX
+    [](IUIUpdater* u, const UIMessage& m) { u->update_nox(m.value.f); },
+    // UI_CO
+    [](IUIUpdater* u, const UIMessage& m) { u->update_co(m.value.f); },
     // UI_PM1
     [](IUIUpdater* u, const UIMessage& m) { u->update_pm1(m.value.f); },
     // UI_PM25
@@ -209,6 +223,18 @@ void UITask::update_co2(float value) {
 void UITask::update_voc(float value) {
     queueSendOrWarn(UIMessage{UI_VOC, value});
 }
+void UITask::update_no2(float value) {
+    queueSendOrWarn(UIMessage{UI_NO2, value});
+}
+void UITask::update_o3(float value) {
+    queueSendOrWarn(UIMessage{UI_O3, value});
+}
+void UITask::update_nox(float value) {
+    queueSendOrWarn(UIMessage{UI_NOX, value});
+}
+void UITask::update_co(float value) {
+    queueSendOrWarn(UIMessage{UI_CO, value});
+}
 void UITask::update_geiger_reading(int cpm, float usvh) {
     queueSendOrWarn(UIMessage{UI_GEIGER_CPM, cpm});
     queueSendOrWarn(UIMessage{UI_GEIGER_USVH, usvh});
@@ -220,6 +246,15 @@ void UITask::update_temp_humi(float temp, float humi) {
 void UITask::update_fan_current(float amps, FanStatus fan_status) {
     queueSendOrWarn(UIMessage{UI_FAN_CURRENT, amps});
     queueSendOrWarn(UIMessage{UI_FAN_STATUS, static_cast<int>(fan_status)});
+}
+void UITask::update_compressor_amps(float amps) {
+    queueSendOrWarn(UIMessage{UI_COMPRESSOR_AMPS, amps});
+}
+void UITask::update_pump_amps(float amps) {
+    queueSendOrWarn(UIMessage{UI_PUMP_AMPS, amps});
+}
+void UITask::update_water_sensor(bool water_ok) {
+    queueSendOrWarn(UIMessage{UI_WATER_SENSOR, water_ok});
 }
 void UITask::update_pm_values(float v1, float v2, float v3, float v4) {
     queueSendOrWarn(UIMessage{UI_PM1, v1});

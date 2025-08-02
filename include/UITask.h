@@ -24,8 +24,15 @@ class ConfigManager;
     X(UI_TEMP) \
     X(UI_HUMI) \
     X(UI_FAN_CURRENT) \
+    X(UI_COMPRESSOR_AMPS) \
+    X(UI_PUMP_AMPS) \
+    X(UI_WATER_SENSOR) \
     X(UI_CO2) \
     X(UI_VOC) \
+    X(UI_NO2) \
+    X(UI_O3) \
+    X(UI_NOX) \
+    X(UI_CO) \
     X(UI_PM1) \
     X(UI_PM25) \
     X(UI_PM4) \
@@ -100,8 +107,15 @@ public:
     void update_geiger_reading(int cpm, float usvh);
     void update_temp_humi(float t, float h);
     void update_fan_current(float amps, FanStatus fan_status);
+    void update_compressor_amps(float amps);
+    void update_pump_amps(float amps);
+    void update_water_sensor(bool water_ok);
     void update_co2(float value);
     void update_voc(float value);
+    void update_no2(float value);
+    void update_o3(float value);
+    void update_nox(float value);
+    void update_co(float value);
     void update_pm_values(float v1, float v2, float v3, float v4);
     void update_wifi_status(bool connected, long rssi);
     void update_sensor_status(bool connected);

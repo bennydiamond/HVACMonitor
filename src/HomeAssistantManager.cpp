@@ -25,8 +25,10 @@ HomeAssistantManager::HomeAssistantManager() :
     _geiger_dose("geiger_dose", HASensor::PrecisionP2),
     _temperatureSensor("temperature", HASensor::PrecisionP1),
     _humiditySensor("humidity", HASensor::PrecisionP1),
+#ifdef BMP280_ENABLED
     _bmp280PressureSensor("bmp280_pressure", HASensorNumber::PrecisionP1),
     _bmp280TemperatureSensor("bmp280_temperature", HASensorNumber::PrecisionP1),
+#endif
 #ifdef AHT20_ENABLED
     _aht20TemperatureSensor("aht20_temperature", HASensorNumber::PrecisionP1),
     _aht20HumiditySensor("aht20_humidity", HASensorNumber::PrecisionP1),
@@ -59,7 +61,10 @@ HomeAssistantManager::HomeAssistantManager() :
     _scd30AutoCalSwitch("scd30_autocal"),
     _scd30ForceCalNumber("scd30_forcecal", HANumber::PrecisionP0),
     _esp32FreeRamSensor("esp32_free_ram", HASensor::PrecisionP0),
-    _esp32UptimeSensor("esp32_uptime", HASensorNumber::PrecisionP0)
+    _esp32UptimeSensor("esp32_uptime", HASensorNumber::PrecisionP0),
+    _compressorCurrentSensor("compressor_current", HASensorNumber::PrecisionP2),
+    _geothermalPumpCurrentSensor("geothermal_pump_current", HASensorNumber::PrecisionP2),
+    _liquidLevelSensor("liquid_level_sensor")
 {
     _instance = this;
 
@@ -72,8 +77,10 @@ HomeAssistantManager::HomeAssistantManager() :
     _lastPublishedVocIndex = -1;
     _lastPublishedNOxIndex = -1;
     _lastPublishedAmps = -1.0f;
+#ifdef BMP280_ENABLED
     _lastPublishedBMP280Pressure = -9999.0f;
     _lastPublishedBMP280Temperature = -9999.0f;
+#endif
 #ifdef AHT20_ENABLED
     _lastPublishedAHT20Temperature = -9999.0f;
     _lastPublishedAHT20Humidity = -1.0f;
@@ -111,12 +118,17 @@ HomeAssistantManager::HomeAssistantManager() :
     _lastNOxPublishTime = 0;
     _lastAmpsPublishTime = 0;
     _lastFanStatusPublishTime = 0;
+#ifdef BMP280_ENABLED
     _lastBMP280PressurePublishTime = 0;
     _lastBMP280TemperaturePublishTime = 0;
+#endif
 #ifdef AHT20_ENABLED
     _lastAHT20TemperaturePublishTime = 0;
     _lastAHT20HumidityPublishTime = 0;
 #endif
+    _lastCompressorAmpsPublishTime = 0;
+    _lastGeothermalPumpAmpsPublishTime = 0;
+    _lastLiquidLevelPublishTime = 0;
 }
 
 HomeAssistantManager::~HomeAssistantManager() {
@@ -140,6 +152,7 @@ void HomeAssistantManager::init(ConfigManager* config, const char* firmware_vers
     _pressureSensor.setIcon("mdi:gauge");
     _pressureSensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
     
+#ifdef BMP280_ENABLED
     _bmp280PressureSensor.setName("BMP280 Pressure");
     _bmp280PressureSensor.setDeviceClass("pressure");
     _bmp280PressureSensor.setUnitOfMeasurement("Pa");
@@ -151,6 +164,7 @@ void HomeAssistantManager::init(ConfigManager* config, const char* firmware_vers
     _bmp280TemperatureSensor.setUnitOfMeasurement("°C");
     _bmp280TemperatureSensor.setIcon("mdi:thermometer");
     _bmp280TemperatureSensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
+#endif
     
     _temperatureSensor.setName("Temperature");
     _temperatureSensor.setDeviceClass("temperature");
@@ -182,6 +196,23 @@ void HomeAssistantManager::init(ConfigManager* config, const char* firmware_vers
     _currentSensor.setUnitOfMeasurement("A");
     _currentSensor.setIcon("mdi:current-ac");
     _currentSensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
+
+    _compressorCurrentSensor.setName("Compressor Current");
+    _compressorCurrentSensor.setDeviceClass("current");
+    _compressorCurrentSensor.setUnitOfMeasurement("A");
+    _compressorCurrentSensor.setIcon("mdi:current-ac");
+    _compressorCurrentSensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
+
+    _geothermalPumpCurrentSensor.setName("Geothermal Pump Current");
+    _geothermalPumpCurrentSensor.setDeviceClass("current");
+    _geothermalPumpCurrentSensor.setUnitOfMeasurement("A");
+    _geothermalPumpCurrentSensor.setIcon("mdi:current-ac");
+    _geothermalPumpCurrentSensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
+
+    _liquidLevelSensor.setName("Liquid Level Sensor");
+    _liquidLevelSensor.setDeviceClass("moisture");
+    _liquidLevelSensor.setIcon("mdi:water");
+    _liquidLevelSensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
 
     _wifi_rssi.setName("WiFi RSSI");
     _wifi_rssi.setDeviceClass("signal_strength");
@@ -416,7 +447,8 @@ void HomeAssistantManager::publishSensorData(
     float pressure, int cpm, float temp, float humi,
     float co2, int32_t voc_index, int32_t nox_index, 
     float amps,
-    float pm1, float pm25, float pm4, float pm10
+    float pm1, float pm25, float pm4, float pm10,
+    float compressor_amps, float geothermal_pump_amps, bool liquid_level_sensor_state
 ) {
     unsigned long currentTime = millis();
     char data_str[10];
@@ -482,6 +514,27 @@ void HomeAssistantManager::publishSensorData(
         _lastPublishedPm4_0 = pm4; _lastPublishedPm10_0 = pm10;
         _lastPmPublishTime = currentTime;
     }
+    
+    // Publish compressor current
+    if (fabs(compressor_amps - _lastPublishedCompressorAmps) > 0.01f || (currentTime - _lastCompressorAmpsPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+        _compressorCurrentSensor.setValue(compressor_amps, true);
+        _lastPublishedCompressorAmps = compressor_amps;
+        _lastCompressorAmpsPublishTime = currentTime;
+    }
+    
+    // Publish geothermal pump current
+    if (fabs(geothermal_pump_amps - _lastPublishedGeothermalPumpAmps) > 0.01f || (currentTime - _lastGeothermalPumpAmpsPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+        _geothermalPumpCurrentSensor.setValue(geothermal_pump_amps, true);
+        _lastPublishedGeothermalPumpAmps = geothermal_pump_amps;
+        _lastGeothermalPumpAmpsPublishTime = currentTime;
+    }
+    
+    // Publish liquid level sensor state
+    if (liquid_level_sensor_state != _lastPublishedLiquidLevelState || (currentTime - _lastLiquidLevelPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+        _liquidLevelSensor.setState(liquid_level_sensor_state, true);
+        _lastPublishedLiquidLevelState = liquid_level_sensor_state;
+        _lastLiquidLevelPublishTime = currentTime;
+    }
 }
 
 void HomeAssistantManager::publish_O3_NOx_Values(
@@ -516,6 +569,7 @@ void HomeAssistantManager::publish_O3_NOx_Values(
         }
     }
 
+#ifdef BMP280_ENABLED
 void HomeAssistantManager::publishBMP280Data(float pressure_pa) {
     unsigned long currentTime = millis();
     
@@ -543,6 +597,7 @@ void HomeAssistantManager::publishBMP280Data(float pressure_pa, float temperatur
         _lastBMP280TemperaturePublishTime = currentTime;
     }
 }
+#endif
 
 #ifdef AHT20_ENABLED
 void HomeAssistantManager::publishAHT20Data(float temperature_degc, float humidity_pct) {

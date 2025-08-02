@@ -1,7 +1,8 @@
 #pragma once
 
 // --- Protocol Definitions ---
-#define CMD_BROADCAST_SENSORS 'S'
+#define CMD_GET_SENSORS        'S' // Request sensor data (changed from CMD_BROADCAST_SENSORS)
+#define RSP_SENSORS            's' // Response with sensor data
 #define CMD_GET_VERSION       'V'
 #define CMD_GET_HEALTH        'H'
 #define RSP_HEALTH            'h' // Overall health status response

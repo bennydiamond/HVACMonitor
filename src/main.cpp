@@ -37,13 +37,14 @@ const int NANO_PACKET_TIMEOUT_MS = 7000;
 const int HEALTH_RESPONSE_TIMEOUT_MS = 500;
 const int SCD30_INFO_INTERVAL_MS = 20000;
 const int STACK_CHECK_INTERVAL_MS = 60000;
+const int SENSOR_QUERY_INTERVAL_MS = 2000;  // Query sensor data every 2 seconds
 
 enum InitCommand { CMD_NONE, CMD_VERSION, CMD_HEALTH, CMD_SPS30_INFO, CMD_SCD30_INFO };
 InitCommand pending_init_commands[] = {CMD_VERSION, CMD_HEALTH, CMD_SPS30_INFO, CMD_SCD30_INFO, CMD_NONE};
 bool init_sequence_active = false;
 int current_init_command_index = 0;
 unsigned long last_init_command_time = 0;
-const int INIT_COMMAND_TIMEOUT_MS = 1000;
+const int INIT_COMMAND_TIMEOUT_MS = 100;
 
 unsigned long last_wifi_check_time = 0;
 unsigned long last_health_check_time = 0;
@@ -51,6 +52,7 @@ unsigned long last_debug_update_time = 0;
 unsigned long last_sensor_data_time = 0;
 unsigned long last_health_request_time = 0;
 unsigned long last_stack_check_time = 0;
+unsigned long last_sensor_query_time = 0;
 unsigned long nano_boot_millis = 0;
 unsigned long last_scd30_info_time = 0;
 bool is_sensor_module_connected = false;
@@ -61,6 +63,7 @@ static bool latest_first_time_flag = false;
 String serial_buffer = "";
 String last_nano_version = "";
 uint16_t last_nano_ram = 0;
+unsigned long last_received_timestamp = 0; // Store last received timestamp for comparison
 
 ConfigManager configManager;
 HomeAssistantManager haManager;
@@ -82,12 +85,16 @@ RollingAverage<uint16_t> o3_avg(100);
 RollingAverage<uint16_t> no2_avg(100);
 RollingAverage<uint16_t> fast_aqi_avg(100);
 RollingAverage<uint16_t> epa_aqi_avg(100);
+#ifdef BMP280_ENABLED
 RollingAverage<float> bmp280_pressure_avg(10); // Average over 10 readings for BMP280
 RollingAverage<float> bmp280_temperature_avg(10); // Average over 10 readings for BMP280 temperature
+#endif
 #ifdef AHT20_ENABLED
 RollingAverage<float> aht20_temperature_avg(10); // Average over 10 readings for AHT20 temperature
 RollingAverage<float> aht20_humidity_avg(10); // Average over 10 readings for AHT20 humidity
 #endif
+RollingAverage<float> compressor_amps_avg(100); // Average over 100 readings for compressor CT clamp
+RollingAverage<float> geothermal_pump_amps_avg(100); // Average over 100 readings for geothermal pump CT clamp
 
 TaskHandle_t mainTaskHandle = nullptr;
 
@@ -188,14 +195,47 @@ void process_packet(String packet) {
         return;
     }
 
+    // Log all received packets for debugging
+    logger.debugf("ESP32: Received packet from Nano: %s", packet.c_str());
+
+    // Special handling for I2C recovery events
+    if (data_part.startsWith("E,I2C_RECOVER")) {
+        if (data_part.endsWith(",1")) {
+            logger.warning("ESP32: Nano reports I2C recovery started");
+        } else if (data_part.endsWith(",0")) {
+            logger.info("ESP32: Nano reports I2C recovery completed");
+        } else {
+            logger.warningf("ESP32: Unknown I2C recovery status: %s", data_part.c_str());
+        }
+    }
+    // Special handling for sensor error events
+    else if (data_part.startsWith("E,SPS30_DATA_READY_ERROR")) {
+        logger.errorf("SensorStack: Failed! reports SPS30 data ready error");
+    }
+    else if (data_part.startsWith("E,SPS30_MEASUREMENT_ERROR")) {
+        logger.errorf("SensorStack: Failed! reports SPS30 measurement error");
+    }
+    else if (data_part.startsWith("E,SCD30_DATA_READY_ERROR")) {
+        logger.errorf("SensorStack: Failed! reports SCD30 data ready error");
+    }
+    else if (data_part.startsWith("E,SCD30_MEASUREMENT_ERROR")) {
+        logger.errorf("SensorStack: Failed! reports SCD30 measurement error");
+    }
+    else if (data_part.startsWith("E,SGP41_CONDITIONING_ERROR")) {
+        logger.errorf("SensorStack: Failed! reports SGP41 conditioning error");
+    }
+    else if (data_part.startsWith("E,SGP41_MEASUREMENT_ERROR")) {
+        logger.errorf("SensorStack: Failed! reports SGP41 measurement error");
+    }
+
     last_sensor_data_time = millis();
 
+    // Mark connection as established when we receive any valid packet
     if (!is_sensor_module_connected) {
         is_sensor_module_connected = true;
         nano_boot_millis = millis();
+        last_received_timestamp = 0; // Reset timestamp on new connection
         logger.info("Sensor module connection established.");
-        init_sequence_active = true;
-        current_init_command_index = 0;
     }
 
     UITask::getInstance().update_sensor_status(true);
@@ -205,10 +245,11 @@ void process_packet(String packet) {
     String payload = data_part.substring(1);
 
     switch (cmd) {
-        case CMD_BROADCAST_SENSORS: {
+        case RSP_SENSORS: {
             char data_cstr[payload.length() + 1];
             strcpy(data_cstr, payload.c_str());
-            char* token = strtok(data_cstr, ","); if (!token) return; float p = atof(token) / 10.0f;
+            char* token = strtok(data_cstr, ","); if (!token) return; unsigned long timestamp = atol(token);
+            token = strtok(NULL, ","); if (!token) return; float p = atof(token) / 10.0f;
             token = strtok(NULL, ","); if (!token) return; uint16_t pulse_count = atoi(token);
             token = strtok(NULL, ","); if (!token) return; float t = atof(token) / 10.0f;
             token = strtok(NULL, ","); if (!token) return; float h = atof(token) / 10.0f;
@@ -220,6 +261,26 @@ void process_packet(String packet) {
             token = strtok(NULL, ","); if (!token) return; float pm25 = atof(token) / 10.0f;
             token = strtok(NULL, ","); if (!token) return; float pm4 = atof(token) / 10.0f;
             token = strtok(NULL, ","); if (!token) return; float pm10 = atof(token) / 10.0f;
+            token = strtok(NULL, ","); if (!token) return; float compressor_amps = atof(token) / 100.0f;
+            token = strtok(NULL, ","); if (!token) return; float geothermal_pump_amps = atof(token) / 100.0f;
+            token = strtok(NULL, ","); if (!token) return; bool liquid_level_sensor_state = (atoi(token) == 0); // GPIO at 0 == sensor triggered
+            
+
+            
+            // Check if timestamp is the same or too close to previous (duplicate or very recent data)
+            if (last_received_timestamp > 0) {
+                unsigned long timestamp_diff = timestamp - last_received_timestamp;
+                if (timestamp_diff == 0) {
+                    logger.warningf("Received duplicate sensor data: timestamp=%lu (same as previous)", timestamp);
+                    return; // Skip processing duplicate data
+                } else if (timestamp_diff < 1000) { // Less than 1 second apart
+                    logger.warningf("Received very recent sensor data: timestamp=%lu, diff=%lu ms (expected ~2000ms)", 
+                                   timestamp, timestamp_diff);
+                }
+            }
+            
+            // Store the timestamp for next comparison
+            last_received_timestamp = timestamp;
             
             // Add the pulse count to the geiger counter object
             geigerCounter.addSample(pulse_count);
@@ -234,6 +295,8 @@ void process_packet(String packet) {
             pm25_avg.add(pm25);
             pm4_avg.add(pm4);
             pm10_avg.add(pm10);
+            compressor_amps_avg.add(compressor_amps);
+            geothermal_pump_amps_avg.add(geothermal_pump_amps);
 
             FanStatus fan_status;
             if (amps <= configManager.getFanOffCurrentThreshold()) {
@@ -253,8 +316,11 @@ void process_packet(String packet) {
 
             UITask::getInstance().update_temp_humi(t, h);
             UITask::getInstance().update_fan_current(amps, fan_status);
+            UITask::getInstance().update_compressor_amps(compressor_amps_avg.getAverage());
+            UITask::getInstance().update_pump_amps(geothermal_pump_amps_avg.getAverage());
             UITask::getInstance().update_co2(co2_avg.getAverage());
             UITask::getInstance().update_voc(voc_avg.getAverage());
+            UITask::getInstance().update_nox(nox_avg.getAverage());
             UITask::getInstance().update_pm_values(pm1_avg.getAverage(), pm25_avg.getAverage(), pm4_avg.getAverage(), pm10_avg.getAverage());
 
             haManager.publishHighPressureStatus(is_pressure_high);
@@ -263,7 +329,8 @@ void process_packet(String packet) {
                 co2_avg.getAverage(), 
                 voc_avg.getAverage(), nox_avg.getAverage(), 
                 amps,
-                pm1_avg.getAverage(), pm25_avg.getAverage(), pm4_avg.getAverage(), pm10_avg.getAverage());
+                pm1_avg.getAverage(), pm25_avg.getAverage(), pm4_avg.getAverage(), pm10_avg.getAverage(),
+                compressor_amps_avg.getAverage(), geothermal_pump_amps_avg.getAverage(), liquid_level_sensor_state);
 
             sensorTask.setEnvironmentalData(t, h);
             break;
@@ -599,6 +666,11 @@ void setup() {
     
     sensorTask.init();
     vTaskPrioritySet(NULL, tskIDLE_PRIORITY + 3); // above ZMOD4510 task priority
+    
+    // Start init sequence immediately on boot
+    init_sequence_active = true;
+    current_init_command_index = 0;
+    logger.info("Starting init sequence with Sensor Stack...");
 }
 
 
@@ -655,6 +727,36 @@ void loop() {
         health_request_pending = false;
     }
 
+    // Handle init sequence - send commands even if sensor module not connected
+    if (init_sequence_active) {
+        if (pending_init_commands[current_init_command_index] == CMD_NONE) {
+            init_sequence_active = false;
+            logger.info("Init sequence completed successfully.");
+        } else if ((millis() - last_init_command_time > INIT_COMMAND_TIMEOUT_MS) || (last_init_command_time == 0)) {
+            char cmd_to_send = 0;
+            switch (pending_init_commands[current_init_command_index]) {
+                case CMD_VERSION: cmd_to_send = CMD_GET_VERSION; break;
+                case CMD_HEALTH: cmd_to_send = CMD_GET_HEALTH; break;
+                case CMD_SPS30_INFO: cmd_to_send = CMD_GET_SPS30_INFO; break;
+                case CMD_SCD30_INFO: cmd_to_send = CMD_GET_SCD30_INFO; break;
+            }
+            if (cmd_to_send) {
+                logger.infof("Sending init command %d/%d: %c", current_init_command_index + 1, 4, cmd_to_send);
+                send_command_to_nano(cmd_to_send);
+                last_init_command_time = millis();
+                serial_command_sent_this_loop = true;
+            }
+        }
+    }
+
+    // Send sensor query every 2 seconds after init sequence is complete
+    if (!serial_command_sent_this_loop && is_sensor_module_connected && !init_sequence_active && 
+        (millis() - last_sensor_query_time > SENSOR_QUERY_INTERVAL_MS)) {
+        last_sensor_query_time = millis();
+        send_command_to_nano(CMD_GET_SENSORS);
+        serial_command_sent_this_loop = true;
+    }
+
     if (millis() - last_debug_update_time > DEBUG_UPDATE_INTERVAL_MS) {
         last_debug_update_time = millis();
         uint32_t seconds_since_packet = (millis() - last_sensor_data_time) / 1000;
@@ -689,36 +791,20 @@ void loop() {
     if (millis() - last_sensor_data_time > NANO_PACKET_TIMEOUT_MS) {
         if (is_sensor_module_connected) {
             is_sensor_module_connected = false;
+            last_received_timestamp = 0; // Reset timestamp on disconnection
             logger.warning("Sensor data timeout. Marking as disconnected.");
             UITask::getInstance().update_sensor_status(false);
             haManager.publishSensorConnectionStatus(false);
             haManager.setSensorStackVersionUnavailable();
             haManager.publishSensorStackUptime(0, true);
             UITask::getInstance().clearSensorReadings();
-            
+            init_sequence_active = true;
+            current_init_command_index = 0;
             // Nano disconnected status will be handled in main loop
         }
     }
 
-    if (init_sequence_active && is_sensor_module_connected) {
-        if (pending_init_commands[current_init_command_index] == CMD_NONE) {
-            init_sequence_active = false;
-        } else if (millis() - last_init_command_time > INIT_COMMAND_TIMEOUT_MS) {
-            char cmd_to_send = 0;
-            switch (pending_init_commands[current_init_command_index]) {
-                case CMD_VERSION: cmd_to_send = CMD_GET_VERSION; break;
-                case CMD_HEALTH: cmd_to_send = CMD_GET_HEALTH; break;
-                case CMD_SPS30_INFO: cmd_to_send = CMD_GET_SPS30_INFO; break;
-                case CMD_SCD30_INFO: cmd_to_send = CMD_GET_SCD30_INFO; break;
-            }
-            if (cmd_to_send) {
-                send_command_to_nano(cmd_to_send);
-                last_init_command_time = millis();
-            }
-        }
-    }
-
-    if (!serial_command_sent_this_loop && is_sensor_module_connected && !init_sequence_active && (millis() - last_scd30_info_time > SCD30_INFO_INTERVAL_MS)) {
+    if (!serial_command_sent_this_loop && is_sensor_module_connected && (millis() - last_scd30_info_time > SCD30_INFO_INTERVAL_MS)) {
         last_scd30_info_time = millis();
         send_command_to_nano(CMD_GET_SCD30_INFO);
     }
@@ -738,33 +824,48 @@ void loop() {
         epa_aqi_avg.add(zmod_values.epa_aqi);
         
         // Get current temperature and pressure for conversion
+#ifdef BMP280_ENABLED
         float current_temperature = bmp280_temperature_avg.getAverage();
         float current_pressure = bmp280_pressure_avg.getAverage();
+        bool values_fresh = !bmp280_temperature_avg.isEmpty() && !bmp280_pressure_avg.isEmpty();
+#else
+        // Use dummy values when BMP280 is disabled
+        float current_temperature = 20.0f; // Default temperature 20°C
+        float current_pressure = 101325.0f; // Standard atmospheric pressure 101325 Pa
+        bool values_fresh = true; // Assume fresh values for dummy case
+#endif
         
         // Convert ppb values to µg/m³
-        float o3_ug_per_m3 = GasConcentrationConverter::convertO3PpbToUgPerM3(
-            o3_avg.getAverage(), current_temperature, current_pressure);
-        float no2_ug_per_m3 = GasConcentrationConverter::convertNO2PpbToUgPerM3(
-            no2_avg.getAverage(), current_temperature, current_pressure);
-        
-        // Debug logging for conversion
-        logger.debugf("Gas Conversion: O3=%u ppb -> %.2f µg/m³, NO2=%u ppb -> %.2f µg/m³ (T=%.1f°C, P=%.1f Pa)", 
-            o3_avg.getAverage(), o3_ug_per_m3, no2_avg.getAverage(), no2_ug_per_m3, 
-            current_temperature, current_pressure);
-        
-        // Publish converted values to Home Assistant
-        haManager.publish_O3_NOx_Values(
-            o3_ug_per_m3, 
-            no2_ug_per_m3, 
-            fast_aqi_avg.getAverage(), 
-            epa_aqi_avg.getAverage()
-        );
+        if(values_fresh){
+            float o3_ug_per_m3 = GasConcentrationConverter::convertO3PpbToUgPerM3(
+                o3_avg.getAverage(), current_temperature, current_pressure);
+            float no2_ug_per_m3 = GasConcentrationConverter::convertNO2PpbToUgPerM3(
+                no2_avg.getAverage(), current_temperature, current_pressure);
+            
+            // Debug logging for conversion
+            logger.debugf("Gas Conversion: O3=%u ppb -> %.2f µg/m³, NO2=%u ppb -> %.2f µg/m³ (T=%.1f°C, P=%.1f Pa)", 
+                o3_avg.getAverage(), o3_ug_per_m3, no2_avg.getAverage(), no2_ug_per_m3, 
+                current_temperature, current_pressure);
+            
+            // Update UI with converted values
+            UITask::getInstance().update_no2(no2_ug_per_m3);
+            UITask::getInstance().update_o3(o3_ug_per_m3);
+            
+            // Publish converted values to Home Assistant
+            haManager.publish_O3_NOx_Values(
+                o3_ug_per_m3, 
+                no2_ug_per_m3, 
+                fast_aqi_avg.getAverage(), 
+                epa_aqi_avg.getAverage()
+            );
+        }
     }
     
     // Get BMP280 sensor data
+#ifdef BMP280_ENABLED
     SensorTask::BMP280Values bmp280_values;
     const bool freshBMP280Values = sensorTask.getBMP280Data(bmp280_values);
-    
+
     if(freshBMP280Values)
     {
         // Add to rolling average
@@ -778,6 +879,7 @@ void loop() {
         
         logger.debugf("BMP280: P=%.1f Pa (avg: %.1f Pa), T=%.1f°C (avg: %.1f°C)", bmp280_values.pressure_pa, averaged_pressure, bmp280_values.temperature_degc, averaged_temperature);
     }
+#endif
     
     // Get AHT20 sensor data
 #ifdef AHT20_ENABLED

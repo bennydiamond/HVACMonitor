@@ -79,7 +79,7 @@ void ZMOD4510Sensor::process() {
             
         case STATE_MEASURING:
             // Check if measurement time has elapsed
-            if (millis() - measurement_start_time >= ZMOD4510_NO2_O3_SAMPLE_TIME) {
+            if (millis() - measurement_start_time >= ZMOD4510_NO2_O3_SAMPLE_TIME + 1000) {
                 logger.debug("ZMOD4510: Measurement complete");
                 state = STATE_READING_RESULTS;
             }
