@@ -6,7 +6,7 @@
 
 class UIPowerdrawTile {
 public:
-    UIPowerdrawTile(ConfigManager* config);
+    UIPowerdrawTile();
     lv_obj_t* create_tile(lv_obj_t* parent_tv);
     void update_fan_current(float amps, FanStatus fan_status);
     void update_compressor_current(float amps);
@@ -17,7 +17,7 @@ public:
     void set_fan_status_icon(lv_obj_t* icon);
 private:
     static void fan_alert_blink_cb(lv_timer_t* timer);
-    ConfigManager* _config;
+    // ConfigManager pointer removed - using ConfigManagerAccessor instead
     lv_obj_t* fan_icon, *fan_label;
     lv_obj_t* compressor_icon, *compressor_label;
     lv_obj_t* pump_icon, *pump_label;

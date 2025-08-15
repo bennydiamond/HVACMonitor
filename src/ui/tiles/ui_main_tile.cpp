@@ -1,7 +1,7 @@
 #include "ui/tiles/ui_main_tile.h"
 #include "ui/custom_icons.h"
 
-UIMainTile::UIMainTile(ConfigManager* config) : _config(config) {}
+UIMainTile::UIMainTile() {}
 
 lv_obj_t* UIMainTile::create_tile(lv_obj_t* parent_tv) {
     lv_obj_t* tile = lv_tileview_add_tile(parent_tv, 0, 0, LV_DIR_RIGHT | LV_DIR_VER);
@@ -140,10 +140,11 @@ void UIMainTile::update_pressure(float p) {
     lv_color_t color;
     const char* icon_str;
 
-    if (p < _config->getPressureLowThreshold()) {
+    ConfigManagerAccessor config;
+    if (p < config->getPressureLowThreshold()) {
         color = COLOR_GREEN;
         if (p < 30.0) { icon_str = ICON_GAUGE_EMPTY; } else { icon_str = ICON_GAUGE_LOW; }
-    } else if (p < _config->getPressureMidThreshold()) { 
+    } else if (p < config->getPressureMidThreshold()) { 
         color = COLOR_MID;
         icon_str = ICON_GAUGE;
     } else { 
@@ -159,18 +160,20 @@ void UIMainTile::update_pressure(float p) {
 void UIMainTile::update_co2(float co2) {
     lv_label_set_text_fmt(co2_label, "%.0f ppm", co2);
     lv_color_t color;
-    if (co2 < _config->getCo2WarnThreshold()) { color = COLOR_GREEN; } 
-    else if (co2 < _config->getCo2DangerThreshold()) { color = COLOR_MID; } 
+    ConfigManagerAccessor config;
+    if (co2 < config->getCo2WarnThreshold()) { color = COLOR_GREEN; }
+    else if (co2 < config->getCo2DangerThreshold()) { color = COLOR_MID; }
     else { color = COLOR_HIGH; }
     lv_obj_set_style_text_color(co2_label, color, 0);
     lv_obj_set_style_text_color(co2_icon, color, 0);
 }
 
 void UIMainTile::update_voc(int32_t voc) {
-    lv_label_set_text_fmt(voc_label, "VOC: %ld", voc);
+    lv_label_set_text_fmt(voc_label, "VOC: %d", (int)voc);
     lv_color_t color;
-    if (voc < _config->getVocWarnThreshold()) { color = COLOR_GREEN; } 
-    else if (voc < _config->getVocDangerThreshold()) { color = COLOR_MID; } 
+    ConfigManagerAccessor config;
+    if (voc < config->getVocWarnThreshold()) { color = COLOR_GREEN; }
+    else if (voc < config->getVocDangerThreshold()) { color = COLOR_MID; }
     else { color = COLOR_HIGH; }
     lv_obj_set_style_text_color(voc_label, color, 0);
     lv_obj_set_style_text_color(voc_icon, color, 0);
@@ -186,10 +189,16 @@ void UIMainTile::update_geiger_usvh(float usv) {
     lv_label_set_text_fmt(usv_label, "%s µSv/h", usv_str);
     
     lv_color_t color;
-    if (usv >= 0.00 && usv <= 0.04) { color = COLOR_HIGH; }      // Abnormal (red)
-    else if (usv >= 0.05 && usv <= 0.30) { color = COLOR_GREEN; }  // Normal (green)
-    else if (usv >= 0.30 && usv <= 0.90) { color = COLOR_MID; }    // Elevated (yellow)
-    else { color = COLOR_HIGH; }                                     // Danger (red)
+    ConfigManagerAccessor config;
+    if (usv >= 0.00 && usv <= config->getGeigerAbnormalLowThreshold()) { 
+        color = COLOR_HIGH;      // Abnormal low (red)
+    } else if (usv > config->getGeigerAbnormalLowThreshold() && usv <= config->getGeigerAbnormalHighThreshold()) { 
+        color = COLOR_GREEN;      // Normal (green)
+    } else if (usv > config->getGeigerAbnormalHighThreshold() && usv <= config->getGeigerDangerHighThreshold()) { 
+        color = COLOR_MID;        // Elevated (yellow)
+    } else { 
+        color = COLOR_HIGH;       // Danger high (red)
+    }
     
     lv_obj_set_style_text_color(usv_label, color, 0);
     lv_obj_set_style_text_color(usv_icon, color, 0);
@@ -198,9 +207,14 @@ void UIMainTile::update_temp(float temp) {
     lv_label_set_text_fmt(temp_label, "%.1f °C", temp);
     
     lv_color_t color;
-    if (temp >= 15.0 && temp <= 25.0) { color = COLOR_GREEN; }     // Comfortable range
-    else if (temp >= 10.0 && temp <= 30.0) { color = COLOR_MID; }   // Acceptable range
-    else { color = COLOR_HIGH; }                                     // Extreme temperatures
+    ConfigManagerAccessor config;
+    if (temp >= config->getTempComfortableLow() && temp <= config->getTempComfortableHigh()) { 
+        color = COLOR_GREEN;     // Comfortable range
+    } else if (temp >= config->getTempAcceptableLow() && temp <= config->getTempAcceptableHigh()) { 
+        color = COLOR_MID;       // Acceptable range
+    } else { 
+        color = COLOR_HIGH;      // Extreme temperatures
+    }
     
     lv_obj_set_style_text_color(temp_label, color, 0);
     lv_obj_set_style_text_color(temp_icon, color, 0);
@@ -209,9 +223,14 @@ void UIMainTile::update_humi(float humi) {
     lv_label_set_text_fmt(humi_label, "%.0f %%", humi);
     
     lv_color_t color;
-    if (humi >= 30.0 && humi <= 60.0) { color = COLOR_GREEN; }     // Comfortable range
-    else if (humi >= 20.0 && humi <= 70.0) { color = COLOR_MID; }   // Acceptable range
-    else { color = COLOR_HIGH; }                                     // Too dry or too humid
+    ConfigManagerAccessor config;
+    if (humi >= config->getHumiComfortableLow() && humi <= config->getHumiComfortableHigh()) { 
+        color = COLOR_GREEN;     // Comfortable range
+    } else if (humi >= config->getHumiAcceptableLow() && humi <= config->getHumiAcceptableHigh()) { 
+        color = COLOR_MID;       // Acceptable range
+    } else { 
+        color = COLOR_HIGH;      // Too dry or too humid
+    }
     
     lv_obj_set_style_text_color(humi_label, color, 0);
     lv_obj_set_style_text_color(humi_icon, color, 0);

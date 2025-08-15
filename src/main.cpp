@@ -39,6 +39,16 @@ const int SCD30_INFO_INTERVAL_MS = 20000;
 const int STACK_CHECK_INTERVAL_MS = 60000;
 const int SENSOR_QUERY_INTERVAL_MS = 2000;  // Query sensor data every 2 seconds
 
+// --- Sensor Calculation Constants  ---
+#define SHUNT_RESISTOR 150.0f
+#define VOLTS_TO_MILLIVOLTS 1000.0f
+#define CO_FEEDBACK_RESISTOR_OHMS   2200000.0f
+#define ARDUINO_SUPPLY_VOLTAGE      5.0f
+#define CO_SENSITIVITY_A_PPM       1.415e-9f  // 1.415 nA/ppm from sensor's label
+#define ARDUINO_ADC_RESOLUTION_BITS 10
+#define ARDUINO_ADC_MAX_VALUE       ((1 << ARDUINO_ADC_RESOLUTION_BITS) - 1)
+#define PPM_PER_ADC_UNIT (ARDUINO_SUPPLY_VOLTAGE / (ARDUINO_ADC_MAX_VALUE * CO_FEEDBACK_RESISTOR_OHMS * CO_SENSITIVITY_A_PPM))
+
 enum InitCommand { CMD_NONE, CMD_VERSION, CMD_HEALTH, CMD_SPS30_INFO, CMD_SCD30_INFO };
 InitCommand pending_init_commands[] = {CMD_VERSION, CMD_HEALTH, CMD_SPS30_INFO, CMD_SCD30_INFO, CMD_NONE};
 bool init_sequence_active = false;
@@ -75,8 +85,10 @@ NOxGasIndexAlgorithm nox_algorithm;
 GeigerCounter geigerCounter;
 SensorTask sensorTask;
 RollingAverage<uint16_t> co2_avg(100);
+RollingAverage<uint16_t> co_avg(20);
 RollingAverage<uint16_t> voc_avg(100);
 RollingAverage<uint16_t> nox_avg(100);
+RollingAverage<float> diff_pressure_avg(10);
 RollingAverage<float> pm1_avg(100);
 RollingAverage<float> pm25_avg(100);
 RollingAverage<float> pm4_avg(100);
@@ -115,7 +127,9 @@ uint8_t calculate_checksum(const char* data_str) {
 void send_command_to_nano(char cmd) {
     char data_part[2] = {cmd, '\0'};
     uint8_t checksum = calculate_checksum(data_part);
+#ifdef SERIAL_PACKET_DEBUG
     logger.debugf("Sending command to Nano: <%c,%d>", cmd, checksum);
+#endif
     
     SerialMutex& serialMutex = SerialMutex::getInstance();
     if (serialMutex.lock()) {
@@ -141,7 +155,9 @@ void send_command_to_nano(char cmd) {
 void send_command_to_nano_with_param(char cmd, char param) {
     char data_part[3] = {cmd, param, '\0'};
     uint8_t checksum = calculate_checksum(data_part);
+#ifdef SERIAL_PACKET_DEBUG
     logger.debugf("Sending command to Nano: <%c%c,%d>", cmd, param, checksum);
+#endif
 
     SerialMutex& serialMutex = SerialMutex::getInstance();
     if (serialMutex.lock()) {
@@ -195,8 +211,10 @@ void process_packet(String packet) {
         return;
     }
 
+#ifdef SERIAL_PACKET_DEBUG
     // Log all received packets for debugging
     logger.debugf("ESP32: Received packet from Nano: %s", packet.c_str());
+#endif
 
     // Special handling for I2C recovery events
     if (data_part.startsWith("E,I2C_RECOVER")) {
@@ -249,7 +267,7 @@ void process_packet(String packet) {
             char data_cstr[payload.length() + 1];
             strcpy(data_cstr, payload.c_str());
             char* token = strtok(data_cstr, ","); if (!token) return; unsigned long timestamp = atol(token);
-            token = strtok(NULL, ","); if (!token) return; float p = atof(token) / 10.0f;
+            token = strtok(NULL, ","); if (!token) return; uint16_t pressure_adc_raw = atoi(token);
             token = strtok(NULL, ","); if (!token) return; uint16_t pulse_count = atoi(token);
             token = strtok(NULL, ","); if (!token) return; float t = atof(token) / 10.0f;
             token = strtok(NULL, ","); if (!token) return; float h = atof(token) / 10.0f;
@@ -264,8 +282,27 @@ void process_packet(String packet) {
             token = strtok(NULL, ","); if (!token) return; float compressor_amps = atof(token) / 100.0f;
             token = strtok(NULL, ","); if (!token) return; float geothermal_pump_amps = atof(token) / 100.0f;
             token = strtok(NULL, ","); if (!token) return; bool liquid_level_sensor_state = (atoi(token) == 0); // GPIO at 0 == sensor triggered
-            
+            token = strtok(NULL, ","); if (!token) return; uint16_t co_adc_raw = atoi(token);
+#ifdef SERIAL_PACKET_DEBUG
+            // Debug log: decoded sensor packet with descriptive tags
+            logger.debugf(
+                "RSP_SENSORS decoded: "
+                "timestamp=%lu, pressure_adc_raw=%u, pulse_count=%u, temp=%.1f°C, hum=%.1f%%, co2=%.1fppm, "
+                "voc_raw=%u, nox_raw=%u, fan_amps=%.2fA, pm1=%.1f, pm2.5=%.1f, pm4=%.1f, pm10=%.1f, "
+                "compressor_amps=%.2fA, pump_amps=%.2fA, liquid_level=%s, co_adc_raw=%u",
+                timestamp, pressure_adc_raw, pulse_count, t, h, co2,
+                voc_raw, nox_raw, amps, pm1, pm25, pm4, pm10,
+                compressor_amps, geothermal_pump_amps, liquid_level_sensor_state ? "TRIGGERED" : "OK", co_adc_raw
+            );
+#endif
+        
+            // Calculate pressure from raw ADC value (moved from Nano)
+            float voltage = static_cast<float>(pressure_adc_raw) * ARDUINO_SUPPLY_VOLTAGE / ARDUINO_ADC_MAX_VALUE ; 
+            float current_ma = (voltage / SHUNT_RESISTOR) * VOLTS_TO_MILLIVOLTS;
+            float diff_pressure_pa = (current_ma > 4.0f) ? (current_ma - 4.0f) * (300.0f / 16.0f) : 0.0f;
 
+            // Calculate CO concentration from raw ADC value (moved from Nano)
+            uint16_t co_ppm = static_cast<uint16_t>(co_adc_raw * PPM_PER_ADC_UNIT);
             
             // Check if timestamp is the same or too close to previous (duplicate or very recent data)
             if (last_received_timestamp > 0) {
@@ -289,8 +326,10 @@ void process_packet(String packet) {
             int32_t voc_index = voc_algorithm.process(voc_raw);
             int32_t nox_index = nox_algorithm.process(nox_raw);
             co2_avg.add(co2);
+            co_avg.add(co_ppm);
             voc_avg.add(voc_index);
             nox_avg.add(nox_index);
+            diff_pressure_avg.add(diff_pressure_pa);
             pm1_avg.add(pm1);
             pm25_avg.add(pm25);
             pm4_avg.add(pm4);
@@ -298,17 +337,22 @@ void process_packet(String packet) {
             compressor_amps_avg.add(compressor_amps);
             geothermal_pump_amps_avg.add(geothermal_pump_amps);
 
+            bool is_pressure_high = false;
             FanStatus fan_status;
-            if (amps <= configManager.getFanOffCurrentThreshold()) {
-                fan_status = FAN_STATUS_OFF;
-            } else if (amps < configManager.getFanOnCurrentThreshold() || amps > configManager.getFanHighCurrentThreshold()) {
-                fan_status = FAN_STATUS_ALERT;
-            } else {
-                fan_status = FAN_STATUS_NORMAL;
+            {
+                // Limit scope to reduce mutex hold time
+                ConfigManagerAccessor config;
+                if (amps <= config->getFanOffCurrentThreshold()) {
+                    fan_status = FAN_STATUS_OFF;
+                } else if (amps < config->getFanOnCurrentThreshold() || amps > config->getFanHighCurrentThreshold()) {
+                    fan_status = FAN_STATUS_ALERT;
+                } else {
+                    fan_status = FAN_STATUS_NORMAL;
+                }
+                is_pressure_high = (diff_pressure_avg.getAverage() > config->getHighPressureThreshold());
             }
-            bool is_pressure_high = (p > configManager.getHighPressureThreshold());
             UITask::getInstance().update_high_pressure_status(is_pressure_high);
-            UITask::getInstance().update_pressure(p);
+            UITask::getInstance().update_pressure(diff_pressure_avg.getAverage());
             
             geigerCounter.checkAndLogHighRadiation();
             float usv_h = geigerCounter.getDoseRate();
@@ -322,15 +366,17 @@ void process_packet(String packet) {
             UITask::getInstance().update_voc(voc_avg.getAverage());
             UITask::getInstance().update_nox(nox_avg.getAverage());
             UITask::getInstance().update_pm_values(pm1_avg.getAverage(), pm25_avg.getAverage(), pm4_avg.getAverage(), pm10_avg.getAverage());
+            UITask::getInstance().update_co(co_avg.getAverage());
 
             haManager.publishHighPressureStatus(is_pressure_high);
             haManager.publishFanStatus(fan_status != FAN_STATUS_OFF);
-            haManager.publishSensorData(p, c, t, h, 
+            haManager.publishSensorData(diff_pressure_avg.getAverage(), c, t, h, 
                 co2_avg.getAverage(), 
                 voc_avg.getAverage(), nox_avg.getAverage(), 
                 amps,
                 pm1_avg.getAverage(), pm25_avg.getAverage(), pm4_avg.getAverage(), pm10_avg.getAverage(),
-                compressor_amps_avg.getAverage(), geothermal_pump_amps_avg.getAverage(), liquid_level_sensor_state);
+                compressor_amps_avg.getAverage(), geothermal_pump_amps_avg.getAverage(), liquid_level_sensor_state,
+                co_avg.getAverage());
 
             sensorTask.setEnvironmentalData(t, h);
             break;
@@ -360,8 +406,9 @@ void process_packet(String packet) {
             uint8_t nano_reset_cause = 0; 
             if (token) nano_reset_cause = atoi(token);
             const char* reset_cause_str = nano_reset_cause_to_string(nano_reset_cause);
-
+#ifdef SERIAL_PACKET_DEBUG
             logger.debugf("Nano Health: FirstTimeFlag=%d, FreeRAM=%d bytes, ResetCause=%s", first_time_flag, nano_free_ram, reset_cause_str);
+#endif
             if (first_time_flag == 0 || !first_health_packet_received) {
                 logger.infof("Sensor Stack Health: Flag=%d, FreeRAM=%d bytes, ResetCause=%s", first_time_flag, nano_free_ram, reset_cause_str);
                 first_health_packet_received = true;
@@ -474,6 +521,7 @@ void process_packet(String packet) {
             token = strtok(NULL, ",");        uint8_t fw_major = parse_hex_u16(token);
             token = strtok(NULL, ",");        uint8_t fw_minor = parse_hex_u16(token);
 
+#ifdef SERIAL_PACKET_DEBUG
             logger.debugf(
                 "SCD30 Info: "
                 "MeasurementInterval(ret=%d): %u, "
@@ -489,6 +537,7 @@ void process_packet(String packet) {
                 ret_altitude, altitude_compensation,
                 ret_firmware, fw_major, fw_minor
             );
+#endif
             // Update the AutoCalibration switch state and Force Calibration value in Home Assistant and UI
             haManager.updateScd30AutoCalState(auto_calibration != 0);
             haManager.updateScd30ForceCalValue(forced_recalibration_value);
@@ -639,35 +688,37 @@ void setup_wifi() {
 }
 
 void setup() {
+    SerialMutex::getInstance().init();
     MainTaskEventNotifier::getInstance().setMainTaskHandle(xTaskGetCurrentTaskHandle());
+    vTaskPrioritySet(NULL, tskIDLE_PRIORITY + 3); // above other tasks priorities
     logger.info("--- System Booting ---");
     Serial.begin(19200);
     //Serial.begin(115200);
-    configManager.init();
-    logger.init(haManager.getMqtt());
-    logger.setLogLevel(configManager.getLogLevel());
+    {
+        // Limit scope to reduce mutex hold time
+        ConfigManagerAccessor config;
+        config->init();
+        logger.init(haManager.getMqtt());
+        logger.setLogLevel(config->getLogLevel());
+    }
     delay(500);
     
-    SerialMutex::getInstance().init();
     
     const char* reset_reason = get_reset_reason_string();
     logger.infof("Firmware Version: %s", HVACMONITOR_FIRMWARE_VERSION);
     logger.infof("Reset Reason: %s", reset_reason);
-    
-    // Start UI task (UI objects are now owned by UITask)
-    UITask::getInstance().start(&configManager);
+        
+    UITask::getInstance().start();
     
     setup_wifi();
-    haManager.init(&configManager, HVACMONITOR_FIRMWARE_VERSION); // UI pointers are now managed by UITask
+    haManager.init(HVACMONITOR_FIRMWARE_VERSION);
     webServerManager.init(HVACMONITOR_FIRMWARE_VERSION);
     otaManager.init();
-    
+
     I2CBridge::begin();
     
     sensorTask.init();
-    vTaskPrioritySet(NULL, tskIDLE_PRIORITY + 3); // above ZMOD4510 task priority
     
-    // Start init sequence immediately on boot
     init_sequence_active = true;
     current_init_command_index = 0;
     logger.info("Starting init sequence with Sensor Stack...");
@@ -929,4 +980,7 @@ void loop() {
             }
         });
     }
+
+    // Handles its own value refresh logic
+    haManager.updateInactivityTimerDelayState();
 }

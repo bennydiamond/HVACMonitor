@@ -12,7 +12,6 @@ class LGFX;
 class CST820;
 class IUIManager;
 class IUIUpdater;
-class ConfigManager;
 
 // X-macro list for UI message types
 #define UI_MESSAGE_TYPE_LIST \
@@ -66,7 +65,7 @@ class UITask {
 public:
     UITask();
     ~UITask();
-    void start(ConfigManager* configManager);
+    void start();
     static UITask& getInstance();
 
     // Enum definition using X-macro
@@ -159,7 +158,6 @@ private:
     CST820* touch;
     IUIManager* uiManager;
     IUIUpdater* uiUpdater;
-    ConfigManager* configManager;
 
     TaskHandle_t taskHandle;
     QueueHandle_t uiQueue;

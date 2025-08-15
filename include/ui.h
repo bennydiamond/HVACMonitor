@@ -7,7 +7,6 @@
 #include <lvgl.h>
 #include "LGFX_ESP32_2432S022C.h"
 #include "CST820.h"
-#include "ConfigManager.h"
 #include "ui/ui_common.h"
 #include "ui/ui_tile_manager.h"
 
@@ -17,7 +16,7 @@ public:
     static UI& getInstance();
 
     // --- IUIManager Implementation ---
-    void init(LGFX* tft, CST820* touch, ConfigManager* config) override;
+    void init(LGFX* tft, CST820* touch) override;
     void create_widgets(void) override;
     void run(void) override;
     // --- IUIUpdater Implementation ---
@@ -68,7 +67,6 @@ public:
 private:
     static LGFX* _tft;
     static CST820* _touch;
-    static ConfigManager* _config;
     static lv_disp_draw_buf_t draw_buf;
     static lv_color_t* buf1;
     static lv_disp_drv_t disp_drv;

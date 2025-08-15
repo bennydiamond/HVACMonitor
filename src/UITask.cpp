@@ -100,18 +100,18 @@ UITask& UITask::getInstance() {
 }
 
 UITask::UITask()
-    : tft(nullptr), touch(nullptr), uiManager(nullptr), uiUpdater(nullptr), configManager(nullptr),
+    : tft(nullptr), touch(nullptr), uiManager(nullptr), uiUpdater(nullptr),
       taskHandle(nullptr), uiQueue(nullptr)
-{}
+{
+    uiQueue = xQueueCreate(16, sizeof(UIMessage));
+    uiStringQueue = xQueueCreate(8, sizeof(UIStringMessage));
+}
 
 UITask::~UITask() {
     // Cleanup if needed
 }
 
-void UITask::start(ConfigManager* configMgr) {
-    configManager = configMgr;
-    uiQueue = xQueueCreate(16, sizeof(UIMessage));
-    uiStringQueue = xQueueCreate(8, sizeof(UIStringMessage));
+void UITask::start() {
     xTaskCreatePinnedToCore(
         UITask::taskFunc,
         "UITask",
@@ -141,7 +141,7 @@ void UITask::run() {
 
     uiManager = &UI::getInstance();
     uiUpdater = &UI::getInstance();
-    uiManager->init(tft, touch, configManager);
+    uiManager->init(tft, touch);
     uiManager->create_widgets();
     uiUpdater->set_initial_debug_info(HVACMONITOR_FIRMWARE_VERSION, get_reset_reason_string());
     

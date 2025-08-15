@@ -23,14 +23,14 @@
 static Interface_t* _hal;
 
 /* wrapper function, mapping register read api to generic I2C API */
-static int8_t
+static int
 _i2c_read_reg ( uint8_t  slaveAddr, uint8_t  addr, uint8_t*  data, uint8_t  len ) {
   return _hal -> i2cRead ( _hal -> handle, slaveAddr, &addr, 1, data, len );
 }
 
 
 /* wrapper function, mapping register write api to generic I2C API */
-static int8_t
+static int
 _i2c_write_reg ( uint8_t  slaveAddr, uint8_t  addr, uint8_t*  data, uint8_t  len ) {
   return _hal -> i2cWrite ( _hal -> handle, slaveAddr, &addr, 1, data, len );
 }

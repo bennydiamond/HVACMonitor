@@ -29,7 +29,7 @@
  */
 typedef enum {
   ecSuccess  = 0,           /**< Operation completed successfully */
-  ecHALError = 0x100        /**< Returned by sensor API if a HAL function failed. 
+  ecHALError = 0x101        /**< Returned by sensor API if a HAL function failed. 
                              * Specific information about the error can be 
                              * obtained using the function HAL_GetErrorInfo(). */
 } GenericError_t;

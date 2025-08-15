@@ -2,17 +2,17 @@
 
 UITileManager::UITileManager() {}
 
-void UITileManager::create_all_tiles(lv_obj_t* parent_tv, ConfigManager* config, lv_obj_t* fan_status_icon) {
-    main_tile = new UIMainTile(config);
+void UITileManager::create_all_tiles(lv_obj_t* parent_tv, lv_obj_t* fan_status_icon) {
+    main_tile = new UIMainTile();
     main_tile_obj = main_tile->create_tile(parent_tv);
 
-    secondary_tile = new UISecondaryTile(config);
+    secondary_tile = new UISecondaryTile();
     secondary_tile_obj = secondary_tile->create_tile(parent_tv);
 
-    gas_tile = new UIGasTile(config);
+    gas_tile = new UIGasTile();
     gas_tile_obj = gas_tile->create_tile(parent_tv);
 
-    powerdraw_tile = new UIPowerdrawTile(config);
+    powerdraw_tile = new UIPowerdrawTile();
     powerdraw_tile_obj = powerdraw_tile->create_tile(parent_tv);
     powerdraw_tile->set_fan_status_icon(fan_status_icon);
 

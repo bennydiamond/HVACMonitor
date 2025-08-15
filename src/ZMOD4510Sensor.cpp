@@ -76,10 +76,10 @@ void ZMOD4510Sensor::process() {
             state = STATE_MEASURING;
             measurement_start_time = millis();
             break;
-            
+
         case STATE_MEASURING:
             // Check if measurement time has elapsed
-            if (millis() - measurement_start_time >= ZMOD4510_NO2_O3_SAMPLE_TIME + 1000) {
+            if (millis() - measurement_start_time >= ZMOD4510_NO2_O3_SAMPLE_TIME) {
                 logger.debug("ZMOD4510: Measurement complete");
                 state = STATE_READING_RESULTS;
             }
@@ -107,7 +107,7 @@ bool ZMOD4510Sensor::hasNewData() const {
     return new_data_available;
 }
 
-ZMOD4510Sensor::Results ZMOD4510Sensor::getResults() {
+ZMOD4510Sensor::Results ZMOD4510Sensor::getResults() {   
     new_data_available = false;
     
     state = STATE_IDLE;
@@ -135,6 +135,17 @@ int ZMOD4510Sensor::detect_and_configure() {
         logger.errorf("ZMOD4510: Reading sensor info failed with error %d", ret);
         return ret;
     }
+
+    if(logger.getLogLevel() <= APP_LOG_DEBUG) { // Only log if debug level is set        
+        char msg[192];
+        int len = snprintf(msg, sizeof(msg), "ZMOD4510: PID=0x%04X, CONF=", dev.pid);
+
+        // Print CONF array (length ZMOD4XXX_LEN_CONF)
+        for (int i = 0; i < ZMOD4XXX_LEN_CONF && len < (int)sizeof(msg) - 4; i++) {
+            len += snprintf(msg + len, sizeof(msg) - len, " %02X", dev.config[i]);
+        }
+    }
+
     
     ret = zmod4xxx_read_tracking_number(&dev, track_number);
     if (ret) {
@@ -150,13 +161,15 @@ int ZMOD4510Sensor::detect_and_configure() {
         logger.infof("ZMOD4510: Sensor tracking number: %s", tracking.c_str());
     }
     
-    String trimming = "ZMOD4510: Sensor trimming data:";
-    for (int i = 0; i < ZMOD4510_PROD_DATA_LEN; i++) {
-        char tmp[8];
-        sprintf(tmp, " %d", prod_data[i]);
-        trimming += tmp;
+    if(logger.getLogLevel() <= APP_LOG_DEBUG) { // Only log if debug level is set  
+        String trimming = "ZMOD4510: Sensor trimming data:";
+        for (int i = 0; i < ZMOD4510_PROD_DATA_LEN; i++) {
+            char tmp[8];
+            sprintf(tmp, " %d", prod_data[i]);
+            trimming += tmp;
+        }
+        logger.debug(trimming.c_str());
     }
-    logger.debug(trimming.c_str());
     
     ret = zmod4xxx_prepare_sensor(&dev);
     if (ret) {
@@ -214,6 +227,9 @@ void ZMOD4510Sensor::processResults() {
     
     int ret = calc_no2_o3(&algo_handle, &dev, &algo_input, &algo_results);
     
+    logger.debugf("ZMOD4510: Raw ADC results: %.3fkOhms  %.3fkOhms  %.3fkOhms  %.3fkOhms", 
+                 algo_results.rmox[0]/1e3, algo_results.rmox[1]/1e3, algo_results.rmox[2]/1e3, algo_results.rmox[3]/1e3);
+                 
     for (int i = 0; i < 4; i++) {
         latest_results.rmox[i] = algo_results.rmox[i] / 1e3; // Convert to kOhm
     }

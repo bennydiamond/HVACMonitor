@@ -17,7 +17,7 @@
 class UITileManager {
 public:
     UITileManager();
-    void create_all_tiles(lv_obj_t* parent_tv, ConfigManager* config, lv_obj_t* fan_status_icon);
+    void create_all_tiles(lv_obj_t* parent_tv, lv_obj_t* fan_status_icon);
     lv_obj_t* get_tile1() { return main_tile_obj; }
     lv_obj_t* get_secondary_tile() { return secondary_tile_obj; }
     lv_obj_t* get_gas_tile() { return gas_tile_obj; }

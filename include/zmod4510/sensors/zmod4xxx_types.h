@@ -62,7 +62,7 @@ typedef enum {
 * @retval  0 success
 * @retval  "!= 0" error
 */
-typedef int8_t (*zmod4xxx_i2c_ptr_t)(uint8_t addr, uint8_t reg_addr,
+typedef int (*zmod4xxx_i2c_ptr_t)(uint8_t addr, uint8_t reg_addr,
                                      uint8_t *data_buf, uint8_t len);
 
 /**

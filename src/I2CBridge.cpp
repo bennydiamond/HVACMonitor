@@ -3,7 +3,7 @@
 #include "Logger.h"
 #include "SerialMutex.h"
 
-#define I2C_BRIDGE_DEBUG // Uncomment for debug output
+//#define I2C_BRIDGE_DEBUG // Uncomment for debug output
 
 // Private member variables for the singleton
 unsigned long I2CBridge::_timeout_ms = 1000;
@@ -217,34 +217,46 @@ I2CBridge::Result I2CBridge::readBytes(uint8_t addr, uint8_t len) {
 
 I2CBridge::Result I2CBridge::writeBytes(uint8_t addr, uint8_t* data, uint8_t len) {
     Result result = {false, I2C_ERROR_PENDING, {0}, 0};
-    
-    // Make sure the queue is empty before sending a new request
-    xQueueReset(_response_queue);
-    
-    // Send the write request to the Nano
-    send_i2c_write_request(addr, data, len);
-    
-    // Log the data being sent
-    String hexData;
-    for (int i = 0; i < len; i++) {
-        if (i > 0) hexData += " ";
-        char hex[4];
-        sprintf(hex, "%02X", data[i]);
-        hexData += hex;
-    }
+    const int max_retries = 3;
+    int attempt = 0;
+
+    while (attempt < max_retries) {
+        // Make sure the queue is empty before sending a new request
+        xQueueReset(_response_queue);
+
+        // Send the write request to the Nano
+        send_i2c_write_request(addr, data, len);
+
+        // Log the data being sent
+        String hexData;
+        for (int i = 0; i < len; i++) {
+            if (i > 0) hexData += " ";
+            char hex[4];
+            sprintf(hex, "%02X", data[i]);
+            hexData += hex;
+        }
 #ifdef I2C_BRIDGE_DEBUG
-    logger.debugf("I2CBridge: Waiting for write response (addr=0x%02X, data=%s)", addr, hexData.c_str());
+        logger.debugf("I2CBridge: Waiting for write response (addr=0x%02X, data=%s, attempt=%d)", addr, hexData.c_str(), attempt + 1);
 #endif
-    // Wait for response with timeout
-    if (xQueueReceive(_response_queue, &result, pdMS_TO_TICKS(1000)) == pdTRUE) {
+        // Wait for response with timeout
+        if (xQueueReceive(_response_queue, &result, pdMS_TO_TICKS(1000)) == pdTRUE) {
 #ifdef I2C_BRIDGE_DEBUG
-        logger.debugf("I2CBridge: Write response received - addr=0x%02X, status=%d", addr, result.error_code);
+            logger.debugf("I2CBridge: Write response received - addr=0x%02X, status=%d, attempt=%d", addr, result.error_code, attempt + 1);
 #endif
-        return result;
+            if (result.success) {
+                return result;
+            }
+        }
+
+        // Timeout or error occurred
+        attempt++;
+        if (attempt < max_retries) {
+            logger.warningf("I2CBridge: Write attempt %d failed for addr=0x%02X, retrying...", attempt, addr);
+            delay(1); // Small delay before retry
+        }
     }
-    
-    // Timeout occurred
-    logger.warningf("I2CBridge: Write response timeout for addr=0x%02X", addr);
+
+    logger.warningf("I2CBridge: Write response timeout after %d attempts for addr=0x%02X", max_retries, addr);
     result.error_code = I2C_ERROR_TIMEOUT;
     return result;
 }

@@ -45,26 +45,25 @@ void ZMOD4510Manager::process() {
         }
         return;
     }
-    
-    // Process the sensor
-    sensor.process();
-    
-    // Check for new data
-    if (sensor.hasNewData()) {
-        ZMOD4510Sensor::Results results = sensor.getResults();
+    else {
+        // Process the sensor
+        sensor.process();
         
-        if (results.valid) {
-            latestValues.o3_conc_ppb = results.o3_conc_ppb;
-            latestValues.no2_conc_ppb = results.no2_conc_ppb;
-            latestValues.fast_aqi = results.fast_aqi;
-            latestValues.epa_aqi = results.epa_aqi;
-            latestValues.valid = true;
-            new_data_available_ = true;
+        // Check for new data
+        if (sensor.hasNewData()) {
+            ZMOD4510Sensor::Results results = sensor.getResults();
             
-            logger.debugf("ZMOD4510: O3=%d ppb, NO2=%d ppb, FastAQI=%d, EPAAQI=%d", 
-                         results.o3_conc_ppb, results.no2_conc_ppb, results.fast_aqi, results.epa_aqi);
-        } else {
-            logger.warning("ZMOD4510: Invalid measurement results");
+            if (results.valid) {
+                latestValues.o3_conc_ppb = results.o3_conc_ppb;
+                latestValues.no2_conc_ppb = results.no2_conc_ppb;
+                latestValues.fast_aqi = results.fast_aqi;
+                latestValues.epa_aqi = results.epa_aqi;
+                latestValues.valid = true;
+                new_data_available_ = true;
+                
+            } else {
+                logger.warning("ZMOD4510: Invalid measurement results");
+            }
         }
     }
 }

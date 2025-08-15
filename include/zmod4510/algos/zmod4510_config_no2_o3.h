@@ -40,7 +40,7 @@
 #define ZMOD4510_ADC_DATA_LEN (32)
 
 // time between samples
-#define ZMOD4510_NO2_O3_SAMPLE_TIME (6000U)
+#define ZMOD4510_NO2_O3_SAMPLE_TIME (6000U - 150U) // 5700 ms. Datasheet allows for 5% deviation, so 300 ms is subtracted to ensure we stay within the 6 seconds limit, because of I2CBridge.
 
 #define ZMOD4XXX_H_ADDR 0x40
 #define ZMOD4XXX_D_ADDR 0x50
