@@ -157,8 +157,9 @@ _I2CWrite( void*  ifce, uint8_t  slAddr, uint8_t*  wrData1, int  wrSize1, uint8_
   }
   
   if (!result.success) {
-    logger.warningf("ZMOD4510: I2CWrite failed with error code: 0x%02X", result.error_code);
-    return HAL_SetError(result.error_code, aesArduino, _GetErrorString);
+    int returnValue = HAL_SetError(result.error_code, aesArduino, _GetErrorString);
+    logger.warningf("ZMOD4510: I2CWrite failed with error code: 0x%02X   returnValue: %d", result.error_code, returnValue);
+    return returnValue;
   }
   
   return ecSuccess;

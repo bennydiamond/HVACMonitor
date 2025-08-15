@@ -6,7 +6,7 @@
 
 class UIMainTile {
 public:
-    UIMainTile(ConfigManager* config);
+    UIMainTile();
     lv_obj_t* create_tile(lv_obj_t* parent_tv);
     void update_pressure(float p);
     void update_co2(float co2);
@@ -23,7 +23,7 @@ private:
     void create_geiger_widgets(lv_obj_t* parent);
     void create_temp_humi_widgets(lv_obj_t* parent);
 
-    ConfigManager* _config;
+    // ConfigManager pointer removed - using ConfigManagerAccessor instead
     lv_obj_t* pressure_icon, *pressure_label;
     lv_obj_t* co2_icon, *co2_label;
     lv_obj_t* voc_icon, *voc_label;

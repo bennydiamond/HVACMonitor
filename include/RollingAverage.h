@@ -78,22 +78,23 @@ public:
      * @brief Calculates and returns the current average of the values within the time window.
      * @return The calculated rolling average.
      */
-    float getAverage() {
+    T getAverage() {
         // Ensure history is valid and not empty
         if (history == nullptr || count == 0) {
             return this->lastValue; // Return the last known value to avoid division by zero.
         }
 
         // Sum all the values currently in the history
-        float sum = 0.0f;
+        // Use double for precision regardless of T type
+        double sum = 0.0;
         size_t current_pos = tail;
         for (size_t i = 0; i < count; i++) {
-            sum += history[current_pos].value;
+            sum += static_cast<double>(history[current_pos].value);
             current_pos = (current_pos + 1) % max_samples;
         }
 
-        // Return the calculated average.
-        return sum / count;
+        // Return the calculated average, cast back to T
+        return static_cast<T>(sum / count);
     }
 
     /**

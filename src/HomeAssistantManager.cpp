@@ -10,61 +10,64 @@
 
 const unsigned long FORCE_PUBLISH_INTERVAL_MS = 20000;
 const unsigned long SENSOR_EXPIRE_TIMEOUT_S = 30;
+#define RANDOM_SUFFIX "_HVAC_MON_01"
 
 HomeAssistantManager* HomeAssistantManager::_instance = nullptr;
 
 HomeAssistantManager::HomeAssistantManager() :
-    _device("hvac_diff_pressure_sensor_01"), // TODO: Make device ID configurable
+    _device(MQTT_DEVICE_ID),
     _mqtt(_wifiClient, _device),
-    _pressureSensor("pressure", HASensor::PrecisionP1),
-    _backlight("backlight", HALight::BrightnessFeature),
-    _wifi_rssi("wifi_rssi", HASensor::PrecisionP0),
-    _wifi_ssid("wifi_ssid"),
-    _wifi_ip("wifi_ip"),
-    _geiger_cpm("geiger_cpm", HASensor::PrecisionP0),
-    _geiger_dose("geiger_dose", HASensor::PrecisionP2),
-    _temperatureSensor("temperature", HASensor::PrecisionP1),
-    _humiditySensor("humidity", HASensor::PrecisionP1),
+    _pressureSensor("pressure" RANDOM_SUFFIX, HASensor::PrecisionP1),
+    _backlight("backlight" RANDOM_SUFFIX, HALight::BrightnessFeature),
+    _wifi_rssi("wifi_rssi" RANDOM_SUFFIX, HASensor::PrecisionP0),
+    _wifi_ssid("wifi_ssid" RANDOM_SUFFIX),
+    _wifi_ip("wifi_ip" RANDOM_SUFFIX),
+    _geiger_cpm("geiger_cpm" RANDOM_SUFFIX, HASensor::PrecisionP0),
+    _geiger_dose("geiger_dose" RANDOM_SUFFIX, HASensor::PrecisionP2),
+    _temperatureSensor("temperature" RANDOM_SUFFIX, HASensor::PrecisionP1),
+    _humiditySensor("humidity" RANDOM_SUFFIX, HASensor::PrecisionP1),
 #ifdef BMP280_ENABLED
-    _bmp280PressureSensor("bmp280_pressure", HASensorNumber::PrecisionP1),
-    _bmp280TemperatureSensor("bmp280_temperature", HASensorNumber::PrecisionP1),
+    _bmp280PressureSensor("bmp280_pressure" RANDOM_SUFFIX, HASensorNumber::PrecisionP1),
+    _bmp280TemperatureSensor("bmp280_temperature" RANDOM_SUFFIX, HASensorNumber::PrecisionP1),
 #endif
 #ifdef AHT20_ENABLED
     _aht20TemperatureSensor("aht20_temperature", HASensorNumber::PrecisionP1),
     _aht20HumiditySensor("aht20_humidity", HASensorNumber::PrecisionP1),
 #endif
-    _sensorStatus("sensor_status"),
-    _highPressureSensor("high_pressure_status"),
-    _fanStatus("fan_status"),
-    _rebootButton("reboot"),
-    _rebootSensorStackButton("reboot_sensorStack"),
-    _pm1_0_sensor("pm1_0", HASensor::PrecisionP1),
-    _pm2_5_sensor("pm2_5", HASensor::PrecisionP1),
-    _pm4_0_sensor("pm4_0", HASensor::PrecisionP1),
-    _pm10_0_sensor("pm10_0", HASensor::PrecisionP1),
-    _o3_sensor("o3", HASensorNumber::PrecisionP0),
-    _no2_sensor("no2", HASensorNumber::PrecisionP0),
-    _fast_aqi_sensor("fast_aqi", HASensorNumber::PrecisionP0),
-    _epa_aqi_sensor("epa_aqi", HASensorNumber::PrecisionP0),
-    _co2_sensor("co2", HASensor::PrecisionP0),
-    _sensorStackUptimeSensor("nano_uptime", HASensor::PrecisionP0),
-    _sensorStackVersionSensor("nano_firmware_version"), 
-    _sensorStackFreeRamSensor("nano_free_ram", HASensor::PrecisionP0),
-    _voc_index_sensor("voc_index", HASensor::PrecisionP0),
-    _nox_index_sensor("nox_index", HASensor::PrecisionP0),
-    _currentSensor("current", HASensor::PrecisionP2),
-    _sensorStackResetCauseSensor("nano_reset_cause"),
-    _getSps30InfoButton("get_sps30_info"),
-    _Sps30ManualCleanButton("sps30_manual_clean"),
-    _getSgp41SelftestButton("get_sgp41_selftest"),
-    _logLevelSelect("log_level"),
-    _scd30AutoCalSwitch("scd30_autocal"),
-    _scd30ForceCalNumber("scd30_forcecal", HANumber::PrecisionP0),
-    _esp32FreeRamSensor("esp32_free_ram", HASensor::PrecisionP0),
-    _esp32UptimeSensor("esp32_uptime", HASensorNumber::PrecisionP0),
-    _compressorCurrentSensor("compressor_current", HASensorNumber::PrecisionP2),
-    _geothermalPumpCurrentSensor("geothermal_pump_current", HASensorNumber::PrecisionP2),
-    _liquidLevelSensor("liquid_level_sensor")
+    _sensorStatus("sensor_status" RANDOM_SUFFIX),
+    _highPressureSensor("high_pressure_status" RANDOM_SUFFIX),
+    _fanStatus("fan_status" RANDOM_SUFFIX),
+    _rebootButton("reboot" RANDOM_SUFFIX),
+    _rebootSensorStackButton("reboot_sensorStack" RANDOM_SUFFIX),
+    _pm1_0_sensor("pm1_0" RANDOM_SUFFIX, HASensor::PrecisionP1),
+    _pm2_5_sensor("pm2_5" RANDOM_SUFFIX, HASensor::PrecisionP1),
+    _pm4_0_sensor("pm4_0" RANDOM_SUFFIX, HASensor::PrecisionP1),
+    _pm10_0_sensor("pm10_0" RANDOM_SUFFIX, HASensor::PrecisionP1),
+    _o3_sensor("o3" RANDOM_SUFFIX, HASensorNumber::PrecisionP0),
+    _no2_sensor("no2" RANDOM_SUFFIX, HASensorNumber::PrecisionP0),
+    _fast_aqi_sensor("fast_aqi" RANDOM_SUFFIX, HASensorNumber::PrecisionP0),
+    _epa_aqi_sensor("epa_aqi" RANDOM_SUFFIX, HASensorNumber::PrecisionP0),
+    _co2_sensor("co2" RANDOM_SUFFIX, HASensor::PrecisionP0),
+    _co_sensor("co" RANDOM_SUFFIX, HASensor::PrecisionP0),
+    _sensorStackUptimeSensor("nano_uptime" RANDOM_SUFFIX, HASensor::PrecisionP0),
+    _sensorStackVersionSensor("nano_firmware_version" RANDOM_SUFFIX), 
+    _sensorStackFreeRamSensor("nano_free_ram" RANDOM_SUFFIX, HASensor::PrecisionP0),
+    _voc_index_sensor("voc_index" RANDOM_SUFFIX, HASensor::PrecisionP0),
+    _nox_index_sensor("nox_index" RANDOM_SUFFIX, HASensor::PrecisionP0),
+    _currentSensor("current" RANDOM_SUFFIX, HASensor::PrecisionP2),
+    _sensorStackResetCauseSensor("nano_reset_cause" RANDOM_SUFFIX),
+    _getSps30InfoButton("get_sps30_info" RANDOM_SUFFIX),
+    _Sps30ManualCleanButton("sps30_manual_clean" RANDOM_SUFFIX),
+    _getSgp41SelftestButton("get_sgp41_selftest" RANDOM_SUFFIX),
+    _logLevelSelect("log_level" RANDOM_SUFFIX),
+    _scd30AutoCalSwitch("scd30_autocal" RANDOM_SUFFIX),
+    _scd30ForceCalNumber("scd30_forcecal" RANDOM_SUFFIX, HANumber::PrecisionP0),
+    _esp32FreeRamSensor("esp32_free_ram" RANDOM_SUFFIX, HASensor::PrecisionP0),
+    _esp32UptimeSensor("esp32_uptime" RANDOM_SUFFIX, HASensorNumber::PrecisionP0),
+    _compressorCurrentSensor("compressor_current" RANDOM_SUFFIX, HASensorNumber::PrecisionP2),
+    _geothermalPumpCurrentSensor("geothermal_pump_current" RANDOM_SUFFIX, HASensorNumber::PrecisionP2),
+    _liquidLevelSensor("liquid_level_sensor" RANDOM_SUFFIX),
+    _inactivityTimerDelay("inactivity_timer_delay" RANDOM_SUFFIX, HANumber::PrecisionP0)
 {
     _instance = this;
 
@@ -74,6 +77,7 @@ HomeAssistantManager::HomeAssistantManager() :
     _lastPublishedTemp = -9999.0f;
     _lastPublishedHumi = -1.0f;
     _lastPublishedCo2 = -1.0f;
+    _lastPublishedCo = -1.0f;  // Initialize CO tracking
     _lastPublishedVocIndex = -1;
     _lastPublishedNOxIndex = -1;
     _lastPublishedAmps = -1.0f;
@@ -114,6 +118,7 @@ HomeAssistantManager::HomeAssistantManager() :
     _lastFastAQIPublishTime = 0;
     _lastEPAAQIPublishTime = 0;
     _lastCo2PublishTime = 0;
+    _lastCoPublishTime = 0;  // Initialize CO publish time
     _lastVocPublishTime = 0;
     _lastNOxPublishTime = 0;
     _lastAmpsPublishTime = 0;
@@ -129,22 +134,45 @@ HomeAssistantManager::HomeAssistantManager() :
     _lastCompressorAmpsPublishTime = 0;
     _lastGeothermalPumpAmpsPublishTime = 0;
     _lastLiquidLevelPublishTime = 0;
+    _lastInactivityTimerDelayPublishTime = 0;
 }
 
 HomeAssistantManager::~HomeAssistantManager() {
 
 }
 
-void HomeAssistantManager::init(ConfigManager* config, const char* firmware_version) {
-    _config = config;
-    
+void HomeAssistantManager::init(const char* firmware_version) {
     const char* const entity_category_diagnostic = "diagnostic";
     const char* const entity_category_config = "config";
+
+    ConfigManagerAccessor config;
     
     _device.setManufacturer("Guition");
     _device.setModel("ESP32-2432S022C");
-    _device.setName("HVAC Sensor Display");
+    
+    // Safely set device name with fallback
+    const char* deviceName = config->getMqttDeviceName();
+    if (deviceName != nullptr && strlen(deviceName) > 0) {
+        logger.infof("Setting device name: %s", deviceName);
+        _device.setName(deviceName);
+    } else {
+        logger.warningf("Invalid device name, using default");
+        _device.setName("HVAC Sensor Display");
+    }
+    
     _device.setSoftwareVersion(firmware_version);
+    
+    // Safely set device ID with fallback
+    const char* deviceId = config->getMqttDeviceId();
+    if (deviceId != nullptr && strlen(deviceId) > 0) {
+        logger.infof("Setting device ID: %s", deviceId);
+        char mqtt_device_id[32];
+        snprintf(mqtt_device_id, sizeof(mqtt_device_id), "%s", deviceId);
+        _device.setUniqueId(reinterpret_cast<const byte*>(mqtt_device_id), strlen(mqtt_device_id));
+    } else {
+        logger.warningf("Invalid device ID, using default");
+        _device.setUniqueId(reinterpret_cast<const byte*>("hvac_diff_pressure_sensor_01"), strlen("hvac_diff_pressure_sensor_01"));
+    }
     
     _pressureSensor.setName("Differential Pressure");
     _pressureSensor.setDeviceClass("pressure");
@@ -310,6 +338,12 @@ void HomeAssistantManager::init(ConfigManager* config, const char* firmware_vers
     _co2_sensor.setIcon("mdi:molecule-co2");
     _co2_sensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
     
+    _co_sensor.setName("Carbon Monoxide");
+    _co_sensor.setDeviceClass("carbon_monoxide");
+    _co_sensor.setUnitOfMeasurement("ppm");
+    _co_sensor.setIcon("mdi:molecule-co");
+    _co_sensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
+    
     _voc_index_sensor.setName("VOC Index");
     _voc_index_sensor.setUnitOfMeasurement("");
     _voc_index_sensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
@@ -372,7 +406,7 @@ void HomeAssistantManager::init(ConfigManager* config, const char* firmware_vers
     _logLevelSelect.setEntityCategory(entity_category_config);
     _logLevelSelect.setOptions("Debug;Info;Warning;Error"); // must match order of AppLogLevel enum
     _logLevelSelect.onCommand(onLogLevelCommand);
-    _logLevelSelect.setCurrentState(_config->getLogLevel());
+    _logLevelSelect.setCurrentState(config->getLogLevel());
 
     _scd30AutoCalSwitch.setName("SCD30 Auto Calibration");
     _scd30AutoCalSwitch.setIcon("mdi:tune");
@@ -387,6 +421,15 @@ void HomeAssistantManager::init(ConfigManager* config, const char* firmware_vers
     _scd30ForceCalNumber.setMax(2000);
     _scd30ForceCalNumber.setStep(1);
     _scd30ForceCalNumber.onCommand(onScd30ForceCalCommand);
+    
+    _inactivityTimerDelay.setName("Inactivity Timer Delay");
+    _inactivityTimerDelay.setIcon("mdi:timer");
+    _inactivityTimerDelay.setEntityCategory(entity_category_config);
+    _inactivityTimerDelay.setUnitOfMeasurement("s");
+    _inactivityTimerDelay.setMin(10);
+    _inactivityTimerDelay.setMax(120);
+    _inactivityTimerDelay.setStep(5);
+    _inactivityTimerDelay.onCommand(onInactivityTimerDelayCommand);
 
     _esp32FreeRamSensor.setName("ESP32 Free RAM");
     _esp32FreeRamSensor.setIcon("mdi:memory");
@@ -409,7 +452,26 @@ void HomeAssistantManager::init(ConfigManager* config, const char* firmware_vers
     //_mqtt.setBufferSize(1024);
     //_mqtt.setKeepAlive(30);
     
-    _mqtt.begin(MQTT_HOST, MQTT_USER, MQTT_PASSWORD);
+    // Safely set up MQTT connection with fallback
+    const char* mqttHost = config->getMqttHost();
+    int mqttPort = config->getMqttPort();
+    const char* mqttUser = config->getMqttUser();
+    const char* mqttPassword = config->getMqttPassword();
+    
+    logger.infof("MQTT Host: %s", mqttHost ? mqttHost : "null");
+    logger.infof("MQTT Port: %d", mqttPort);
+    logger.infof("MQTT User: %s", mqttUser ? mqttUser : "null");
+    logger.infof("MQTT Password: %s", mqttPassword ? "***" : "null");
+    
+    if (mqttHost != nullptr && strlen(mqttHost) > 0 && 
+        mqttUser != nullptr && strlen(mqttUser) > 0 && 
+        mqttPassword != nullptr && strlen(mqttPassword) > 0) {
+        logger.infof("Using ConfigManager MQTT settings");
+        _mqtt.begin(mqttHost, mqttPort, mqttUser, mqttPassword);
+    } else {
+        logger.warningf("Invalid MQTT settings, using hardcoded defaults");
+        _mqtt.begin(MQTT_HOST, MQTT_USER, MQTT_PASSWORD);
+    }
 }
 
 HAMqtt* HomeAssistantManager::getMqtt() {
@@ -434,7 +496,12 @@ void HomeAssistantManager::onMqttConnected() {
     _instance->_wifi_ip.setValue(WiFi.localIP().toString().c_str());
 
     uint8_t current_brightness = UITask::getInstance().get_brightness();
-    _instance->_backlight.setState(current_brightness > 0, current_brightness);
+    _instance->_backlight.setState(current_brightness > 0, true);
+    _instance->_backlight.setBrightness(current_brightness, true);
+    
+    // Set initial state for configurable entities
+    ConfigManagerAccessor config;
+    _instance->_inactivityTimerDelay.setState(config->getInactivityTimerDelay());
 }
 
 void HomeAssistantManager::onMqttDisconnected() {
@@ -448,7 +515,8 @@ void HomeAssistantManager::publishSensorData(
     float co2, int32_t voc_index, int32_t nox_index, 
     float amps,
     float pm1, float pm25, float pm4, float pm10,
-    float compressor_amps, float geothermal_pump_amps, bool liquid_level_sensor_state
+    float compressor_amps, float geothermal_pump_amps, bool liquid_level_sensor_state,
+    float co_ppm
 ) {
     unsigned long currentTime = millis();
     char data_str[10];
@@ -491,6 +559,11 @@ void HomeAssistantManager::publishSensorData(
         _co2_sensor.setValue(data_str);
         _lastPublishedCo2 = co2;
         _lastCo2PublishTime = currentTime;
+    }
+    if (fabs(co_ppm - _lastPublishedCo) > 0.1f || (currentTime - _lastCoPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+        _co_sensor.setValue(co_ppm, true);
+        _lastPublishedCo = co_ppm;
+        _lastCoPublishTime = currentTime;
     }
     if (voc_index != _lastPublishedVocIndex || (currentTime - _lastVocPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
         itoa(voc_index, data_str, 10);
@@ -619,15 +692,13 @@ void HomeAssistantManager::publishAHT20Data(float temperature_degc, float humidi
 }
 #endif
 
-void HomeAssistantManager::publishWiFiStatus(bool connected, long rssi, const char* ssid, const char* ip) {
+void HomeAssistantManager::publishWiFiStatus(bool connected, int8_t rssi, const char* ssid, const char* ip) {
     unsigned long currentTime = millis();
     if (connected != _lastPublishedWifiConnected || rssi != _lastPublishedWifiRssi || (currentTime - _lastWifiStatusPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
         if (connected) {
-            char rssi_str[12];
-            itoa(rssi, rssi_str, 10);
-            _wifi_rssi.setValue(rssi_str);
+            _wifi_rssi.setValue(rssi, true);
         } else {
-            _wifi_rssi.setValue("0");
+            _wifi_rssi.setValue(0, true);
         }
         _lastPublishedWifiConnected = connected;
         _lastPublishedWifiRssi = rssi;
@@ -732,7 +803,10 @@ void HomeAssistantManager::onGetSgp41SelftestCommand(HAButton* sender) {
 void HomeAssistantManager::onLogLevelCommand(int8_t index, HASelect* sender) {
     if (!_instance) return;
     AppLogLevel level = static_cast<AppLogLevel>(index);
-    _instance->_config->setLogLevel(level);
+    {
+        ConfigManagerAccessor config;
+        config->setLogLevel(level);
+    }
     logger.setLogLevel(level);
     sender->setState(index);
 }
@@ -813,10 +887,30 @@ void HomeAssistantManager::updateScd30ForceCalValue(uint16_t value) {
     _scd30ForceCalNumber.setState(value);
 }
 
+void HomeAssistantManager::onInactivityTimerDelayCommand(HANumeric number, HANumber* sender) {
+    if (_instance) {
+        int delay = number.toInt32();
+        ConfigManagerAccessor config;
+        config->setInactivityTimerDelay(delay);
+        logger.infof("Inactivity timer delay updated to %d seconds via Home Assistant", delay);
+    }
+}
+
 void HomeAssistantManager::publishEsp32FreeRam(uint32_t free_ram) {
     _esp32FreeRamSensor.setValue(free_ram, true);
 }
 
 void HomeAssistantManager::publishEsp32Uptime(uint32_t uptime_seconds) {
     _esp32UptimeSensor.setValue(uptime_seconds);
+}
+
+void HomeAssistantManager::updateInactivityTimerDelayState() {
+    unsigned long currentTime = millis();
+    // Use a longer interval for configuration values that don't change frequently
+    const unsigned long CONFIG_UPDATE_INTERVAL_MS = 30000; // 30 seconds
+    if (currentTime - _lastInactivityTimerDelayPublishTime >= CONFIG_UPDATE_INTERVAL_MS) {
+        ConfigManagerAccessor config;
+        _inactivityTimerDelay.setState(config->getInactivityTimerDelay());
+        _lastInactivityTimerDelayPublishTime = currentTime;
+    }
 }

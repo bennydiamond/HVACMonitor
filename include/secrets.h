@@ -11,3 +11,5 @@
 #define MQTT_PORT 1883
 #define MQTT_USER "sonoff" // Leave blank if no username: ""
 #define MQTT_PASSWORD "sonoff" // Leave blank if no password: ""
+#define MQTT_DEVICE_ID "hvac_diff_pressure_sensor_01"
+#define MQTT_DEVICE_NAME "HVAC Sensor Display"

@@ -6,14 +6,13 @@
 // Forward declarations to avoid circular dependencies
 class LGFX;
 class IUIUpdater;
-class ConfigManager;
 
 class HomeAssistantManager {
 public:
     HomeAssistantManager();
     ~HomeAssistantManager();
     
-    void init(ConfigManager* config, const char* firmware_version);
+    void init(const char* firmware_version);
     void loop();
 
     // Data Publishing Methods
@@ -22,7 +21,8 @@ public:
         float co2, int32_t voc_index, int32_t nox_index,
         float amps,
         float pm1, float pm25, float pm4, float pm10,
-        float compressor_amps, float geothermal_pump_amps, bool liquid_level_sensor_state
+        float compressor_amps, float geothermal_pump_amps, bool liquid_level_sensor_state,
+        float co_ppm
     );
     void publish_O3_NOx_Values(
         float o3_conc_ug_per_m3, float no2_conc_ug_per_m3, 
@@ -35,7 +35,7 @@ public:
 #ifdef AHT20_ENABLED
     void publishAHT20Data(float temperature_degc, float humidity_pct);
 #endif
-    void publishWiFiStatus(bool connected, long rssi, const char* ssid, const char* ip);
+    void publishWiFiStatus(bool connected, int8_t rssi, const char* ssid, const char* ip);
     void publishSensorConnectionStatus(bool connected);
     void publishHighPressureStatus(bool is_high);
     void publishFanStatus(bool is_on); // Renamed from publishNanoVersion
@@ -56,11 +56,9 @@ public:
     void updateScd30ForceCalValue(uint16_t value);
     void publishEsp32FreeRam(uint32_t free_ram);
     void publishEsp32Uptime(uint32_t uptime_seconds);
+    void updateInactivityTimerDelayState();
 
 private:
-    // Pointers to external hardware/UI classes
-    ConfigManager* _config;
-    
     // MQTT and Home Assistant objects
     WiFiClient _wifiClient;
     HADevice _device;
@@ -69,7 +67,7 @@ private:
     // Home Assistant Entities
     HASensor _pressureSensor;
     HALight _backlight;
-    HASensor _wifi_rssi;
+    HASensorNumber _wifi_rssi;
     HASensor _wifi_ssid;
     HASensor _wifi_ip;
     HASensor _geiger_cpm;
@@ -92,6 +90,7 @@ private:
     HASensor _pm1_0_sensor, _pm2_5_sensor, _pm4_0_sensor, _pm10_0_sensor;
     HASensorNumber _o3_sensor, _no2_sensor, _fast_aqi_sensor, _epa_aqi_sensor;
     HASensor _co2_sensor;
+    HASensorNumber _co_sensor;  // Add CO sensor
     HASensorNumber _sensorStackUptimeSensor;
     HASensor _sensorStackVersionSensor;
     HASensorNumber _sensorStackFreeRamSensor;
@@ -102,6 +101,7 @@ private:
     HASensorNumber _geothermalPumpCurrentSensor;
     HABinarySensor _liquidLevelSensor;
     HASensor _sensorStackResetCauseSensor;
+    HANumber _inactivityTimerDelay;
     HAButton _getSps30InfoButton;
     HAButton _Sps30ManualCleanButton;
     HAButton _getSgp41SelftestButton;
@@ -113,6 +113,7 @@ private:
 
     // State tracking for publishing
     float _lastPublishedPressure, _lastPublishedTemp, _lastPublishedHumi, _lastPublishedCo2;
+    float _lastPublishedCo;  // Add CO tracking
     float _lastPublishedAmps;
     float _lastPublishedCompressorAmps;
     float _lastPublishedGeothermalPumpAmps;
@@ -141,6 +142,7 @@ private:
     unsigned long _LastO3PublishTime, _lastNO2PublishTime, _lastFastAQIPublishTime, _lastEPAAQIPublishTime;
     unsigned long _lastWifiStatusPublishTime, _lastSensorStatusPublishTime, _lastHighPressurePublishTime;
     unsigned long _lastPmPublishTime, _lastCo2PublishTime, _lastVocPublishTime, _lastNOxPublishTime;
+    unsigned long _lastCoPublishTime;  // Add CO publish time tracking
     unsigned long _lastAmpsPublishTime, _lastFanStatusPublishTime;
 #ifdef BMP280_ENABLED
     unsigned long _lastBMP280PressurePublishTime;
@@ -154,6 +156,7 @@ private:
     unsigned long _lastCompressorAmpsPublishTime;
     unsigned long _lastGeothermalPumpAmpsPublishTime;
     unsigned long _lastLiquidLevelPublishTime;
+    unsigned long _lastInactivityTimerDelayPublishTime;
 
     // Static callbacks for ArduinoHA
     static void onMqttConnected();
@@ -168,6 +171,7 @@ private:
     static void onLogLevelCommand(int8_t index, HASelect* sender);
     static void onScd30AutoCalCommand(bool state, HASwitch* sender);
     static void onScd30ForceCalCommand(HANumeric number, HANumber* sender);
+    static void onInactivityTimerDelayCommand(HANumeric number, HANumber* sender);
 
     
     // Static pointer to the class instance for callbacks

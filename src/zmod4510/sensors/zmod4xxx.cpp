@@ -15,10 +15,11 @@
  */
 
 #include "zmod4510/zmod4xxx.h"
+#include "logger.h"
 
 zmod4xxx_err zmod4xxx_read_status(zmod4xxx_dev_t *dev, uint8_t *status)
 {
-    int8_t ret;
+    int ret;
     uint8_t st;
 
     ret = dev->read(dev->i2c_addr, ZMOD4XXX_ADDR_STATUS, &st, 1);
@@ -31,7 +32,7 @@ zmod4xxx_err zmod4xxx_read_status(zmod4xxx_dev_t *dev, uint8_t *status)
 
 zmod4xxx_err zmod4xxx_check_error_event(zmod4xxx_dev_t *dev)
 {
-    int8_t ret;
+    int ret;
     uint8_t data_buf;
 
     ret = dev->read(dev->i2c_addr, 0xB7, &data_buf, 1);
@@ -64,7 +65,7 @@ zmod4xxx_err zmod4xxx_null_ptr_check(zmod4xxx_dev_t *dev)
 
 zmod4xxx_err zmod4xxx_read_sensor_info(zmod4xxx_dev_t *dev)
 {
-    int8_t i2c_ret;
+    int i2c_ret;
     zmod4xxx_err api_ret;
     uint8_t status = 0;
     uint8_t data_buf[ZMOD4XXX_LEN_PID];
@@ -122,7 +123,7 @@ zmod4xxx_err zmod4xxx_read_sensor_info(zmod4xxx_dev_t *dev)
 zmod4xxx_err zmod4xxx_read_tracking_number(zmod4xxx_dev_t *dev,
                                            uint8_t *track_num)
 {
-    int8_t ret;
+    int ret;
 
     ret = dev->read(dev->i2c_addr, ZMOD4XXX_ADDR_TRACKING, track_num,
                     ZMOD4XXX_LEN_TRACKING);
@@ -155,7 +156,7 @@ zmod4xxx_err zmod4xxx_calc_factor(zmod4xxx_conf *conf, uint8_t *hsp,
 
 zmod4xxx_err zmod4xxx_init_sensor(zmod4xxx_dev_t *dev)
 {
-    int8_t i2c_ret;
+    int i2c_ret;
     zmod4xxx_err api_ret;
     uint8_t hsp[HSP_MAX * 2];
     uint8_t data_r[RSLT_MAX];
@@ -218,7 +219,7 @@ zmod4xxx_err zmod4xxx_init_sensor(zmod4xxx_dev_t *dev)
 
 zmod4xxx_err zmod4xxx_init_measurement(zmod4xxx_dev_t *dev)
 {
-    int8_t i2c_ret;
+    int i2c_ret;
     zmod4xxx_err api_ret;
     uint8_t hsp[HSP_MAX * 2];
 
@@ -230,20 +231,23 @@ zmod4xxx_err zmod4xxx_init_measurement(zmod4xxx_dev_t *dev)
     i2c_ret = dev->write(dev->i2c_addr, dev->meas_conf->h.addr, hsp,
                          dev->meas_conf->h.len);
     if (i2c_ret) {
+        logger.errorf("ZMOD4XXX: Failed to write HSP data, return code: %02X", i2c_ret);
         return ERROR_I2C;
     }
     i2c_ret = dev->write(dev->i2c_addr, dev->meas_conf->d.addr,
                          dev->meas_conf->d.data_buf, dev->meas_conf->d.len);
     if (i2c_ret) {
+        logger.errorf("ZMOD4XXX: Failed to write D data, return code: %02X", i2c_ret);
         return ERROR_I2C;
     }
     i2c_ret = dev->write(dev->i2c_addr, dev->meas_conf->m.addr,
                          dev->meas_conf->m.data_buf, dev->meas_conf->m.len);
     if (i2c_ret) {
+        logger.errorf("ZMOD4XXX: Failed to write M data, return code: %02X", i2c_ret);
         return ERROR_I2C;
     }
     i2c_ret = dev->write(dev->i2c_addr, dev->meas_conf->s.addr,
-                         dev->meas_conf->s.data_buf, dev->meas_conf->s.len);
+        dev->meas_conf->s.data_buf, dev->meas_conf->s.len);
     if (i2c_ret) {
         return ERROR_I2C;
     }
@@ -252,7 +256,7 @@ zmod4xxx_err zmod4xxx_init_measurement(zmod4xxx_dev_t *dev)
 
 zmod4xxx_err zmod4xxx_start_measurement_at(zmod4xxx_dev_t *dev, uint8_t  step)
 {
-    int8_t ret;
+    int ret;
 
     ret =
         dev->write(dev->i2c_addr, ZMOD4XXX_ADDR_CMD, &step, 1);
@@ -269,7 +273,7 @@ zmod4xxx_err zmod4xxx_start_measurement(zmod4xxx_dev_t *dev)
 
 zmod4xxx_err zmod4xxx_read_adc_result(zmod4xxx_dev_t *dev, uint8_t *adc_result)
 {
-    int8_t ret;
+    int ret;
 
     ret = dev->read(dev->i2c_addr, dev->meas_conf->r.addr, adc_result,
                     dev->meas_conf->r.len);
