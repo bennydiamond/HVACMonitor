@@ -218,12 +218,24 @@ void process_packet(String packet) {
 
     // Special handling for I2C recovery events
     if (data_part.startsWith("E,I2C_RECOVER")) {
-        if (data_part.endsWith(",1")) {
-            logger.warning("ESP32: Nano reports I2C recovery started");
+        if (data_part.endsWith(",TIMEOUT")) {
+            logger.error("SensorStack: I2C_RECOVER: I2C recovery timeout, bus may be stuck");
+        } else if (data_part.endsWith(",FAIL_SDA_LOW")) {
+            logger.error("SensorStack: I2C_RECOVER: I2C recovery failed - SDA line still stuck low");
+        } else if (data_part.endsWith(",FAIL_BUS_BUSY")) {
+            logger.info("SensorStack: I2C_RECOVER: I2C recovery failed - Manual STOP condition was not successful, bus is still busy");
+        } else if (data_part.endsWith(",BUS_STUCK,0")) {
+            logger.info("SensorStack: I2C_RECOVER: I2C bus stuck detection was triggered in period loop() check"); 
+        } else if (data_part.endsWith(",BUS_STUCK,1")) {
+            logger.error("SensorStack: I2C_RECOVER: I2C bus stuck detection was triggered in read_all_sensors()");
+        } else if (data_part.endsWith(",1")) {
+            logger.info("SensorStack: I2C_RECOVER: I2C bus recovery started");
+        } else if (data_part.endsWith(",2")) {
+            logger.error("SensorStack: I2C_RECOVER: I2C bus is stuck, attempting manual recovery");
         } else if (data_part.endsWith(",0")) {
-            logger.info("ESP32: Nano reports I2C recovery completed");
+            logger.info("SensorStack: I2C_RECOVER: I2C bus recovery completed");
         } else {
-            logger.warningf("ESP32: Unknown I2C recovery status: %s", data_part.c_str());
+            logger.warningf("I2C_RECOVER: Unknown I2C recovery status: %s", data_part.c_str());
         }
     }
     // Special handling for sensor error events
