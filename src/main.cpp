@@ -742,8 +742,33 @@ void loop() {
     static bool valid_packet_start_received = false;
     
     haManager.loop();
-    otaManager.handle();
-    webServerManager.handle();
+    
+    // Check memory before OTA handling to prevent crashes
+    size_t freeHeapForOTA = ESP.getFreeHeap();
+    if (freeHeapForOTA > 50000) { // Need sufficient memory for OTA operations
+        otaManager.handle();
+    } else {
+        // Log OTA skip periodically, not every loop
+        static unsigned long lastOTAWarning = 0;
+        if (millis() - lastOTAWarning > 60000) {
+            logger.warningf("Skipping OTA handling due to low memory: %d bytes", freeHeapForOTA);
+            lastOTAWarning = millis();
+        }
+    }
+    
+    // Check memory before handling web server requests
+    size_t freeHeap = ESP.getFreeHeap();
+    if (freeHeap > 15000) { // Only handle web requests if we have sufficient memory
+        webServerManager.handle();
+    } else {
+        // Log memory warning periodically, not every loop
+        static unsigned long lastMemWarning = 0;
+        if (millis() - lastMemWarning > 30000) {
+            logger.warningf("Skipping web server handling due to low memory: %d bytes", freeHeap);
+            lastMemWarning = millis();
+        }
+    }
+    
     logger.loop();
 
     while (Serial.available() > 0) {
@@ -965,7 +990,7 @@ void loop() {
         // Pass NULL to get the stack high water mark for the current task (the loop)
         // On ESP32, this function returns the size in bytes.
         UBaseType_t remaining_stack = uxTaskGetStackHighWaterMark(NULL);
-        logger.debugf("Main loop task remaining stack: %u bytes", remaining_stack);
+        logger.debugf("Main loop task remaining stack: %u bytes, free heap: %u bytes", remaining_stack, ESP.getFreeHeap());
     }
 
     if (!serial_command_sent_this_loop) {
