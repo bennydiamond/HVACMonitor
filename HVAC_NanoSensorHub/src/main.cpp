@@ -8,13 +8,14 @@
 #include <Wire.h>
 #include <avr/wdt.h>
 #include <avr/io.h>
+#include <avr/pgmspace.h>
 #include <math.h>
 #include <sps30.h>
 #include <SensirionI2cScd30.h>
 #include <SensirionI2CSgp41.h>
 
 #ifndef MINICORE
-#error "This project requires the Minicore AVR core for Arduino.
+#error "This project requires the Minicore AVR core for Arduino."
 #endif
 
 // ======================================================================
@@ -22,7 +23,7 @@
 // ======================================================================
 
 // --- Firmware & Protocol ---
-#define NANO_FIRMWARE_VERSION "1.3.0"
+const char NANO_FIRMWARE_VERSION[] PROGMEM = "1.3.0";
 #define CMD_GET_SENSORS       'S' // Request sensor data
 #define RSP_SENSORS           's' // Response with sensor data
 #define CMD_GET_VERSION       'V'
@@ -58,6 +59,41 @@
 #define I2C_ERROR_TIMEOUT     0x04 // Timeout
 #define I2C_ERROR_BUF_LEN     0x05 // Buffer length exceeded
 
+// --- PROGMEM Error Strings ---
+const char E_I2C_RECOVER_START_1[] PROGMEM = "E,I2C_RECOVER,1";
+const char E_I2C_RECOVER_DONE_1[] PROGMEM = "E,I2C_RECOVER,0";
+const char E_I2C_RECOVER_STUCK_2[] PROGMEM = "E,I2C_RECOVER,2";
+const char E_I2C_BUS_STUCK_0[] PROGMEM = "E,I2C_RECOVER,BUS_STUCK,0";
+const char E_I2C_BUS_STUCK_1[] PROGMEM = "E,I2C_RECOVER,BUS_STUCK,1";
+const char E_I2C_RECOVER_FAIL_SDA_LOW_1[] PROGMEM = "E,I2C_RECOVER,FAIL_SDA_LOW";
+const char E_I2C_RECOVER_FAIL_BUS_BUSY_1[] PROGMEM = "E,I2C_RECOVER,FAIL_BUS_BUSY";
+const char E_I2C_TIMEOUT_1[] PROGMEM = "E,I2C_RECOVER,TIMEOUT";
+const char E_SPS30_DATA_READY_ERROR_1[] PROGMEM = "E,SPS30_DATA_READY_ERROR,1";
+const char E_SPS30_MEASUREMENT_ERROR_1[] PROGMEM = "E,SPS30_MEASUREMENT_ERROR,1";
+const char E_SCD30_DATA_READY_ERROR_1[] PROGMEM = "E,SCD30_DATA_READY_ERROR,1";
+const char E_SCD30_MEASUREMENT_ERROR_1[] PROGMEM = "E,SCD30_MEASUREMENT_ERROR,1";
+const char E_SGP41_CONDITIONING_ERROR_1[] PROGMEM = "E,SGP41_CONDITIONING_ERROR,1";
+const char E_SGP41_MEASUREMENT_ERROR_1[] PROGMEM = "E,SGP41_MEASUREMENT_ERROR,1";
+
+// --- PROGMEM Format Strings ---
+const char FMT_DATA_PACKET[] PROGMEM = "%c%lu,%u,%u,%ld,%ld,%ld,%u,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%u,%u";
+const char FMT_GET_VERSION[] PROGMEM = "%c%s";
+const char FMT_GET_HEALTH[] PROGMEM = "%c%d,%d,%d";
+const char FMT_SPS30_FW[] PROGMEM = "%d,%u,%u,";
+const char FMT_SPS30_INTERVAL[] PROGMEM = "%d,%lu,";
+const char FMT_SPS30_INTERVAL_DAYS[] PROGMEM = "%d,%u,";
+const char FMT_SPS30_STATUS[] PROGMEM = "%d,%lu";
+const char FMT_SPS30_CLEAN[] PROGMEM = "%c%d";
+const char FMT_SGP41_TEST[] PROGMEM = "%c%d,0x%04X";
+const char FMT_SCD30_READ[] PROGMEM = "%X,%X,";
+const char FMT_SCD30_FW[] PROGMEM = ",%X,%X,%X";
+const char FMT_SCD30_AUTOCAL[] PROGMEM = "%c%X,%X,%X";
+const char FMT_SCD30_FORCECAL[] PROGMEM = "%c%X,%X,%X";
+const char FMT_I2C_READ[] PROGMEM = "%c%02X,%02X";
+const char FMT_I2C_READ_DATA[] PROGMEM = ",%02X";
+const char FMT_I2C_WRITE[] PROGMEM = "%c%02X";
+
+#define I2C_TIMEOUT_US 30000 // 30ms timeout for I2C operations
 #define I2C_NORMAL_SPEED 100000 // Normal I2C speed (100 kHz)
 #define I2C_FAST_SPEED   400000 // Fast I2C speed (400 kHz)
 
@@ -77,7 +113,7 @@ const unsigned long SCD30_INVALIDATE_TIMEOUT_MS = 60000;
 
 // --- Sensor Calculation Constants ---
 #define SHUNT_RESISTOR 150.0f
-#define NUM_SAMPLES   1000
+#define NUM_SAMPLES    1000
 #define FAN_CT_VOLTS_PER_AMP         (1.0f / 10.0f)   // 0.1 V/A, e.g. 1V at 10A
 #define COMPRESSOR_CT_VOLTS_PER_AMP (1.0f / 30.0f)   // 0.0333 V/A, SCT-013-030: 1V at 30A
 #define GEOTHERMAL_PUMP_CT_VOLTS_PER_AMP (1.0f / 5.0f)    // 0.2 V/A, 5A CT clamp: 1V at 5A
@@ -101,15 +137,15 @@ const unsigned long SCD30_INVALIDATE_TIMEOUT_MS = 60000;
 bool first_health_status_sent = true;
 volatile uint16_t geiger_pulse_count = 0;
 uint16_t pressure_adc_raw = 0;
-float   fan_amps            = 0.0;
-float   compressor_amps     = 0.0;
-float   geothermal_pump_amps = 0.0;
-float   current_co2         = 0.0;
-float   current_temp_c      = 0.0;
-float   current_humi        = 0.0;
+float    fan_amps             = 0.0;
+float    compressor_amps      = 0.0;
+float    geothermal_pump_amps = 0.0;
+float    current_co2          = 0.0;
+float    current_temp_c       = 0.0;
+float    current_humi         = 0.0;
 uint16_t co_adc_raw = 0;
-uint16_t current_voc_raw    = 0;
-uint16_t current_nox_raw    = 0;
+uint16_t current_voc_raw      = 0;
+uint16_t current_nox_raw      = 0;
 struct   sps30_measurement current_sps_data = {0};
 unsigned long last_scd30_update = 0;
 SensirionI2cScd30 scd30_sensor;
@@ -144,12 +180,6 @@ uint16_t geothermal_pump_ct_sample_count = 0;
 const uint16_t RMS_SAMPLE_COUNT = NUM_SAMPLES;
 
 // --- Rolling average variables for CO sensor ---
-// Using exponential moving average (EMA) for memory efficiency
-// Alpha controls the smoothing: 0.0 = no smoothing, 1.0 = no averaging
-// Alternative integer-based approach (uncomment to use):
-// const uint16_t CO_EMA_SHIFT = 4; // 2^4 = 16, so alpha = 1/16 = 0.0625
-// uint32_t co_adc_ema = 0; // 32-bit for precision
-// bool co_adc_ema_initialized = false;
 const float CO_EMA_ALPHA = 0.1f; // Smoothing factor (0.1 = 10% new data, 90% old average)
 float co_adc_ema = 0.0f; // Exponential moving average
 bool co_adc_ema_initialized = false;
@@ -161,6 +191,8 @@ void process_command(const char* buffer);
 int freeRam();
 bool recoverI2Cbus();
 bool checkAndRecoverI2C();
+void checkAndReportI2cTimeout();
+void send_error_response(const char* error_msg PROGMEM);
 void read_single_adc_channel();
 
 // ======================================================================
@@ -298,16 +330,6 @@ void read_single_adc_channel() {
       }
       co_adc_raw = (uint16_t)co_adc_ema;
       
-      // Alternative integer-based EMA (uncomment to use instead):
-      // if (!co_adc_ema_initialized) {
-      //   co_adc_ema = (uint32_t)reading << CO_EMA_SHIFT;
-      //   co_adc_ema_initialized = true;
-      // } else {
-      //   co_adc_ema = ((uint32_t)reading << CO_EMA_SHIFT) + co_adc_ema * ((1 << CO_EMA_SHIFT) - 1);
-      //   co_adc_ema = co_adc_ema >> CO_EMA_SHIFT;
-      // }
-      // co_adc_raw = (uint16_t)co_adc_ema;
-      
       break;
     }
   }
@@ -344,6 +366,7 @@ void setup() {
     checkAndRecoverI2C();
 
     sensirion_i2c_init();
+    Wire.setWireTimeout(I2C_TIMEOUT_US, true); // reset on timeout
     Wire.setClock(I2C_NORMAL_SPEED);
     while (sps30_probe() != 0) {
       blink_error_code(3);
@@ -374,7 +397,7 @@ void setup() {
     pinMode(FAN_CT_CLAMP_PIN, INPUT); 
     pinMode(COMPRESSOR_CT_CLAMP_PIN, INPUT);
     pinMode(GEOTHERMAL_PUMP_CT_CLAMP_PIN, INPUT);
-    pinMode(CO_SENSOR_PIN, INPUT); // Initialize the CO sensor pin
+    pinMode(CO_SENSOR_PIN, INPUT);
 }
 
 // ======================================================================
@@ -394,7 +417,9 @@ void loop() {
   // Periodic I2C bus health check (every 10 seconds)
   if (current_time - last_i2c_check_time >= 10000) {
     last_i2c_check_time = current_time;
-    checkAndRecoverI2C();
+    if (checkAndRecoverI2C()) {
+        send_error_response(E_I2C_BUS_STUCK_0);
+    }
   }
 
   // Read one ADC channel per loop iteration (round-robin)
@@ -432,39 +457,37 @@ void loop() {
 // ======================================================================
 //  SENSOR & DATA FUNCTIONS
 // ======================================================================
-
 unsigned long read_all_sensors() {
   int temp_val;
   uint16_t temp_uval;
   digitalWrite(DEBUG_LED_PIN, !digitalRead(DEBUG_LED_PIN));
   
-  // Check and recover I2C bus before sensor readings
-  checkAndRecoverI2C();
+  // If the bus is stuck (and recovery fails), abort the entire sensor read cycle.
+  if (checkAndRecoverI2C()) {
+      send_error_response(E_I2C_BUS_STUCK_1);
+      return millis(); // Return early
+  }
   
-  // Check I2C bus before SPS30 operations
-  checkAndRecoverI2C();
   Wire.setClock(I2C_NORMAL_SPEED);
   int16_t ret_sps_read = sps30_read_data_ready(&temp_uval);
   if (ret_sps_read != 0) {
-    Serial.println(F("<E,SPS30_DATA_READY_ERROR,1>"));
+    send_error_response(E_SPS30_DATA_READY_ERROR_1);
   }
   if (ret_sps_read == 0 && temp_uval) {
     int16_t ret_sps_measurement = sps30_read_measurement(&current_sps_data);
     if (ret_sps_measurement != 0) {
-      Serial.println(F("<E,SPS30_MEASUREMENT_ERROR,1>"));
+      send_error_response(E_SPS30_MEASUREMENT_ERROR_1);
     }
   }
 
-  // Check I2C bus before SCD30 operations
-  checkAndRecoverI2C();
   temp_val = scd30_sensor.getDataReady(temp_uval);
   if (temp_val != 0) {
-    Serial.println(F("<E,SCD30_DATA_READY_ERROR,1>"));
+    send_error_response(E_SCD30_DATA_READY_ERROR_1);
   }
   if (temp_val == 0 && temp_uval) {
     temp_val = scd30_sensor.readMeasurementData(current_co2, current_temp_c, current_humi);
     if (temp_val != 0) {
-      Serial.println(F("<E,SCD30_MEASUREMENT_ERROR,1>"));
+      send_error_response(E_SCD30_MEASUREMENT_ERROR_1);
     }
     if (temp_val == 0) {
       last_scd30_update = millis();
@@ -480,19 +503,17 @@ unsigned long read_all_sensors() {
   uint16_t rh = static_cast<uint16_t>(current_humi * 65535.0f / 100.0f);
   uint16_t temp = static_cast<uint16_t>((current_temp_c + 45.0f) * 65535.0f / 175.0f);
 
-  // Check I2C bus before SGP41 operations
-  checkAndRecoverI2C();
   if (conditioning_s > 0) {
     Wire.setClock(I2C_FAST_SPEED);
     temp_uval = sgp41_sensor.executeConditioning(rh, temp, current_voc_raw);
     if (temp_uval != 0) {
-      Serial.println(F("<E,SGP41_CONDITIONING_ERROR,1>"));
+      send_error_response(E_SGP41_CONDITIONING_ERROR_1);
     }
     conditioning_s--;
   } else {
     temp_uval = sgp41_sensor.measureRawSignals(rh, temp, current_voc_raw, current_nox_raw);
     if (temp_uval != 0) {
-      Serial.println(F("<E,SGP41_MEASUREMENT_ERROR,1>"));
+      send_error_response(E_SGP41_MEASUREMENT_ERROR_1);
     }
   }
   Wire.setClock(I2C_NORMAL_SPEED);
@@ -501,6 +522,8 @@ unsigned long read_all_sensors() {
     current_voc_raw = 0;
     current_nox_raw = 0;
   }
+
+  checkAndReportI2cTimeout();
   
   return millis(); // Return the timestamp
 }
@@ -516,7 +539,6 @@ void send_data_packet(unsigned long timestamp) {
 
   bool liquid_level_sensor_state = digitalRead(LIQUID_LEVEL_SENSOR_PIN);
   
-  // Send raw ADC values for pressure and CO sensors, and calculated values for others
   long t_val = (long)(current_temp_c * 10);
   long h_val = (long)(current_humi * 10);
   long co2_val = (long)current_co2;
@@ -526,14 +548,15 @@ void send_data_packet(unsigned long timestamp) {
   long pm4_val = (long)(current_sps_data.mc_4p0 * 10);
   long pm10_val = (long)(current_sps_data.mc_10p0 * 10);
   
-  sprintf(tx_command_buffer, "%c%lu,%u,%u,%ld,%ld,%ld,%u,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%u,%u",
-          RSP_SENSORS, timestamp, pressure_adc_raw, pulse_count, t_val, h_val, co2_val, current_voc_raw, current_nox_raw,
-          amps_val, pm1_val, pm25_val, pm4_val, pm10_val,
-          (long)(compressor_amps * 100), (long)(geothermal_pump_amps * 100), liquid_level_sensor_state,
-          co_adc_raw
-          );
+  snprintf_P(tx_command_buffer, sizeof(tx_command_buffer), 
+           FMT_DATA_PACKET,
+           RSP_SENSORS, timestamp, pressure_adc_raw, pulse_count, t_val, h_val, co2_val, current_voc_raw, current_nox_raw,
+           amps_val, pm1_val, pm25_val, pm4_val, pm10_val,
+           (long)(compressor_amps * 100), (long)(geothermal_pump_amps * 100), liquid_level_sensor_state,
+           co_adc_raw
+           );
 
-  uint8_t checksum = calculate_checksum(tx_command_buffer);
+  const uint8_t checksum = calculate_checksum(tx_command_buffer);
 
   Serial.print('<');
   Serial.print(tx_command_buffer);
@@ -547,10 +570,10 @@ void process_command(const char* buffer) {
   if (!comma) return;
     int data_len = comma - buffer;
   if (data_len <= 0 || data_len >= MAX_COMMAND_LEN) return;
-    uint8_t received_checksum = atoi(comma + 1);
+    const uint8_t received_checksum = atoi(comma + 1);
     char temp_char = buffer[data_len];
     const_cast<char*>(buffer)[data_len] = '\0';
-    uint8_t calculated_checksum = calculate_checksum(buffer);
+    const uint8_t calculated_checksum = calculate_checksum(buffer);
     const_cast<char*>(buffer)[data_len] = temp_char;
   if (received_checksum != calculated_checksum) return;
 
@@ -568,13 +591,13 @@ void process_command(const char* buffer) {
 
   switch (command) {
     case CMD_GET_VERSION:
-      sprintf(tx_command_buffer, "%c%s", RSP_VERSION, NANO_FIRMWARE_VERSION);
+      snprintf_P(tx_command_buffer, sizeof(tx_command_buffer), FMT_GET_VERSION, RSP_VERSION, NANO_FIRMWARE_VERSION);
       checksum = calculate_checksum(tx_command_buffer);
       Serial.print('<'); Serial.print(tx_command_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
       break;
 
     case CMD_GET_HEALTH:
-      sprintf(tx_command_buffer, "%c%d,%d,%d", RSP_HEALTH, first_health_status_sent ? 0 : 1, freeRam(), last_reset_cause);
+      snprintf_P(tx_command_buffer, sizeof(tx_command_buffer), FMT_GET_HEALTH, RSP_HEALTH, first_health_status_sent ? 0 : 1, freeRam(), last_reset_cause);
       checksum = calculate_checksum(tx_command_buffer);
       Serial.print('<'); Serial.print(tx_command_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
       break;
@@ -595,17 +618,18 @@ void process_command(const char* buffer) {
     }
 
     case CMD_GET_SPS30_INFO: {
-      strcpy(tx_command_buffer, "p");
+      tx_command_buffer[0] = RSP_SPS30_INFO;
+      tx_command_buffer[1] = '\0';
       char* pos = tx_command_buffer + 1;
       Wire.setClock(I2C_NORMAL_SPEED);
       int_val = sps30_read_firmware_version(&uint8_val1, &uint8_val2);
-      pos += sprintf(pos, "%d,%u,%u,", int_val, uint8_val1, uint8_val2);
+      pos += snprintf_P(pos, sizeof(tx_command_buffer) - (pos - tx_command_buffer), FMT_SPS30_FW, int_val, uint8_val1, uint8_val2);
       int_val = sps30_get_fan_auto_cleaning_interval(&uint32_val);
-      pos += sprintf(pos, "%d,%lu,", int_val, (unsigned long)uint32_val);
+      pos += snprintf_P(pos, sizeof(tx_command_buffer) - (pos - tx_command_buffer), FMT_SPS30_INTERVAL, int_val, uint32_val);
       int_val = sps30_get_fan_auto_cleaning_interval_days(&uint8_val1);
-      pos += sprintf(pos, "%d,%lu,", int_val, (unsigned long)uint8_val1);
+      pos += snprintf_P(pos, sizeof(tx_command_buffer) - (pos - tx_command_buffer), FMT_SPS30_INTERVAL_DAYS, int_val, uint8_val1);
       int_val = sps30_read_device_status_register(&uint32_val);
-      sprintf(pos, "%d,%lu", int_val, (unsigned long)uint32_val);
+      snprintf_P(pos, sizeof(tx_command_buffer) - (pos - tx_command_buffer), FMT_SPS30_STATUS, int_val, uint32_val);
       checksum = calculate_checksum(tx_command_buffer);
       Serial.print('<'); Serial.print(tx_command_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
       break;
@@ -613,7 +637,7 @@ void process_command(const char* buffer) {
     case CMD_SPS30_CLEAN: {
       Wire.setClock(I2C_NORMAL_SPEED);
       int_val = sps30_start_manual_fan_cleaning();
-      sprintf(tx_command_buffer, "%c%d", RSP_SPS30_CLEAN, int_val);
+      snprintf_P(tx_command_buffer, sizeof(tx_command_buffer), FMT_SPS30_CLEAN, RSP_SPS30_CLEAN, int_val);
       checksum = calculate_checksum(tx_command_buffer);
       Serial.print('<'); Serial.print(tx_command_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
       break;
@@ -622,27 +646,28 @@ void process_command(const char* buffer) {
       Wire.setClock(I2C_FAST_SPEED);
       uint16_t sgp41_ret = sgp41_sensor.executeSelfTest(uint_val);
       Wire.setClock(I2C_NORMAL_SPEED);
-      sprintf(tx_command_buffer, "%c%d,0x%4X", RSP_SGP41_TEST, sgp41_ret, uint_val);
+      snprintf_P(tx_command_buffer, sizeof(tx_command_buffer), FMT_SGP41_TEST, RSP_SGP41_TEST, sgp41_ret, uint_val);
       checksum = calculate_checksum(tx_command_buffer);
       Serial.print('<'); Serial.print(tx_command_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
       break;
     }
     case CMD_GET_SCD30_INFO: {
-      strcpy(tx_command_buffer, "d");
+      tx_command_buffer[0] = RSP_SCD30_INFO;
+      tx_command_buffer[1] = '\0';
       char* pos = tx_command_buffer + 1;
       Wire.setClock(I2C_NORMAL_SPEED);
       int_val = scd30_sensor.getMeasurementInterval(uint_val);
-      pos += sprintf(pos, "%X,%X,", int_val, uint_val);
+      pos += snprintf_P(pos, sizeof(tx_command_buffer) - (pos - tx_command_buffer), FMT_SCD30_READ, int_val, uint_val);
       int_val = scd30_sensor.getAutoCalibrationStatus(uint_val);
-      pos += sprintf(pos, "%X,%X,", int_val, uint_val);
+      pos += snprintf_P(pos, sizeof(tx_command_buffer) - (pos - tx_command_buffer), FMT_SCD30_READ, int_val, uint_val);
       int_val = scd30_sensor.getForceRecalibrationStatus(uint_val);
-      pos += sprintf(pos, "%X,%X,", int_val, uint_val);
+      pos += snprintf_P(pos, sizeof(tx_command_buffer) - (pos - tx_command_buffer), FMT_SCD30_READ, int_val, uint_val);
       int_val = scd30_sensor.getTemperatureOffset(uint_val);
-      pos += sprintf(pos, "%X,%X,", int_val, uint_val);
+      pos += snprintf_P(pos, sizeof(tx_command_buffer) - (pos - tx_command_buffer), FMT_SCD30_READ, int_val, uint_val);
       int_val = scd30_sensor.getAltitudeCompensation(uint_val);
-      pos += sprintf(pos, "%X,%X,", int_val, uint_val);
+      pos += snprintf_P(pos, sizeof(tx_command_buffer) - (pos - tx_command_buffer), FMT_SCD30_READ, int_val, uint_val);
       int_val = scd30_sensor.readFirmwareVersion(uint8_val1, uint8_val2);
-      sprintf(pos, ",%X,%X,%X", int_val, uint8_val1, uint8_val2);
+      snprintf_P(pos, sizeof(tx_command_buffer) - (pos - tx_command_buffer), FMT_SCD30_FW, int_val, uint8_val1, uint8_val2);
       checksum = calculate_checksum(tx_command_buffer);
       Serial.print('<'); Serial.print(tx_command_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
       break;
@@ -652,7 +677,7 @@ void process_command(const char* buffer) {
       Wire.setClock(I2C_NORMAL_SPEED);
       int_val = scd30_sensor.activateAutoCalibration(uint_val);
       uint_val2 = scd30_sensor.getAutoCalibrationStatus(uint_val);
-      sprintf(tx_command_buffer, "%c%X,%X,%X", RSP_SCD30_AUTOCAL, int_val, uint_val2, uint_val);
+      snprintf_P(tx_command_buffer, sizeof(tx_command_buffer), FMT_SCD30_AUTOCAL, RSP_SCD30_AUTOCAL, int_val, uint_val2, uint_val);
       checksum = calculate_checksum(tx_command_buffer);
       Serial.print('<'); Serial.print(tx_command_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
       break;
@@ -665,134 +690,138 @@ void process_command(const char* buffer) {
       Wire.setClock(I2C_NORMAL_SPEED);
       int_val = scd30_sensor.forceRecalibration(uint_val);
       uint_val2 = scd30_sensor.getForceRecalibrationStatus(uint_val);
-      sprintf(tx_command_buffer, "%c%X,%X,%X", RSP_SCD30_FORCECAL, int_val, uint_val2, uint_val);
+      snprintf_P(tx_command_buffer, sizeof(tx_command_buffer), FMT_SCD30_FORCECAL, RSP_SCD30_FORCECAL, int_val, uint_val2, uint_val);
       checksum = calculate_checksum(tx_command_buffer);
       Serial.print('<'); Serial.print(tx_command_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
       break;
     }
     
     case CMD_I2C_READ: {
-        // Check and recover I2C bus before I2C operations
-        checkAndRecoverI2C();
-        
-        char* p = const_cast<char*>(buffer + 1);
-        char* endptr;
+      checkAndRecoverI2C();
+      
+      char* p = const_cast<char*>(buffer + 1);
+      char* endptr;
 
-        i2c_address = strtol(p, &endptr, 16);
-        if (p == endptr) { i2c_status = I2C_ERROR_OTHER; break; }
-        p = endptr; if (*p == ',') p++;
-        
-        uint8_t write_len = strtol(p, &endptr, 16);
-        if (p == endptr) { i2c_status = I2C_ERROR_OTHER; break; }
-        p = endptr; if (*p == ',') p++;
-        
-        i2c_num_bytes = strtol(p, &endptr, 16);
-        if (p == endptr) { i2c_status = I2C_ERROR_OTHER; break; }
-        p = endptr;
+      i2c_address = strtol(p, &endptr, 16);
+      if (p == endptr) { i2c_status = I2C_ERROR_OTHER; break; }
+      p = endptr; if (*p == ',') p++;
+      
+      uint8_t write_len = strtol(p, &endptr, 16);
+      if (p == endptr) { i2c_status = I2C_ERROR_OTHER; break; }
+      p = endptr; if (*p == ',') p++;
+      
+      i2c_num_bytes = strtol(p, &endptr, 16);
+      if (p == endptr) { i2c_status = I2C_ERROR_OTHER; break; }
+      p = endptr;
 
-        if (i2c_num_bytes > I2C_WIRE_LIB_MAX_READ) i2c_num_bytes = I2C_WIRE_LIB_MAX_READ;
-        if (write_len > I2C_CMD_MAX_WRITE_IN_READ) { i2c_status = I2C_ERROR_BUF_LEN; break; }
+      if (i2c_num_bytes > I2C_WIRE_LIB_MAX_READ) i2c_num_bytes = I2C_WIRE_LIB_MAX_READ;
+      if (write_len > I2C_CMD_MAX_WRITE_IN_READ) { i2c_status = I2C_ERROR_BUF_LEN; break; }
 
-        uint8_t write_data[I2C_CMD_MAX_WRITE_IN_READ];
-        if (write_len > 0) {
-            for (uint8_t i = 0; i < write_len; i++) {
-                if (*p == ',') p++;
-                write_data[i] = strtol(p, &endptr, 16);
-                if (p == endptr) { i2c_status = I2C_ERROR_OTHER; break; }
-                p = endptr;
-            }
-            if (i2c_status != I2C_ERROR_NONE) break;
-        }
+      uint8_t write_data[I2C_CMD_MAX_WRITE_IN_READ];
+      if (write_len > 0) {
+          for (uint8_t i = 0; i < write_len; i++) {
+              if (*p == ',') p++;
+              write_data[i] = strtol(p, &endptr, 16);
+              if (p == endptr) { i2c_status = I2C_ERROR_OTHER; break; }
+              p = endptr;
+          }
+          if (i2c_status != I2C_ERROR_NONE) break;
+      }
 
-        Wire.setClock(I2C_FAST_SPEED);
-        if (write_len > 0) {
-            Wire.beginTransmission(i2c_address);
-            Wire.write(write_data, write_len);
-            uint8_t i2c_result = Wire.endTransmission(false);
+      Wire.setClock(I2C_FAST_SPEED);
+      if (write_len > 0) {
+          Wire.beginTransmission(i2c_address);
+          Wire.write(write_data, write_len);
+          uint8_t i2c_result = Wire.endTransmission(false);
 
-            if (i2c_result != 0) {
-                i2c_status = (i2c_result == 2) ? I2C_ERROR_ADDR_NACK : I2C_ERROR_OTHER;
-                // Trigger I2C recovery on write failure
-                recoverI2Cbus();
-            } else {
-                delay(I2C_WRITE_READ_DELAY_MS);
-            }
-        }
+          if (i2c_result != 0) {
+              i2c_status = (i2c_result == 2) ? I2C_ERROR_ADDR_NACK : I2C_ERROR_OTHER;
+              recoverI2Cbus();
+          } else {
+              delay(I2C_WRITE_READ_DELAY_MS);
+          }
+      }
 
-        if (i2c_status == I2C_ERROR_NONE && i2c_num_bytes > 0) {
-            uint8_t bytes_read = Wire.requestFrom(i2c_address, i2c_num_bytes);
-            if (bytes_read != i2c_num_bytes) {
-                i2c_status = I2C_ERROR_DATA_NACK;
-                i2c_num_bytes = bytes_read;
-                // Trigger I2C recovery on read failure
-                recoverI2Cbus();
-            }
-            for (uint8_t i = 0; i < bytes_read; i++) {
-                i2c_data[i] = Wire.read();
-            }
-        }
-        Wire.setClock(I2C_NORMAL_SPEED);
-        
-        sprintf(tx_command_buffer, "%c%02X,%02X", RSP_I2C_READ, i2c_status, i2c_num_bytes);
-        if (i2c_status == I2C_ERROR_NONE && i2c_num_bytes > 0) {
-            char* pos = tx_command_buffer + strlen(tx_command_buffer);
-            for (uint8_t i = 0; i < i2c_num_bytes; i++) {
-                pos += sprintf(pos, ",%02X", i2c_data[i]);
-            }
-        }
-        
-        checksum = calculate_checksum(tx_command_buffer);
-        Serial.print('<'); Serial.print(tx_command_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
-        break;
+      if (i2c_status == I2C_ERROR_NONE && i2c_num_bytes > 0) {
+          uint8_t bytes_read = Wire.requestFrom(i2c_address, i2c_num_bytes);
+          if (bytes_read != i2c_num_bytes) {
+              i2c_status = I2C_ERROR_DATA_NACK;
+              i2c_num_bytes = bytes_read;
+              recoverI2Cbus();
+          }
+          for (uint8_t i = 0; i < bytes_read; i++) {
+              i2c_data[i] = Wire.read();
+          }
+      }
+      Wire.setClock(I2C_NORMAL_SPEED);
+
+      checkAndReportI2cTimeout();
+      
+      snprintf_P(tx_command_buffer, sizeof(tx_command_buffer), FMT_I2C_READ, RSP_I2C_READ, i2c_status, i2c_num_bytes);
+      if (i2c_status == I2C_ERROR_NONE && i2c_num_bytes > 0) {
+          char* pos = tx_command_buffer + strlen(tx_command_buffer);
+          for (uint8_t i = 0; i < i2c_num_bytes; i++) {
+              int written = snprintf_P(pos, sizeof(tx_command_buffer) - (pos - tx_command_buffer), FMT_I2C_READ_DATA, i2c_data[i]);
+              if (written <= 0) {
+                  break;
+              }
+              pos += written;
+          }
+      }
+      
+      checksum = calculate_checksum(tx_command_buffer);
+      Serial.print('<'); Serial.print(tx_command_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
+      break;
     }
     
     case CMD_I2C_WRITE: {
-        // Check and recover I2C bus before I2C operations
-        checkAndRecoverI2C();
+      checkAndRecoverI2C();
 
-        char* p = const_cast<char*>(buffer + 1);
-        char* endptr;
+      char* p = const_cast<char*>(buffer + 1);
+      char* endptr;
 
-        i2c_address = strtol(p, &endptr, 16);
-        if (p == endptr) { i2c_status = I2C_ERROR_OTHER; break; }
-        p = endptr; if (*p == ',') p++;
+      i2c_address = strtol(p, &endptr, 16);
+      if (p == endptr) { i2c_status = I2C_ERROR_OTHER; break; }
+      p = endptr; if (*p == ',') p++;
 
-        i2c_num_bytes = strtol(p, &endptr, 16);
-        if (p == endptr) { i2c_status = I2C_ERROR_OTHER; break; }
-        p = endptr;
+      i2c_num_bytes = strtol(p, &endptr, 16);
+      if (p == endptr) { i2c_status = I2C_ERROR_OTHER; break; }
+      p = endptr;
 
-        if (i2c_num_bytes > sizeof(i2c_data)) {
-            i2c_status = I2C_ERROR_BUF_LEN;
-            break;
-        }
+      if (i2c_num_bytes > sizeof(i2c_data)) {
+          i2c_status = I2C_ERROR_BUF_LEN;
+          break;
+      }
 
-        for (uint8_t i = 0; i < i2c_num_bytes; i++) {
-            if (*p == ',') p++;
-            i2c_data[i] = strtol(p, &endptr, 16);
-            if (p == endptr) {
-                i2c_status = I2C_ERROR_OTHER;
-                break;
-            }
-            p = endptr;
-        }
-        if (i2c_status != I2C_ERROR_NONE) break;
-        Wire.setClock(I2C_FAST_SPEED);
-        Wire.beginTransmission(i2c_address);
-        Wire.write(i2c_data, i2c_num_bytes);
-        uint8_t i2c_result = Wire.endTransmission();
+      for (uint8_t i = 0; i < i2c_num_bytes; i++) {
+          if (*p == ',') p++;
+          i2c_data[i] = strtol(p, &endptr, 16);
+          if (p == endptr) {
+              i2c_status = I2C_ERROR_OTHER;
+              break;
+          }
+          p = endptr;
+      }
+      if (i2c_status != I2C_ERROR_NONE) break;
+      Wire.setClock(I2C_FAST_SPEED);
+      Wire.beginTransmission(i2c_address);
+      Wire.write(i2c_data, i2c_num_bytes);
+      uint8_t i2c_result = Wire.endTransmission();
 
-        if (i2c_result != 0) {
-            i2c_status = (i2c_result == 2) ? I2C_ERROR_ADDR_NACK : I2C_ERROR_OTHER;
-            recoverI2Cbus();
-            break;
-        }
-        Wire.setClock(I2C_NORMAL_SPEED);
+      if (i2c_result != 0) {
+          i2c_status = (i2c_result == 2) ? I2C_ERROR_ADDR_NACK : I2C_ERROR_OTHER;
+          recoverI2Cbus();
+          break;
+      }
+      Wire.setClock(I2C_NORMAL_SPEED);
 
-        sprintf(tx_command_buffer, "%c%02X", RSP_I2C_WRITE, i2c_status);
+      checkAndReportI2cTimeout();
 
-        checksum = calculate_checksum(tx_command_buffer);
-        Serial.print('<'); Serial.print(tx_command_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
-        break;
+      snprintf_P(tx_command_buffer, sizeof(tx_command_buffer), FMT_I2C_WRITE, RSP_I2C_WRITE, i2c_status);
+
+      checksum = calculate_checksum(tx_command_buffer);
+      Serial.print('<'); Serial.print(tx_command_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
+      break;
     }
 
     default:
@@ -804,103 +833,95 @@ void process_command(const char* buffer) {
 //  I2C RECOVERY
 // ======================================================================
 
-/**
- * @brief Attempts to recover the I2C bus if a slave device is holding SDA low.
- * * This function manually toggles the SCL line up to 9 times to persuade a
- * stuck slave to release the SDA line. It then issues a manual STOP condition
- * before re-initializing the Wire library.
- */
-
 bool recoverI2Cbus() {
-    Serial.println(F("<E,I2C_RECOVER,1>")); // Log recovery attempt
+    send_error_response(E_I2C_RECOVER_START_1);
 
-    const uint8_t sda_pin = A4; // SDA
-    const uint8_t scl_pin = A5; // SCL
+    const uint8_t sda_pin = SDA;
+    const uint8_t scl_pin = SCL;
 
-    // Disable I2C hardware
     TWCR = 0;
 
-    // Let lines float high via physical pull-ups
     pinMode(sda_pin, INPUT);
     pinMode(scl_pin, INPUT);
     delay(1);
 
-    // If both lines are high, bus is free
     if (digitalRead(sda_pin) == HIGH && digitalRead(scl_pin) == HIGH) {
         Wire.begin();
+        Wire.setWireTimeout(I2C_TIMEOUT_US, true);
         Wire.setClock(I2C_NORMAL_SPEED);
-        Serial.println(F("<E,I2C_RECOVER,0>")); // Done
+        send_error_response(E_I2C_RECOVER_DONE_1);
         return true;
     }
 
-    // Attempt recovery: pulse SCL to free SDA
+    send_error_response(E_I2C_RECOVER_STUCK_2);
+
     pinMode(scl_pin, OUTPUT);
-    pinMode(sda_pin, INPUT); // Leave SDA released
+    pinMode(sda_pin, INPUT);
 
     const uint8_t max_pulses = 20;
     for (uint8_t i = 0; i < max_pulses; i++) {
-        // If SDA released, stop
         if (digitalRead(sda_pin) == HIGH) break;
-
         digitalWrite(scl_pin, LOW);
-        delayMicroseconds(100); // Slow recovery clock ~5 kHz
+        delayMicroseconds(100);
         digitalWrite(scl_pin, HIGH);
         delayMicroseconds(100);
     }
 
-    // Check SDA after clocking
     if (digitalRead(sda_pin) == LOW) {
-        Serial.println(F("<E,I2C_RECOVER,FAIL_SDA_LOW>"));
-        return false; // Still stuck, fail
+        send_error_response(E_I2C_RECOVER_FAIL_SDA_LOW_1);
+        return false;
     }
 
-    // Generate STOP condition
     pinMode(sda_pin, OUTPUT);
     digitalWrite(sda_pin, LOW);
-    delayMicroseconds(100);
-
+    delayMicroseconds(5);
     digitalWrite(scl_pin, HIGH);
     delayMicroseconds(100);
-
     digitalWrite(sda_pin, HIGH);
-    delayMicroseconds(100);
+    delayMicroseconds(20);
 
-    // Release lines
     pinMode(sda_pin, INPUT);
     pinMode(scl_pin, INPUT);
     delay(1);
 
-    // Check bus free before reinit
     if (digitalRead(sda_pin) == LOW || digitalRead(scl_pin) == LOW) {
-        Serial.println(F("<E,I2C_RECOVER,FAIL_BUS_BUSY>"));
+      send_error_response(E_I2C_RECOVER_FAIL_BUS_BUSY_1);
         return false;
     }
 
-    // Re-init I2C
     Wire.begin();
+    Wire.setWireTimeout(I2C_TIMEOUT_US, true);
     Wire.setClock(I2C_NORMAL_SPEED);
     delay(1);
 
-    Serial.println(F("<E,I2C_RECOVER,0>")); // Recovery success
+    send_error_response(E_I2C_RECOVER_DONE_1);
     return true;
 }
 
-
-/**
- * @brief Checks if the I2C bus is stuck and calls recovery function if needed.
- * * @return true if the bus was stuck and a recovery was attempted.
- * @return false if the bus is OK.
- */
 bool checkAndRecoverI2C() {
     pinMode(SDA, INPUT);
     pinMode(SCL, INPUT);
     delayMicroseconds(10);
 
-    // If bus idle, nothing to do
     if (digitalRead(SDA) == HIGH && digitalRead(SCL) == HIGH) {
-        return false; // Bus not stuck
+        return false;
     }
 
-    // Try recovery — return true if STILL stuck after recovery
-    return !recoverI2Cbus(); // invert because recover returns success/fail
+    return !recoverI2Cbus();
+}
+
+void checkAndReportI2cTimeout() {
+  if (Wire.getWireTimeoutFlag()) {
+    send_error_response(E_I2C_TIMEOUT_1);
+    Wire.clearWireTimeoutFlag();
+    recoverI2Cbus();
+  }
+}
+
+void send_error_response(const char* error_msg PROGMEM) {
+  char szBuf[40];
+  strncpy_P(szBuf, error_msg, sizeof(szBuf));
+  szBuf[sizeof(szBuf) - 1] = '\0';
+  const uint8_t cs = calculate_checksum(szBuf);
+  Serial.print('<'); Serial.print(szBuf); Serial.print(','); Serial.print(cs); Serial.println('>');
 }
