@@ -218,12 +218,24 @@ void process_packet(String packet) {
 
     // Special handling for I2C recovery events
     if (data_part.startsWith("E,I2C_RECOVER")) {
-        if (data_part.endsWith(",1")) {
-            logger.warning("ESP32: Nano reports I2C recovery started");
+        if (data_part.endsWith(",TIMEOUT")) {
+            logger.error("SensorStack: I2C_RECOVER: I2C recovery timeout, bus may be stuck");
+        } else if (data_part.endsWith(",FAIL_SDA_LOW")) {
+            logger.error("SensorStack: I2C_RECOVER: I2C recovery failed - SDA line still stuck low");
+        } else if (data_part.endsWith(",FAIL_BUS_BUSY")) {
+            logger.info("SensorStack: I2C_RECOVER: I2C recovery failed - Manual STOP condition was not successful, bus is still busy");
+        } else if (data_part.endsWith(",BUS_STUCK,0")) {
+            logger.info("SensorStack: I2C_RECOVER: I2C bus stuck detection was triggered in period loop() check"); 
+        } else if (data_part.endsWith(",BUS_STUCK,1")) {
+            logger.error("SensorStack: I2C_RECOVER: I2C bus stuck detection was triggered in read_all_sensors()");
+        } else if (data_part.endsWith(",1")) {
+            logger.info("SensorStack: I2C_RECOVER: I2C bus recovery started");
+        } else if (data_part.endsWith(",2")) {
+            logger.error("SensorStack: I2C_RECOVER: I2C bus is stuck, attempting manual recovery");
         } else if (data_part.endsWith(",0")) {
-            logger.info("ESP32: Nano reports I2C recovery completed");
+            logger.info("SensorStack: I2C_RECOVER: I2C bus recovery completed");
         } else {
-            logger.warningf("ESP32: Unknown I2C recovery status: %s", data_part.c_str());
+            logger.warningf("I2C_RECOVER: Unknown I2C recovery status: %s", data_part.c_str());
         }
     }
     // Special handling for sensor error events
@@ -730,8 +742,33 @@ void loop() {
     static bool valid_packet_start_received = false;
     
     haManager.loop();
-    otaManager.handle();
-    webServerManager.handle();
+    
+    // Check memory before OTA handling to prevent crashes
+    size_t freeHeapForOTA = ESP.getFreeHeap();
+    if (freeHeapForOTA > 50000) { // Need sufficient memory for OTA operations
+        otaManager.handle();
+    } else {
+        // Log OTA skip periodically, not every loop
+        static unsigned long lastOTAWarning = 0;
+        if (millis() - lastOTAWarning > 60000) {
+            logger.warningf("Skipping OTA handling due to low memory: %d bytes", freeHeapForOTA);
+            lastOTAWarning = millis();
+        }
+    }
+    
+    // Check memory before handling web server requests
+    size_t freeHeap = ESP.getFreeHeap();
+    if (freeHeap > 15000) { // Only handle web requests if we have sufficient memory
+        webServerManager.handle();
+    } else {
+        // Log memory warning periodically, not every loop
+        static unsigned long lastMemWarning = 0;
+        if (millis() - lastMemWarning > 30000) {
+            logger.warningf("Skipping web server handling due to low memory: %d bytes", freeHeap);
+            lastMemWarning = millis();
+        }
+    }
+    
     logger.loop();
 
     while (Serial.available() > 0) {
@@ -953,7 +990,7 @@ void loop() {
         // Pass NULL to get the stack high water mark for the current task (the loop)
         // On ESP32, this function returns the size in bytes.
         UBaseType_t remaining_stack = uxTaskGetStackHighWaterMark(NULL);
-        logger.debugf("Main loop task remaining stack: %u bytes", remaining_stack);
+        logger.debugf("Main loop task remaining stack: %u bytes, free heap: %u bytes", remaining_stack, ESP.getFreeHeap());
     }
 
     if (!serial_command_sent_this_loop) {
