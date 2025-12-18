@@ -7,6 +7,9 @@
 #include "NanoCommands.h"
 #include "ConfigManager.h"
 #include "UITask.h"
+#ifdef ENABLE_TASK_WATCHDOG
+#include "WatchdogManager.h"
+#endif
 
 const unsigned long FORCE_PUBLISH_INTERVAL_MS = 20000;
 const unsigned long SENSOR_EXPIRE_TIMEOUT_S = 30;
@@ -502,12 +505,18 @@ void HomeAssistantManager::onMqttConnected() {
     // Set initial state for configurable entities
     ConfigManagerAccessor config;
     _instance->_inactivityTimerDelay.setState(config->getInactivityTimerDelay());
+#ifdef ENABLE_TASK_WATCHDOG
+    WatchdogManager::setTimeout(20); // Required because ArduinoHA takes a long time to send entity config
+#endif
 }
 
 void HomeAssistantManager::onMqttDisconnected() {
     if (!_instance) return;
     logger.warning("MQTT disconnected.");
     UITask::getInstance().update_network_ha_conn(false);
+#ifdef ENABLE_TASK_WATCHDOG
+    WatchdogManager::restoreDefaultTimeout();
+#endif
 }
 
 void HomeAssistantManager::publishSensorData(
@@ -698,7 +707,7 @@ void HomeAssistantManager::publishWiFiStatus(bool connected, int8_t rssi, const 
         if (connected) {
             _wifi_rssi.setValue(rssi, true);
         } else {
-            _wifi_rssi.setValue(0, true);
+            _wifi_rssi.setValue(static_cast<int8_t>(0), true);
         }
         _lastPublishedWifiConnected = connected;
         _lastPublishedWifiRssi = rssi;

@@ -17,8 +17,20 @@ const int SWITCH_HEIGHT = 40;
 
 extern void send_command_to_nano(char cmd);
 
+UISCD30Tile::UISCD30Tile() : 
+tile_obj(nullptr),
+autocal_switch(nullptr),
+forcecal_label(nullptr) 
+{}
+
+UISCD30Tile::~UISCD30Tile() {
+    if(autocal_switch) lv_obj_del(autocal_switch);
+    if(forcecal_label) lv_obj_del(forcecal_label);
+}
+
 lv_obj_t* UISCD30Tile::create_tile(lv_obj_t* parent_tv) {
-    lv_obj_t* tile = lv_tileview_add_tile(parent_tv, 2, 1, LV_DIR_HOR | LV_DIR_VER);
+    tile_obj = lv_tileview_add_tile(parent_tv, 2, 1, LV_DIR_HOR | LV_DIR_VER);
+    lv_obj_t* tile = tile_obj;
     
     lv_obj_t* title = lv_label_create(tile);
     lv_label_set_text(title, "SCD30");
@@ -59,4 +71,13 @@ void UISCD30Tile::autocal_switch_cb(lv_event_t* e) {
     lv_obj_t* sw = lv_event_get_target(e);
     bool state = lv_obj_has_state(sw, LV_STATE_CHECKED);
     MainTaskEventNotifier::getInstance().sendEvent(state ? MainTaskEventNotifier::EVT_SCD30_AUTOCAL_ON : MainTaskEventNotifier::EVT_SCD30_AUTOCAL_OFF);
+}
+void UISCD30Tile::set_visible(bool visible) {
+    if (tile_obj) {
+        if (visible) {
+            lv_obj_clear_flag(tile_obj, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(tile_obj, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
 }

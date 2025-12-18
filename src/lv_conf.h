@@ -243,14 +243,14 @@
  *-----------*/
 
 /*1: Show CPU usage and FPS count*/
-#define LV_USE_PERF_MONITOR 0
+//#define LV_USE_PERF_MONITOR 0
 #if LV_USE_PERF_MONITOR
     #define LV_USE_PERF_MONITOR_POS LV_ALIGN_BOTTOM_RIGHT
 #endif
 
 /*1: Show the used memory and the memory fragmentation
  * Requires LV_MEM_CUSTOM = 0*/
-#define LV_USE_MEM_MONITOR 1
+#define LV_USE_MEM_MONITOR 0
 #if LV_USE_MEM_MONITOR
     #define LV_USE_MEM_MONITOR_POS LV_ALIGN_BOTTOM_LEFT
 #endif
@@ -432,9 +432,9 @@
 
 /*Documentation of the widgets: https://docs.lvgl.io/latest/en/html/widgets/index.html*/
 
-#define LV_USE_ARC        1
+#define LV_USE_ARC        0
 
-#define LV_USE_ANIMIMG    1
+#define LV_USE_ANIMIMG    0
 
 #define LV_USE_BAR        0
 
@@ -448,12 +448,12 @@
 
 #define LV_USE_DROPDOWN   0   /*Requires: lv_label*/
 
-#define LV_USE_IMG        1   /*Requires: lv_label*/
+#define LV_USE_IMG        0   /*Requires: lv_label*/
 
 #define LV_USE_LABEL      1
 #if LV_USE_LABEL
-    #define LV_LABEL_TEXT_SELECTION 1 /*Enable selecting text of the label*/
-    #define LV_LABEL_LONG_TXT_HINT 1  /*Store some extra info in labels to speed up drawing of very long texts*/
+    #define LV_LABEL_TEXT_SELECTION 0 /*Enable selecting text of the label*/
+    #define LV_LABEL_LONG_TXT_HINT 0  /*Store some extra info in labels to speed up drawing of very long texts*/
 #endif
 
 #define LV_USE_LINE       1
@@ -467,7 +467,7 @@
 
 #define LV_USE_SWITCH     1
 
-#define LV_USE_TEXTAREA   1   /*Requires: lv_label*/
+#define LV_USE_TEXTAREA   0   /*Requires: lv_label*/
 #if LV_USE_TEXTAREA != 0
     #define LV_TEXTAREA_DEF_PWD_SHOW_TIME 1500    /*ms*/
 #endif
@@ -503,13 +503,13 @@
 
 #define LV_USE_KEYBOARD   0
 
-#define LV_USE_LED        1
+#define LV_USE_LED        0
 
 #define LV_USE_LIST       0
 
 #define LV_USE_MENU       0
 
-#define LV_USE_METER      1
+#define LV_USE_METER      0
 
 #define LV_USE_MSGBOX     0
 
@@ -521,9 +521,9 @@
 
 #define LV_USE_TILEVIEW   1
 
-#define LV_USE_WIN        1
+#define LV_USE_WIN        0
 
-#define LV_USE_SPAN       1
+#define LV_USE_SPAN       0
 #if LV_USE_SPAN
     /*A line text can contain maximum num of span descriptor */
     #define LV_SPAN_SNIPPET_STACK_SIZE 64
@@ -541,17 +541,17 @@
     #define LV_THEME_DEFAULT_DARK 1
 
     /*1: Enable grow on press*/
-    #define LV_THEME_DEFAULT_GROW 1
+    #define LV_THEME_DEFAULT_GROW 0
 
     /*Default transition time in [ms]*/
     #define LV_THEME_DEFAULT_TRANSITION_TIME 80
 #endif /*LV_USE_THEME_DEFAULT*/
 
 /*A very simple theme that is a good starting point for a custom theme*/
-#define LV_USE_THEME_BASIC 1
+#define LV_USE_THEME_BASIC 0
 
 /*A theme designed for monochrome displays*/
-#define LV_USE_THEME_MONO 1
+#define LV_USE_THEME_MONO 0
 
 /*-----------
  * Layouts

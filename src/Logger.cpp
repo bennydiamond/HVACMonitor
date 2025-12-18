@@ -7,9 +7,10 @@
 #endif
 
 Logger logger;
+static portMUX_TYPE criticalSectionSpinlock = portMUX_INITIALIZER_UNLOCKED;
 
 Logger::Logger() {
-    _logStreamBufferHandle = xStreamBufferCreate(LOG_BUFFER_SIZE_BYTES, 1);
+    _logStreamBufferHandle = xMessageBufferCreate(LOG_BUFFER_SIZE_BYTES);
 }
 
 void Logger::init(HAMqtt* mqtt) {
@@ -43,15 +44,19 @@ void Logger::log(AppLogLevel level, const char* message) {
 
 #ifdef SERIAL_OUT_DEBUG
     SerialMutex::getInstance().lock();
-    Serial.printf("[%s] %s\n", _getLogLevelString(level), message);
+    Serial.printf("[%s] %s\r\n", _getLogLevelString(level), message);
     SerialMutex::getInstance().unlock();
 #endif
 
-    if (xStreamBufferSpacesAvailable(_logStreamBufferHandle) < totalLen) {
-        return;
+    if (xMessageBufferSpacesAvailable(_logStreamBufferHandle) < totalLen) {
+        vTaskDelay(pdMS_TO_TICKS(20));
+        if (xMessageBufferSpacesAvailable(_logStreamBufferHandle) < totalLen) {
+            return; // Drop message
+        }
     }
-
-    xStreamBufferSend(_logStreamBufferHandle, &logEntry, totalLen, 0);
+    taskENTER_CRITICAL(&criticalSectionSpinlock);
+    xMessageBufferSend(_logStreamBufferHandle, &logEntry, totalLen, 0);
+    taskEXIT_CRITICAL(&criticalSectionSpinlock);
 }
 
 void Logger::loop() {
@@ -59,6 +64,7 @@ void Logger::loop() {
     if (millis() - _lastPingTime >= PING_CHECK_INTERVAL_MS) {
         _lastPingTime = millis();
         if (WiFi.status() == WL_CONNECTED) {
+            debug("Pinging syslog server to check if reachable");
             bool isReachable = Ping.ping(SYSLOG_SERVER, 1);
             if (isReachable && !_syslogServerReachable) {
                 _syslogServerReachable = true;
@@ -81,19 +87,17 @@ void Logger::loop() {
             LogMessage receivedEntry;
             const size_t headerSize = offsetof(LogMessage, message);
 
-            size_t headerBytesRead = xStreamBufferReceive(_logStreamBufferHandle, &receivedEntry, headerSize, 0);
-            if (headerBytesRead != headerSize) {
+            size_t totalBytesRead = xMessageBufferReceive(_logStreamBufferHandle, &receivedEntry, sizeof(receivedEntry), 0);
+            if (totalBytesRead < headerSize) {
                 break;
             }
-
-            size_t msgBytesRead = xStreamBufferReceive(_logStreamBufferHandle, receivedEntry.message, receivedEntry.msgLen, 0);
-            if (msgBytesRead != receivedEntry.msgLen) {
-                xStreamBufferReset(_logStreamBufferHandle);
-                errorf("Log stream corrupted. Buffer has been reset.");
-                break;
+            
+            // Validate message length
+            if (receivedEntry.msgLen > MAX_MESSAGE_LENGTH) {
+                continue; // Skip corrupted message
             }
 
-            receivedEntry.message[msgBytesRead] = '\0';
+            receivedEntry.message[receivedEntry.msgLen] = '\0';
 
             if (_mqtt != nullptr && _mqtt->isConnected()) {
                 char payload[MAX_MESSAGE_LENGTH + 128];

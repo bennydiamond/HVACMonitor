@@ -37,7 +37,7 @@ public:
     float getHumiComfortableHigh();
     float getHumiAcceptableLow();
     float getHumiAcceptableHigh();
-    int getInactivityTimerDelay();
+    uint32_t getInactivityTimerDelay();
     const char* getMqttHost();
     int getMqttPort();
     const char* getMqttUser();
@@ -137,7 +137,7 @@ private:
     float geigerAbnormalLowThreshold, geigerAbnormalHighThreshold, geigerDangerHighThreshold;
     float tempComfortableLow, tempComfortableHigh, tempAcceptableLow, tempAcceptableHigh;
     float humiComfortableLow, humiComfortableHigh, humiAcceptableLow, humiAcceptableHigh;
-    int inactivityTimerDelay;
+    int32_t inactivityTimerDelay;
     int co2WarnThreshold, co2DangerThreshold, vocWarnThreshold, vocDangerThreshold;
     int no2WarnThreshold, no2DangerThreshold, o3WarnThreshold, o3DangerThreshold, noxWarnThreshold, noxDangerThreshold, coWarnThreshold, coDangerThreshold;
     int pm1WarnThreshold, pm1DangerThreshold, pm25WarnThreshold, pm25DangerThreshold, pm4WarnThreshold, pm4DangerThreshold, pm10WarnThreshold, pm10DangerThreshold;

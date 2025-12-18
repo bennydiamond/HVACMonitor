@@ -4,8 +4,26 @@
 extern const lv_font_t custom_font_30;
 const int SCROLL_SPEED_MS_PX_SS = 5;
 
+UISensorStackTile::UISensorStackTile() : 
+tile_obj(nullptr),
+version_label(nullptr),
+uptime_label(nullptr),
+ram_label(nullptr),
+status_label(nullptr),
+status_icon(nullptr) 
+{}
+
+UISensorStackTile::~UISensorStackTile() {
+    if(version_label) lv_obj_del(version_label);
+    if(uptime_label) lv_obj_del(uptime_label);
+    if(ram_label) lv_obj_del(ram_label);
+    if(status_label) lv_obj_del(status_label);
+    if(status_icon) lv_obj_del(status_icon);
+}
+
 lv_obj_t* UISensorStackTile::create_tile(lv_obj_t* parent_tv) {
-    lv_obj_t* tile = lv_tileview_add_tile(parent_tv, 2, 0, LV_DIR_HOR | LV_DIR_VER);
+    tile_obj = lv_tileview_add_tile(parent_tv, 2, 0, LV_DIR_HOR | LV_DIR_VER);
+    lv_obj_t* tile = tile_obj;
     lv_obj_set_scroll_dir(tile, LV_DIR_NONE);
     
     static lv_coord_t col_dsc[] = {LV_GRID_CONTENT, lv_grid_fr(1), LV_GRID_TEMPLATE_LAST};
@@ -99,4 +117,13 @@ void UISensorStackTile::update_sensor_status(bool connected) {
 
 void UISensorStackTile::update_fw_version(const char* fw) {
     if (version_label) lv_label_set_text(version_label, fw);
+}
+void UISensorStackTile::set_visible(bool visible) {
+    if (tile_obj) {
+        if (visible) {
+            lv_obj_clear_flag(tile_obj, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(tile_obj, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
 }

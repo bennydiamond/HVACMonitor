@@ -3,10 +3,30 @@
 
 const int SCROLL_SPEED_MS_PX_SEC = 5;
 
-UICurrentTile::UICurrentTile(ConfigManager* config) : _config(config) {}
+UICurrentTile::UICurrentTile() : 
+tile_obj(nullptr),
+fan_icon(nullptr),
+fan_label(nullptr),
+compressor_icon(nullptr),
+compressor_label(nullptr),
+pump_icon(nullptr),
+pump_label(nullptr),
+fan_blink_timer(nullptr)
+{}
+
+UICurrentTile::~UICurrentTile() {
+    if(fan_icon) lv_obj_del(fan_icon);
+    if(fan_label) lv_obj_del(fan_label);
+    if(compressor_icon) lv_obj_del(compressor_icon);
+    if(compressor_label) lv_obj_del(compressor_label);
+    if(pump_icon) lv_obj_del(pump_icon);
+    if(pump_label) lv_obj_del(pump_label);
+    if (fan_blink_timer) lv_timer_del(fan_blink_timer);
+}
 
 lv_obj_t* UICurrentTile::create_tile(lv_obj_t* parent_tv) {
-    lv_obj_t* tile = lv_tileview_add_tile(parent_tv, 0, 2, LV_DIR_VER);
+    tile_obj = lv_tileview_add_tile(parent_tv, 0, 2, LV_DIR_VER);
+    lv_obj_t* tile = tile_obj;
     lv_obj_set_scroll_dir(tile, LV_DIR_NONE);
     lv_obj_set_scrollbar_mode(tile, LV_SCROLLBAR_MODE_OFF);
     
@@ -187,3 +207,13 @@ void UICurrentTile::fan_alert_blink_cb(lv_timer_t* timer) {
     lv_obj_set_style_opa(icons->status_bar_icon, new_opa, 0);
     lv_obj_set_style_opa(icons->main_screen_icon, new_opa, 0);
 } 
+
+void UICurrentTile::set_visible(bool visible) {
+    if (tile_obj) {
+        if (visible) {
+            lv_obj_clear_flag(tile_obj, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(tile_obj, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+}

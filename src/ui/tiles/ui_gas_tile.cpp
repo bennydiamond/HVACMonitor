@@ -3,10 +3,31 @@
 
 const int SCROLL_SPEED_MS_PX_SEC = 5;
 
-UIGasTile::UIGasTile() {}
+UIGasTile::UIGasTile() :
+tile_obj(nullptr),
+no2_label(nullptr),
+no2_icon(nullptr),
+o3_label(nullptr),
+o3_icon(nullptr),
+nox_label(nullptr),
+nox_icon(nullptr),
+co_label(nullptr),
+co_icon(nullptr)
+{}
+
+UIGasTile::~UIGasTile() {
+    if (no2_label) lv_obj_del(no2_label);
+    if (no2_icon) lv_obj_del(no2_icon);
+    if (o3_label) lv_obj_del(o3_label);
+    if (o3_icon) lv_obj_del(o3_icon);
+    if (nox_label) lv_obj_del(nox_label);
+    if (nox_icon) lv_obj_del(nox_icon);
+    if (co_label) lv_obj_del(co_label);
+}
 
 lv_obj_t* UIGasTile::create_tile(lv_obj_t* parent_tv) {
-    lv_obj_t* tile = lv_tileview_add_tile(parent_tv, 0, 2, LV_DIR_VER);
+    tile_obj = lv_tileview_add_tile(parent_tv, 0, 2, LV_DIR_VER);
+    lv_obj_t* tile = tile_obj;
     lv_obj_set_scroll_dir(tile, LV_DIR_NONE);
     lv_obj_set_scrollbar_mode(tile, LV_SCROLLBAR_MODE_OFF);
     
@@ -161,3 +182,12 @@ void UIGasTile::update_co(float co) {
     lv_obj_set_style_text_color(co_label, color, 0);
     lv_obj_set_style_text_color(co_icon, color, 0);
 } 
+void UIGasTile::set_visible(bool visible) {
+    if (tile_obj) {
+        if (visible) {
+            lv_obj_clear_flag(tile_obj, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(tile_obj, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+}

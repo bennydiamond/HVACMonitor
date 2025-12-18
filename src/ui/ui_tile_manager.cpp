@@ -1,8 +1,26 @@
 #include "ui/ui_tile_manager.h"
 
-UITileManager::UITileManager() {}
+UITileManager::UITileManager() {
+    logger.info("UI Tile Manager created");
+}
+
+UITileManager::~UITileManager() {
+    if (main_tile) delete main_tile;
+    if (secondary_tile) delete secondary_tile;
+    if (gas_tile) delete gas_tile;
+    if (powerdraw_tile) delete powerdraw_tile;
+    if (runtime_tile) delete runtime_tile;
+    if (network_tile) delete network_tile;
+    if (sensorstack_tile) delete sensorstack_tile;
+    if (scd30_tile) delete scd30_tile;
+    if (sps30_tile) delete sps30_tile;
+    if (sgp41_tile) delete sgp41_tile;
+    logger.info("UI Tile Manager destroyed");
+}
 
 void UITileManager::create_all_tiles(lv_obj_t* parent_tv, lv_obj_t* fan_status_icon) {
+    logger.info("Creating all tiles");
+
     main_tile = new UIMainTile();
     main_tile_obj = main_tile->create_tile(parent_tv);
 
@@ -82,3 +100,33 @@ void UITileManager::update_ssid(const char* ssid) { if (network_tile) network_ti
 void UITileManager::update_ip(const char* ip) { if (network_tile) network_tile->update_ip(ip); }
 void UITileManager::update_mac(const char* mac) { if (network_tile) network_tile->update_mac(mac); }
 void UITileManager::update_fw_version(const char* fw) { if (sensorstack_tile) sensorstack_tile->update_fw_version(fw); }
+
+void UITileManager::update_tile_visibility(lv_obj_t* current_tile) {
+    // Define tile positions (col, row)
+    struct TilePos { lv_obj_t* tile; int col; int row; };
+    TilePos tiles[] = {
+        {main_tile_obj, 0, 0}, {secondary_tile_obj, 0, 1}, {gas_tile_obj, 0, 2}, {powerdraw_tile_obj, 0, 3},
+        {runtime_tile_obj, 1, 0}, {network_tile_obj, 1, 1},
+        {sensorstack_tile_obj, 2, 0}, {scd30_tile_obj, 2, 1}, {sps30_tile_obj, 2, 2}, {sgp41_tile_obj, 2, 3}
+    };
+    
+    // Find current tile position
+    int curr_col = -1, curr_row = -1;
+    for (auto& t : tiles) {
+        if (t.tile == current_tile) { curr_col = t.col; curr_row = t.row; break; }
+    }
+    
+    if (curr_col == -1) return; // Current tile not found
+    
+    // Update visibility for all tiles
+    for (auto& t : tiles) {
+        if (!t.tile) continue;
+        bool adjacent = (abs(t.col - curr_col) <= 1 && t.row == curr_row) || 
+                       (abs(t.row - curr_row) <= 1 && t.col == curr_col);
+        if (adjacent) {
+            lv_obj_clear_flag(t.tile, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(t.tile, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+}

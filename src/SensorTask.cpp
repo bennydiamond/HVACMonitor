@@ -1,8 +1,11 @@
 #include "SensorTask.h"
+#include "TaskPriorities.h"
 #include "Logger.h"
 #include "SerialMutex.h"
 #include "I2CBridge.h"
-
+#ifdef ENABLE_TASK_WATCHDOG
+#include "WatchdogManager.h"
+#endif
 SensorTask::SensorTask() 
     : latestZMOD4510Values(),
 #ifdef BMP280_ENABLED
@@ -12,11 +15,10 @@ SensorTask::SensorTask()
       latestAHT20Values(),
 #endif
       previousFirstTimeFlag(false),
-      firstTimeFlag(false),
       firstHealthCheckReceived(false),
       rebootDetected(false),
       taskHandle(nullptr),
-      sensorStackConnected(false),
+
       stateMutex(nullptr)
 {
 }
@@ -60,20 +62,21 @@ void SensorTask::init() {
     BaseType_t result = xTaskCreatePinnedToCore(
         taskFunction,
         "SensorTask",
-        3072,
+        STACK_SIZE_SENSOR,
         this,
-        tskIDLE_PRIORITY + 2,
+        TASK_PRIORITY_SENSOR,
         &taskHandle,
         xPortGetCoreID()      // Core ID (use running core to avoid executing on WIFI core)
     );
     
     if (result != pdPASS) {
-        logger.error("Failed to create SensorTask");
+        logger.errorf("Failed to create SensorTask. Free: %d, Min: %d, Max: %d bytes", ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
         taskHandle = nullptr;
     } else {
-        logger.info("SensorTask created successfully on core 1");
+        logger.infof("SensorTask created successfully on core %d", xPortGetCoreID());
     }
 }
+
 
 bool SensorTask::getZMOD4510Data(ZMOD4510Values& outValues) {
     bool newValuesAvailable = false;
@@ -114,18 +117,17 @@ void SensorTask::setEnvironmentalData(float temperature_degc, float humidity_pct
     ZMOD4510Manager::getInstance().setEnvironmentalData(temperature_degc, humidity_pct);
 }
 
-void SensorTask::updateConnectionStatus(bool connected, bool flag) {
-    if (xSemaphoreTake(stateMutex, portMAX_DELAY) == pdTRUE) {
-        sensorStackConnected = connected;
-        firstTimeFlag = flag;
-        
-        // Mark that we've received at least one health check
-        if (connected) {
-            firstHealthCheckReceived = true;
-        }
-        
-        xSemaphoreGive(stateMutex);
+void SensorTask::notifyConnectionStatus(bool connected, bool firstTimeFlag) {
+    if (taskHandle == nullptr) return;
+    
+    uint32_t notifyBits = connected ? NOTIFY_SENSORSTACK_CONNECTED : NOTIFY_SENSORSTACK_OFFLINE;
+    
+    // Set reboot flag when first time flag transitions from true to false (reboot detected)
+    if (firstTimeFlag && connected) {
+        notifyBits |= NOTIFY_SENSORSTACK_REBOOTED;
     }
+    
+    xTaskNotify(taskHandle, notifyBits, eSetValueWithOverwrite);
 }
 
 void SensorTask::taskFunction(void* parameter) {
@@ -134,11 +136,16 @@ void SensorTask::taskFunction(void* parameter) {
 }
 
 void SensorTask::taskLoop() {
+#ifdef ENABLE_TASK_WATCHDOG
+    WatchdogManager::addCurrentTask();
+#endif
     logger.info("SensorTask started");
 
     // Variables for periodic stack size logging
     unsigned long lastStackCheckTime = 0;
     const unsigned long STACK_CHECK_INTERVAL_MS = 60000;
+    bool connected = false;
+    bool sensorStackRebooted = false;
     
     while (true) {
         // Periodically log the remaining stack size for this task
@@ -148,40 +155,30 @@ void SensorTask::taskLoop() {
             logger.debugf("SensorTask remaining stack: %u bytes", remaining_stack);
         }
 
-        bool connected = false;
-        bool flag = false;
+        uint32_t notificationValue = 0;
         
-        if (xSemaphoreTake(stateMutex, portMAX_DELAY) == pdTRUE) {
-            connected = sensorStackConnected;
-            flag = firstTimeFlag;
-            xSemaphoreGive(stateMutex);
+        // Handle sensor initialization
+        bool shouldInitSensors = false;
+
+        // Wait for notification with timeout
+        if (xTaskNotifyWait(0, UINT32_MAX, &notificationValue, pdMS_TO_TICKS(0)) == pdTRUE) {
+            connected = (notificationValue & NOTIFY_SENSORSTACK_CONNECTED) != 0;
+            sensorStackRebooted = (notificationValue & NOTIFY_SENSORSTACK_REBOOTED) != 0;
+            logger.debugf("SensorTask notification: connected=%d, rebooted=%d", connected, sensorStackRebooted);
+
+            if (!firstHealthCheckReceived && connected) {
+                // First connection - initialize sensors
+                logger.info("First connection to Nano established, initializing sensors");
+                firstHealthCheckReceived = true;
+                shouldInitSensors = true;
+            } else if (connected && sensorStackRebooted) {
+                // Sensor stack rebooted - re-initialize sensors
+                logger.warning("Sensor stack reboot detected, re-initializing sensors");
+                shouldInitSensors = true;
+            }
         }
         
-        // Detect SensorStack reboot and handle sensor re-initialization
-        // Protocol: 
-        // 1. Nano reports FirstTimeFlag=0 when it boots/reboots
-        // 2. ESP32 sends ACK, then Nano reports FirstTimeFlag=1 until next reboot
-        // 3. Sensors should init when FirstTimeFlag=1 is seen for the first time
-        // 4. Future reboots: FirstTimeFlag=0 -> ACK -> FirstTimeFlag=1 -> Re-init sensors
-        
-        // Detect reboot: transition from true to false (FirstTimeFlag=0)
-        if (firstHealthCheckReceived && previousFirstTimeFlag && !flag) {
-            rebootDetected = true;
-            logger.warning("Nano reboot detected, waiting for ACK response");
-        }
-        
-        // Initialize sensors on first connection (FirstTimeFlag=1 seen for first time)
-        bool firstConnection = !firstHealthCheckReceived && flag;
-        
-        // Re-initialize sensors: when flag=true and we've detected a reboot
-        bool nanoRebootDetected = rebootDetected && flag;
-        
-        // Signal managers about connection status and reboot detection
-        if (firstConnection) {
-            logger.info("First connection to Nano established, initializing sensors");
-            // Don't call onNanoReboot() for first connection, let managers initialize normally
-        } else if (nanoRebootDetected) {
-            logger.warning("Nano reboot detected, notifying managers");
+        if (shouldInitSensors) {
             ZMOD4510Manager::getInstance().onNanoReboot();
 #ifdef BMP280_ENABLED
             BMP280Manager::getInstance().onNanoReboot();
@@ -189,8 +186,7 @@ void SensorTask::taskLoop() {
 #ifdef AHT20_ENABLED
             AHT20Manager::getInstance().onNanoReboot();
 #endif
-            rebootDetected = false; // Reset after handling
-            logger.info("Sensor re-initialization completed after Nano reboot");
+            logger.info("Sensor initialization completed");
         }
         
         // Signal managers about connection status
@@ -262,13 +258,10 @@ void SensorTask::taskLoop() {
                     logger.warning("ZMOD4510: Invalid measurement results");
                 }
             }
-        } else {
-            // Nano is not connected - skip all sensor processing
-            // Managers will handle their own state when they receive the disconnected signal
         }
-                
-        previousFirstTimeFlag = flag;
-        
+#ifdef ENABLE_TASK_WATCHDOG
+        WatchdogManager::reset();
+#endif
         vTaskDelay(pdMS_TO_TICKS(20));
     }
 } 

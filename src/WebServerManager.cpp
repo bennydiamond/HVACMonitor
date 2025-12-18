@@ -82,8 +82,10 @@ void WebServerManager::init(const char* firmware_version) {
 
 void WebServerManager::handle() {
     // Reset watchdog to prevent crashes during long operations
+#ifdef ENABLE_TASK_WATCHDOG
     esp_task_wdt_reset();
-    
+#endif
+
     // Handle client requests
     server.handleClient();
     
@@ -112,14 +114,14 @@ void WebServerManager::handleConfig() {
     
     server.sendHeader("Connection", "close");
     server.send(200, "text/html", html);
-    logger.infof("Served main config page. Free heap: %d bytes", freeHeap);
+    logger.infof("Served main config page. Free: %d, Min: %d, Max: %d bytes", freeHeap, ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
 }
 
 void WebServerManager::handleConfigUpdate() {
     // Check available memory before processing
     size_t freeHeap = ESP.getFreeHeap();
     if (freeHeap < 20000) {
-        logger.warningf("Low memory (%d bytes), rejecting config update", freeHeap);
+        logger.warningf("Low memory (free=%d, min=%d, max=%d bytes), rejecting config update", freeHeap, ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
         server.send(503, "text/plain", "Service temporarily unavailable - low memory");
         return;
     }

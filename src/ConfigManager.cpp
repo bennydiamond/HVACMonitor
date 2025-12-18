@@ -389,7 +389,7 @@ float ConfigManager::getHumiComfortableLow() { return humiComfortableLow; }
 float ConfigManager::getHumiComfortableHigh() { return humiComfortableHigh; }
 float ConfigManager::getHumiAcceptableLow() { return humiAcceptableLow; }
 float ConfigManager::getHumiAcceptableHigh() { return humiAcceptableHigh; }
-int ConfigManager::getInactivityTimerDelay() { return inactivityTimerDelay; }
+uint32_t ConfigManager::getInactivityTimerDelay() { return inactivityTimerDelay; }
 const char* ConfigManager::getMqttHost() { return mqttHost; }
 int ConfigManager::getMqttPort() { return mqttPort; }
 const char* ConfigManager::getMqttUser() { return mqttUser; }

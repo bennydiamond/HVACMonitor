@@ -4,10 +4,32 @@
 
 const int SCROLL_SPEED_MS_PX_SEC = 5;
 
-UISecondaryTile::UISecondaryTile() {}
+UISecondaryTile::UISecondaryTile() :
+tile_obj(nullptr),
+pm1_icon(nullptr),
+pm1_label(nullptr),
+pm25_icon(nullptr),
+pm25_label(nullptr),
+pm4_icon(nullptr),
+pm4_label(nullptr),
+pm10_icon(nullptr),
+pm10_label(nullptr)
+{}
+
+UISecondaryTile::~UISecondaryTile() {
+    if(pm1_icon) lv_obj_del(pm1_icon);
+    if(pm1_label) lv_obj_del(pm1_label);
+    if(pm25_icon) lv_obj_del(pm25_icon);
+    if(pm25_label) lv_obj_del(pm25_label);
+    if(pm4_icon) lv_obj_del(pm4_icon);
+    if(pm4_label) lv_obj_del(pm4_label);
+    if(pm10_icon) lv_obj_del(pm10_icon);
+    if(pm10_label) lv_obj_del(pm10_label);
+}
 
 lv_obj_t* UISecondaryTile::create_tile(lv_obj_t* parent_tv) {
-    lv_obj_t* tile = lv_tileview_add_tile(parent_tv, 0, 1, LV_DIR_VER);
+    tile_obj = lv_tileview_add_tile(parent_tv, 0, 1, LV_DIR_VER);
+    lv_obj_t* tile = tile_obj;
     lv_obj_set_scroll_dir(tile, LV_DIR_NONE);
     lv_obj_set_scrollbar_mode(tile, LV_SCROLLBAR_MODE_OFF);
     
@@ -177,4 +199,13 @@ void UISecondaryTile::update_pm10(float pm10) {
     else { pm10_color = COLOR_HIGH; }
     lv_obj_set_style_text_color(pm10_label, pm10_color, 0);
     lv_obj_set_style_text_color(pm10_icon, pm10_color, 0);
+}
+void UISecondaryTile::set_visible(bool visible) {
+    if (tile_obj) {
+        if (visible) {
+            lv_obj_clear_flag(tile_obj, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(tile_obj, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
 }

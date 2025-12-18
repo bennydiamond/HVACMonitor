@@ -3,8 +3,28 @@
 
 const int SCROLL_SPEED_MS_PX_RT = 5;
 
+UIRuntimeTile::UIRuntimeTile() : 
+tile_obj(nullptr),
+fw_label(nullptr), 
+mem_label(nullptr), 
+uptime_label(nullptr), 
+reset_label(nullptr), 
+pkt_icon(nullptr), 
+pkt_label(nullptr) 
+{}
+
+UIRuntimeTile::~UIRuntimeTile() {
+    if(fw_label) lv_obj_del(fw_label);
+    if(mem_label) lv_obj_del(mem_label);
+    if(uptime_label) lv_obj_del(uptime_label);
+    if(reset_label) lv_obj_del(reset_label);
+    if(pkt_icon) lv_obj_del(pkt_icon);
+    if(pkt_label) lv_obj_del(pkt_label);
+}
+
 lv_obj_t* UIRuntimeTile::create_tile(lv_obj_t* parent_tv) {
-    lv_obj_t* tile = lv_tileview_add_tile(parent_tv, 1, 0, LV_DIR_HOR | LV_DIR_VER);
+    tile_obj = lv_tileview_add_tile(parent_tv, 1, 0, LV_DIR_HOR | LV_DIR_VER);
+    lv_obj_t* tile = tile_obj;
     lv_obj_set_scroll_dir(tile, LV_DIR_NONE);
     
     static lv_coord_t col_dsc[] = {LV_GRID_CONTENT, lv_grid_fr(1), LV_GRID_TEMPLATE_LAST};
@@ -120,4 +140,13 @@ void UIRuntimeTile::high_pressure_blink_cb(lv_timer_t* timer) {
     lv_obj_t* icon = (lv_obj_t*)timer->user_data;
     lv_opa_t current_opa = lv_obj_get_style_opa(icon, 0);
     lv_obj_set_style_opa(icon, (current_opa == LV_OPA_COVER) ? LV_OPA_TRANSP : LV_OPA_COVER, 0);
+}
+void UIRuntimeTile::set_visible(bool visible) {
+    if (tile_obj) {
+        if (visible) {
+            lv_obj_clear_flag(tile_obj, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(tile_obj, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
 }

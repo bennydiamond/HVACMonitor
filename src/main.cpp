@@ -28,6 +28,10 @@
 #include "MainTaskEvents.h"
 #include "HVACMonitor.h"
 #include "GasConcentrationConverter.h"
+#include "TaskPriorities.h"
+#ifdef ENABLE_TASK_WATCHDOG
+#include "WatchdogManager.h"
+#endif
 
 // =================== CONSTANTS & GLOBALS ===================
 const int WIFI_CHECK_INTERVAL_MS = 10000;
@@ -184,6 +188,9 @@ const char* nano_reset_cause_to_string(uint8_t code) {
 void update_wifi_status() {
     UITask::getInstance().update_wifi_status(WiFi.status() == WL_CONNECTED, WiFi.RSSI());
     haManager.publishWiFiStatus(WiFi.status() == WL_CONNECTED, WiFi.RSSI(), WIFI_SSID, WiFi.localIP().toString().c_str());
+    UITask::getInstance().update_ssid(WIFI_SSID);
+    UITask::getInstance().update_ip(WiFi.localIP().toString().c_str());
+    UITask::getInstance().update_mac(WiFi.macAddress().c_str());
 }
 
 
@@ -278,14 +285,14 @@ void process_packet(String packet) {
         case RSP_SENSORS: {
             char data_cstr[payload.length() + 1];
             strcpy(data_cstr, payload.c_str());
-            char* token = strtok(data_cstr, ","); if (!token) return; unsigned long timestamp = atol(token);
+            char* token = strtok(data_cstr, ","); if (!token) return; unsigned long timestamp = strtoul(token, nullptr, 10);
             token = strtok(NULL, ","); if (!token) return; uint16_t pressure_adc_raw = atoi(token);
             token = strtok(NULL, ","); if (!token) return; uint16_t pulse_count = atoi(token);
             token = strtok(NULL, ","); if (!token) return; float t = atof(token) / 10.0f;
             token = strtok(NULL, ","); if (!token) return; float h = atof(token) / 10.0f;
             token = strtok(NULL, ","); if (!token) return; float co2 = atof(token);
-            token = strtok(NULL, ","); if (!token) return; uint16_t voc_raw = atol(token);
-            token = strtok(NULL, ","); if (!token) return; uint16_t nox_raw = atol(token);
+            token = strtok(NULL, ","); if (!token) return; uint16_t voc_raw = static_cast<uint16_t>(strtoul(token, nullptr, 10));
+            token = strtok(NULL, ","); if (!token) return; uint16_t nox_raw = static_cast<uint16_t>(strtoul(token, nullptr, 10));
             token = strtok(NULL, ","); if (!token) return; float amps = atof(token) / 100.0f;
             token = strtok(NULL, ","); if (!token) return; float pm1 = atof(token) / 10.0f;
             token = strtok(NULL, ","); if (!token) return; float pm25 = atof(token) / 10.0f;
@@ -432,7 +439,7 @@ void process_packet(String packet) {
             haManager.publishNanoResetCause(reset_cause_str);
             last_nano_ram = nano_free_ram;
 
-            // Store first_time_flag for ZMOD4510 manager processing in main loop
+            // Store first_time_flag for sensor task processing
             latest_first_time_flag = first_time_flag != 0;
 
             if (first_time_flag == 0) {
@@ -440,7 +447,12 @@ void process_packet(String packet) {
                 nano_boot_millis = millis();
                 logger.warning("Nano reported first boot (or reboot). Uptime counter reset.");
                 haManager.resetSensorStackUptimePublishTime();
+                init_sequence_active = true;
+                current_init_command_index = 0; // restart init sequence with version command
+                last_init_command_time = 0;
             }
+            
+
             if (health_request_pending) {
                 health_request_pending = false;
             }
@@ -678,6 +690,7 @@ void process_packet(String packet) {
 
     if (init_sequence_active && pending_init_commands[current_init_command_index] == CMD_NONE) {
         init_sequence_active = false;
+        sensorTask.notifyConnectionStatus(is_sensor_module_connected, true);
     }
 }
 
@@ -694,18 +707,15 @@ void setup_wifi() {
         logger.error("WiFi connection failed.");
     }
     update_wifi_status();
-    UITask::getInstance().update_ssid(WIFI_SSID);
-    UITask::getInstance().update_ip(WiFi.localIP().toString().c_str());
-    UITask::getInstance().update_mac(WiFi.macAddress().c_str());
 }
 
 void setup() {
     SerialMutex::getInstance().init();
     MainTaskEventNotifier::getInstance().setMainTaskHandle(xTaskGetCurrentTaskHandle());
-    vTaskPrioritySet(NULL, tskIDLE_PRIORITY + 3); // above other tasks priorities
+    vTaskPrioritySet(NULL, TASK_PRIORITY_MAIN);
+    
     logger.info("--- System Booting ---");
-    Serial.begin(19200);
-    //Serial.begin(115200);
+    Serial.begin(SERIAL_BAUD_RATE);
     {
         // Limit scope to reduce mutex hold time
         ConfigManagerAccessor config;
@@ -713,48 +723,56 @@ void setup() {
         logger.init(haManager.getMqtt());
         logger.setLogLevel(config->getLogLevel());
     }
-    delay(500);
+#ifdef ENABLE_TASK_WATCHDOG
+    WatchdogManager::init(WatchdogManager::_defaultTimeout, false);
+#endif
     
     
     const char* reset_reason = get_reset_reason_string();
     logger.infof("Firmware Version: %s", HVACMONITOR_FIRMWARE_VERSION);
     logger.infof("Reset Reason: %s", reset_reason);
-        
+    
     UITask::getInstance().start();
     
     setup_wifi();
     haManager.init(HVACMONITOR_FIRMWARE_VERSION);
     webServerManager.init(HVACMONITOR_FIRMWARE_VERSION);
     otaManager.init();
-
-    I2CBridge::begin();
-    
+        
     sensorTask.init();
     
     init_sequence_active = true;
     current_init_command_index = 0;
     logger.info("Starting init sequence with Sensor Stack...");
+
+#ifdef ENABLE_TASK_WATCHDOG
+    WatchdogManager::addCurrentTask();
+#endif
 }
 
 
 void loop() {
+#ifdef ENABLE_TASK_WATCHDOG
+    WatchdogManager::reset();
+#endif
+    
     bool serial_command_sent_this_loop = false;
     static bool valid_packet_start_received = false;
+    static bool previous_mqtt_connect_status = false;
+
     
     haManager.loop();
+    bool ha_conn = haManager.isMqttConnected();
     
-    // Check memory before OTA handling to prevent crashes
-    size_t freeHeapForOTA = ESP.getFreeHeap();
-    if (freeHeapForOTA > 50000) { // Need sufficient memory for OTA operations
-        otaManager.handle();
-    } else {
-        // Log OTA skip periodically, not every loop
-        static unsigned long lastOTAWarning = 0;
-        if (millis() - lastOTAWarning > 60000) {
-            logger.warningf("Skipping OTA handling due to low memory: %d bytes", freeHeapForOTA);
-            lastOTAWarning = millis();
-        }
+    if(previous_mqtt_connect_status != ha_conn)
+    {
+        previous_mqtt_connect_status = ha_conn;
+        UITask::getInstance().update_network_ha_conn(ha_conn);
+#ifdef ENABLE_TASK_WATCHDOG
+        WatchdogManager::restoreDefaultTimeout(); // We assume all HA entity config have already been published
+#endif
     }
+    otaManager.handle();
     
     // Check memory before handling web server requests
     size_t freeHeap = ESP.getFreeHeap();
@@ -764,7 +782,7 @@ void loop() {
         // Log memory warning periodically, not every loop
         static unsigned long lastMemWarning = 0;
         if (millis() - lastMemWarning > 30000) {
-            logger.warningf("Skipping web server handling due to low memory: %d bytes", freeHeap);
+            logger.warningf("Skipping web server handling due to low memory: free=%d, min=%d, max=%d bytes", freeHeap, ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
             lastMemWarning = millis();
         }
     }
@@ -801,6 +819,7 @@ void loop() {
     if (millis() - last_wifi_check_time > WIFI_CHECK_INTERVAL_MS) {
         last_wifi_check_time = millis();
         update_wifi_status();
+        UITask::getInstance().update_network_ha_conn(ha_conn);
     }
 
     if (!serial_command_sent_this_loop && is_sensor_module_connected && (millis() - last_health_check_time > HEALTH_CHECK_INTERVAL_MS)) {
@@ -868,12 +887,10 @@ void loop() {
         String ip = wifi_connected ? WiFi.localIP().toString() : "N/A";
         int8_t rssi = wifi_connected ? WiFi.RSSI() : 0;
         String ssid = wifi_connected ? WIFI_SSID : "N/A";
-        bool ha_conn = haManager.isMqttConnected();
         
         UITask::getInstance().update_network_rssi(rssi);
         UITask::getInstance().update_ssid(ssid.c_str());
         UITask::getInstance().update_ip(ip.c_str());
-        UITask::getInstance().update_network_ha_conn(ha_conn);
     }
 
     if (millis() - last_sensor_data_time > NANO_PACKET_TIMEOUT_MS) {
@@ -888,7 +905,7 @@ void loop() {
             UITask::getInstance().clearSensorReadings();
             init_sequence_active = true;
             current_init_command_index = 0;
-            // Nano disconnected status will be handled in main loop
+            sensorTask.notifyConnectionStatus(false, false);
         }
     }
 
@@ -896,9 +913,6 @@ void loop() {
         last_scd30_info_time = millis();
         send_command_to_nano(CMD_GET_SCD30_INFO);
     }
-
-    // Update connection status for sensor task
-    sensorTask.updateConnectionStatus(is_sensor_module_connected, latest_first_time_flag);
     
     // Get ZMOD4510 sensor data
     SensorTask::ZMOD4510Values zmod_values;
@@ -990,7 +1004,7 @@ void loop() {
         // Pass NULL to get the stack high water mark for the current task (the loop)
         // On ESP32, this function returns the size in bytes.
         UBaseType_t remaining_stack = uxTaskGetStackHighWaterMark(NULL);
-        logger.debugf("Main loop task remaining stack: %u bytes, free heap: %u bytes", remaining_stack, ESP.getFreeHeap());
+        logger.debugf("Main loop task remaining stack: %u bytes, free heap: %u bytes, min free: %u bytes, max alloc: %u bytes", remaining_stack, ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
     }
 
     if (!serial_command_sent_this_loop) {

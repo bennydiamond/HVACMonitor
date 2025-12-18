@@ -11,10 +11,10 @@
 #include "ui/ui_tile_manager.h"
 
 class UI : public IUIManager, public IUIUpdater {
-public:
-    // Static method to get the singleton instance
-    static UI& getInstance();
-
+    public:
+    UI();
+    ~UI();
+    
     // --- IUIManager Implementation ---
     void init(LGFX* tft, CST820* touch) override;
     void create_widgets(void) override;
@@ -72,8 +72,6 @@ private:
     static lv_disp_drv_t disp_drv;
     static lv_indev_drv_t indev_drv;
 
-    // Private constructor to prevent instantiation
-    UI();
     // Delete copy constructor and assignment operator
     UI(const UI&) = delete;
     UI& operator=(const UI&) = delete;
@@ -86,8 +84,6 @@ private:
     static void tile_change_event_cb_static(lv_event_t * e);
     void tile_change_event_cb(lv_event_t * e);
 
-    // Static instance pointer
-    static UI* _instance;
     lv_obj_t* tileview = nullptr;
     lv_obj_t* status_bar = nullptr;
     UITileManager* tileManager = nullptr;

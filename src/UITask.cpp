@@ -1,4 +1,5 @@
 #include "UITask.h"
+#include "TaskPriorities.h"
 #include "LGFX_ESP32_2432S022C.h"
 #include "CST820.h"
 #include "ui.h"
@@ -9,8 +10,17 @@
 #include "ResetUtils.h"
 #include "HVACMonitor.h"
 
+#ifdef ENABLE_TASK_WATCHDOG
+#include "WatchdogManager.h"
+#endif
+
 // Singleton instance
 static UITask* instance = nullptr;
+static std::atomic<bool> otaPopupDrawn{false};
+
+static bool is_ota_popup_drawn() {
+        return otaPopupDrawn.load();
+    }
 
 // Static function pointer table for UI dispatch
 const UITask::UIUpdateFunc UITask::updateTable[UI_MSG_COUNT] = {
@@ -90,6 +100,8 @@ const UITask::UIUpdateFunc UITask::updateTable[UI_MSG_COUNT] = {
     [](IUIUpdater* u, const UIMessage& m) { u->update_network_rssi(m.value.i); },
     // UI_NETWORK_HA_CONN
     [](IUIUpdater* u, const UIMessage& m) { u->update_network_ha_conn(m.value.b); },
+    // UI_SHOW_OTA_POPUP
+    [](IUIUpdater* u, const UIMessage& m) { UITask::getInstance().show_ota_popup(); },
 };
 
 UITask& UITask::getInstance() {
@@ -99,28 +111,70 @@ UITask& UITask::getInstance() {
     return *instance;
 }
 
-UITask::UITask()
-    : tft(nullptr), touch(nullptr), uiManager(nullptr), uiUpdater(nullptr),
-      taskHandle(nullptr), uiQueue(nullptr)
+UITask::UITask() : 
+tft(nullptr),
+touch(nullptr),
+uiManager(nullptr),
+uiUpdater(nullptr),
+taskHandle(nullptr),
+uiIsInit(false),
+uiQueue(nullptr),
+uiStringQueue(nullptr)
 {
-    uiQueue = xQueueCreate(16, sizeof(UIMessage));
-    uiStringQueue = xQueueCreate(8, sizeof(UIStringMessage));
+    otaPopupDrawn.store(false);
 }
 
 UITask::~UITask() {
+#ifdef ENABLE_TASK_WATCHDOG
+    WatchdogManager::removeCurrentTask();
+#endif
     // Cleanup if needed
+    if(uiQueue != nullptr)
+    {
+        vQueueDelete(uiQueue);
+    }
+    if(uiStringQueue != nullptr)
+    {
+        vQueueDelete(uiStringQueue);
+    }
+
+    if(uiManager != nullptr)
+    {
+        delete uiManager;
+        // uiUpdater is the same instance as uiManager, no need to delete
+    }
+
+    if(tft != nullptr)
+    {
+        delete tft;
+    }
+    if(touch != nullptr)
+    {
+        delete touch;
+    }
+    if(taskHandle != nullptr)
+    {
+        vTaskDelete(taskHandle);
+    }
 }
 
 void UITask::start() {
-    xTaskCreatePinnedToCore(
+    BaseType_t result = xTaskCreatePinnedToCore(
         UITask::taskFunc,
         "UITask",
-        4096,
+        STACK_SIZE_UI,
         this,
-        tskIDLE_PRIORITY + 1,
+        TASK_PRIORITY_UI,
         &taskHandle,
         xPortGetCoreID()      // Core ID (use running core to avoid executing on WIFI core)
     );
+
+    if (result != pdPASS) {
+        logger.errorf("Failed to create UITask. Free: %d, Min: %d, Max: %d bytes", ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
+        taskHandle = nullptr;
+    } else {
+        logger.infof("UITask created successfully on core %d", xPortGetCoreID());
+    }
 }
 
 void UITask::taskFunc(void* param) {
@@ -128,63 +182,99 @@ void UITask::taskFunc(void* param) {
 }
 
 void UITask::run() {
-    // Initialize UI objects here
-    uint8_t local_bightness = brightness.load();
-    tft = new LGFX();
-    tft->init();
-    tft->setRotation(1);
-    tft->setBrightness(local_bightness);
-    tft->fillScreen(TFT_BLACK);
     
-    touch = new CST820(21, 22, -1, -1);
-    touch->begin();
+    while(1)
+    {
+        #ifdef ENABLE_TASK_WATCHDOG
+            WatchdogManager::addCurrentTask();
+        #endif
+        // Initialize UI objects here
+        uiQueue = xQueueCreate(UI_QUEUE_SIZE, sizeof(UIMessage));
+        xQueueReset(uiQueue);
+        uiStringQueue = xQueueCreate(UI_STRING_QUEUE_SIZE, sizeof(UIStringMessage));
+        xQueueReset(uiStringQueue);
 
-    uiManager = &UI::getInstance();
-    uiUpdater = &UI::getInstance();
-    uiManager->init(tft, touch);
-    uiManager->create_widgets();
-    uiUpdater->set_initial_debug_info(HVACMONITOR_FIRMWARE_VERSION, get_reset_reason_string());
-    
-    logger.info("UI Task initialized.");
-
-    // Variables for periodic stack size logging
-    unsigned long lastStackCheckTime = 0;
-
-    while (true) {
-
-        if(local_bightness != brightness.load()) {
-            local_bightness = brightness.load();
+        uint8_t local_bightness = brightness.load();
+        if(tft == nullptr)
+        {
+            tft = new LGFX();
+            tft->init();
+            tft->setRotation(1);
             tft->setBrightness(local_bightness);
-            logger.infof("UI brightness set to %u", local_bightness);
-        }   
-
-        // Periodically log the remaining stack size for this task
-        uint32_t start = millis();
-        if (start - lastStackCheckTime > STACK_CHECK_INTERVAL_MS) {
-            lastStackCheckTime = start;
-            UBaseType_t remaining_stack = uxTaskGetStackHighWaterMark(NULL);
-            logger.debugf("UITask task remaining stack: %u bytes", remaining_stack);
         }
+        tft->fillScreen(TFT_BLACK);
         
-        while (millis() - start < UI_DEQUEUE_TIME_MS) {
-            // Prioritize string messages
-            UIStringMessage strmsg;
-            if (uiStringQueue && xQueueReceive(uiStringQueue, &strmsg, 0) == pdTRUE) {
-                if (strmsg.type < UI_STRING_COUNT) {
-                    stringUpdateTable[strmsg.type](uiUpdater, strmsg);
-                }
-            } else {
-                UIMessage msg{};
-                if (xQueueReceive(uiQueue, &msg, 0) == pdTRUE) {
-                    dispatchMessage(msg);
-                } else {
-                    break;
+        if(touch == nullptr)
+        {
+            touch = new CST820(21, 22, -1, -1);
+            touch->begin();
+        }
+
+        UI* ui = new UI();
+        uiManager = ui;
+        uiUpdater = ui;
+        uiManager->init(tft, touch);
+        uiManager->create_widgets();
+        uiUpdater->set_initial_debug_info(HVACMONITOR_FIRMWARE_VERSION, get_reset_reason_string());
+        
+        uiIsInit = true;
+        logger.info("UITask initialized.");
+        // Variables for periodic stack size logging
+        unsigned long lastStackCheckTime = 0;
+
+        while (uiIsInit) {
+
+            auto newBrightness = brightness.load();
+            if(local_bightness != newBrightness) {
+                local_bightness = newBrightness;
+                tft->setBrightness(local_bightness);
+                logger.infof("UI brightness set to %u", local_bightness);
+            }   
+
+            // Periodically log the remaining stack size for this task
+            uint32_t start = millis();
+            if (start - lastStackCheckTime > STACK_CHECK_INTERVAL_MS) {
+                lastStackCheckTime = start;
+                UBaseType_t remaining_stack = uxTaskGetStackHighWaterMark(NULL);
+                logger.debugf("UITask task remaining stack: %u bytes", remaining_stack);
+            }
+            
+            if(uiStringQueue != nullptr)
+            {
+                // Process all pending string messages
+                UIStringMessage strmsg;
+                while (xQueueReceive(uiStringQueue, &strmsg, 0) == pdTRUE) {
+                    if (strmsg.type < UI_STRING_COUNT) {
+                        stringUpdateTable[strmsg.type](uiUpdater, strmsg);
+#ifdef ENABLE_TASK_WATCHDOG
+                        WatchdogManager::reset();
+#endif
+                    }
                 }
             }
+
+            // Process all pending regular messages 
+            if(uiQueue != nullptr)
+            {
+                UIMessage msg;
+                BaseType_t queueReturn = pdTRUE;
+                while (uiQueue && queueReturn == pdTRUE) {
+                    queueReturn = xQueueReceive(uiQueue, &msg, 0);
+                    dispatchMessage(msg);
+#ifdef ENABLE_TASK_WATCHDOG
+                    WatchdogManager::reset();
+#endif
+                }
+            }
+            if(uiManager != nullptr)
+            {
+                uiManager->run();
+            }
+#ifdef ENABLE_TASK_WATCHDOG
+            WatchdogManager::reset();
+#endif
+            vTaskDelay(pdMS_TO_TICKS(UITASK_SLEEP_TIME_MS));
         }
-        uiManager->run();
-        lv_timer_handler();
-        vTaskDelay(pdMS_TO_TICKS(UITASK_SLEEP_TIME_MS));
     }
 }
 
@@ -203,6 +293,10 @@ const char* UITask::UIMessageTypeNames[UI_MSG_COUNT] = {
 
 // Helper function to send to queue or log warning
 bool UITask::queueSendOrWarn(const UIMessage& msg) {
+    if(uiQueue == nullptr) {
+        logger.debug("UI queue not initialized");
+        return false;
+    }
     if (xQueueSend(uiQueue, &msg, UI_QUEUE_WAIT_MAX_TIMES) != pdTRUE) {
         logger.warningf("UI queue full, message dropped (%s)", UIMessageTypeNames[msg.type]);
         return false;
@@ -316,6 +410,78 @@ void UITask::update_scd30_autocal(bool enabled) {
 void UITask::update_scd30_forcecal(uint16_t value) {
     queueSendOrWarn(UIMessage{UI_SCD30_FORCECAL, static_cast<int>(value)});
 }
+
+void UITask::show_ota_popup() {
+    logger.debug("UITask: Show OTA popup");
+    uiIsInit = false;
+#ifdef ENABLE_TASK_WATCHDOG
+    WatchdogManager::removeCurrentTask();
+#endif
+    delete uiManager;
+    uiManager = nullptr;
+    uiUpdater = nullptr;
+    vTaskSuspendAll();
+    vQueueDelete(uiQueue);
+    uiQueue = nullptr;
+    vQueueDelete(uiStringQueue);
+    uiStringQueue = nullptr;
+    xTaskResumeAll();
+    brightness.store(255);
+    if (tft) {
+        tft->setBrightness(255);
+        tft->fillScreen(TFT_BLACK);
+        
+        // Draw rounded box
+        tft->fillRoundRect(40, 80, 240, 80, 10, TFT_DARKGREY);
+        tft->drawRoundRect(40, 80, 240, 80, 10, TFT_WHITE);
+        
+        tft->setTextColor(TFT_WHITE);
+        tft->setTextSize(2);
+        tft->setTextDatum(textdatum_t::top_center);
+        tft->drawString("OTA UPDATE", 160, 100);
+        tft->drawString("IN PROGRESS...", 160, 130);
+        otaPopupDrawn.store(true);
+    }
+    //delete tft; // Delete the TFT instance
+    //tft = nullptr; // Clear the TFT pointer
+    //delete touch; // Delete the touch instance
+    //touch = nullptr; // Clear the touch pointer
+    vTaskSuspend(NULL); // self suspend
+}
+
+void UITask::queue_ota_popup() {
+    logger.debug("UITask: Queue OTA popup");
+    queueSendOrWarn(UIMessage{UI_SHOW_OTA_POPUP, 0});
+}
+
+void UITask::prepare_for_ota() {
+    logger.info("Killing UITask to recover heap");
+    if (instance) {
+        logger.debug("Killing UITask: Send msg");
+        instance->queue_ota_popup();
+        while (!is_ota_popup_drawn()) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+        logger.debug("Killing UITask: UITask has process self kill");
+    }
+}
+
+void UITask::restore_after_ota() {
+    logger.info("Resuming UITask");
+    vTaskResume(instance->taskHandle);
+#ifdef ENABLE_TASK_WATCHDOG
+    WatchdogManager::addTask(instance->taskHandle);
+#endif
+}
+
+void UITask::SetPauseState(bool paused) {
+    if(paused) {
+        vTaskSuspend(UITask::getInstance().taskHandle);
+    }
+    else {
+        vTaskResume(UITask::getInstance().taskHandle);
+    }
+}
  
 #define X(name) #name,
 const char* UITask::UIStringTypeNames[UI_STRING_COUNT] = {
@@ -331,7 +497,11 @@ const UITask::UIStringUpdateFunc UITask::stringUpdateTable[UI_STRING_COUNT] = {
 };
 
 bool UITask::queueSendStringOrWarn(const UIStringMessage& msg) {
-    if (!uiStringQueue || xQueueSend(uiStringQueue, &msg, UI_QUEUE_WAIT_MAX_TIMES) != pdTRUE) {
+    if (uiStringQueue == nullptr) {
+        logger.debug("UI string queue not initialized");
+        return false;
+    }
+    if (xQueueSend(uiStringQueue, &msg, UI_QUEUE_WAIT_MAX_TIMES) != pdTRUE) {
         logger.warningf("UI string queue full, message dropped (%s)", UIStringTypeNames[msg.type]);
         return false;
     }

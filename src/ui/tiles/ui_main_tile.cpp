@@ -1,10 +1,40 @@
 #include "ui/tiles/ui_main_tile.h"
 #include "ui/custom_icons.h"
 
-UIMainTile::UIMainTile() {}
+UIMainTile::UIMainTile() :
+tile_obj(nullptr),
+pressure_icon(nullptr),
+pressure_label(nullptr),
+co2_icon(nullptr),
+co2_label(nullptr),
+voc_icon(nullptr),
+voc_label(nullptr),
+usv_icon(nullptr),
+usv_label(nullptr),
+temp_icon(nullptr),
+temp_label(nullptr),
+humi_icon(nullptr),
+humi_label(nullptr)
+{}
+
+UIMainTile::~UIMainTile() {
+    if(pressure_icon) lv_obj_del(pressure_icon);
+    if(pressure_label) lv_obj_del(pressure_label);
+    if(co2_icon) lv_obj_del(co2_icon);
+    if(co2_label) lv_obj_del(co2_label);
+    if(voc_icon) lv_obj_del(voc_icon);
+    if(voc_label) lv_obj_del(voc_label);
+    if(usv_icon) lv_obj_del(usv_icon);
+    if(usv_label) lv_obj_del(usv_label);
+    if(temp_icon) lv_obj_del(temp_icon);
+    if(temp_label) lv_obj_del(temp_label);
+    if(humi_icon) lv_obj_del(humi_icon);
+    if(humi_label) lv_obj_del(humi_label);
+}
 
 lv_obj_t* UIMainTile::create_tile(lv_obj_t* parent_tv) {
-    lv_obj_t* tile = lv_tileview_add_tile(parent_tv, 0, 0, LV_DIR_RIGHT | LV_DIR_VER);
+    tile_obj = lv_tileview_add_tile(parent_tv, 0, 0, LV_DIR_RIGHT | LV_DIR_VER);
+    lv_obj_t* tile = tile_obj;
     lv_obj_set_scrollbar_mode(tile, LV_SCROLLBAR_MODE_OFF);
     
     static lv_coord_t main_col_dsc[] = {24, LV_GRID_CONTENT, lv_grid_fr(1), LV_GRID_TEMPLATE_LAST};
@@ -234,4 +264,14 @@ void UIMainTile::update_humi(float humi) {
     
     lv_obj_set_style_text_color(humi_label, color, 0);
     lv_obj_set_style_text_color(humi_icon, color, 0);
+}
+
+void UIMainTile::set_visible(bool visible) {
+    if (tile_obj) {
+        if (visible) {
+            lv_obj_clear_flag(tile_obj, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(tile_obj, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
 }

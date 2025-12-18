@@ -15,7 +15,7 @@
  */
 
 #include "zmod4510/zmod4xxx.h"
-#include "logger.h"
+#include "Logger.h"
 
 zmod4xxx_err zmod4xxx_read_status(zmod4xxx_dev_t *dev, uint8_t *status)
 {

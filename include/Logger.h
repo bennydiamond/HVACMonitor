@@ -8,7 +8,7 @@
 #include <ArduinoHA.h>
 
 #include "freertos/FreeRTOS.h"
-#include "freertos/stream_buffer.h"
+#include "freertos/message_buffer.h"
 
 #include <atomic>
 
@@ -59,7 +59,7 @@ struct LogMessage {
 };
 #pragma pack(pop)
 
-    StreamBufferHandle_t _logStreamBufferHandle = nullptr;
+    MessageBufferHandle_t _logStreamBufferHandle = nullptr;
     WiFiUDP _udpClient;
     Syslog* _syslog = nullptr;
     HAMqtt* _mqtt = nullptr;
