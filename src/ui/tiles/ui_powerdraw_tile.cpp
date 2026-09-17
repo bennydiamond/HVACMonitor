@@ -193,17 +193,17 @@ void UIPowerdrawTile::update_pump_current(float amps) {
     lv_obj_set_style_text_color(pump_label, color, 0);
 }
 
-void UIPowerdrawTile::update_water_sensor(bool water_ok) {
-    if (water_ok) {
-        lv_label_set_text(water_label, "Panne: OK");
-        lv_label_set_text(water_icon, ICON_WATER);
-        lv_obj_set_style_text_color(water_label, COLOR_GREEN, 0);
-        lv_obj_set_style_text_color(water_icon, COLOR_GREEN, 0);
-    } else {
+void UIPowerdrawTile::update_water_sensor(bool water_detected) {
+    if (water_detected) {
         lv_label_set_text(water_label, "Panne: Problème");
         lv_label_set_text(water_icon, ICON_WATER_ALERT);
         lv_obj_set_style_text_color(water_label, COLOR_HIGH, 0);
         lv_obj_set_style_text_color(water_icon, COLOR_HIGH, 0);
+    } else {
+        lv_label_set_text(water_label, "Panne: OK");
+        lv_label_set_text(water_icon, ICON_WATER);
+        lv_obj_set_style_text_color(water_label, COLOR_GREEN, 0);
+        lv_obj_set_style_text_color(water_icon, COLOR_GREEN, 0);
     }
 }
 

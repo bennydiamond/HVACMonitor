@@ -300,7 +300,7 @@ void process_packet(String packet) {
             token = strtok(NULL, ","); if (!token) return; float pm10 = atof(token) / 10.0f;
             token = strtok(NULL, ","); if (!token) return; float compressor_amps = atof(token) / 100.0f;
             token = strtok(NULL, ","); if (!token) return; float geothermal_pump_amps = atof(token) / 100.0f;
-            token = strtok(NULL, ","); if (!token) return; bool liquid_level_sensor_state = (atoi(token) == 0); // GPIO at 0 == sensor triggered
+            token = strtok(NULL, ","); if (!token) return; bool liquid_level_sensor_water_detected = (atoi(token) == 0); // GPIO at 0 == sensor triggered
             token = strtok(NULL, ","); if (!token) return; uint16_t co_adc_raw = atoi(token);
 #ifdef SERIAL_PACKET_DEBUG
             // Debug log: decoded sensor packet with descriptive tags
@@ -311,7 +311,7 @@ void process_packet(String packet) {
                 "compressor_amps=%.2fA, pump_amps=%.2fA, liquid_level=%s, co_adc_raw=%u",
                 timestamp, pressure_adc_raw, pulse_count, t, h, co2,
                 voc_raw, nox_raw, amps, pm1, pm25, pm4, pm10,
-                compressor_amps, geothermal_pump_amps, liquid_level_sensor_state ? "TRIGGERED" : "OK", co_adc_raw
+                compressor_amps, geothermal_pump_amps, liquid_level_sensor_water_detected ? "TRIGGERED" : "OK", co_adc_raw
             );
 #endif
         
@@ -386,6 +386,7 @@ void process_packet(String packet) {
             UITask::getInstance().update_nox(nox_avg.getAverage());
             UITask::getInstance().update_pm_values(pm1_avg.getAverage(), pm25_avg.getAverage(), pm4_avg.getAverage(), pm10_avg.getAverage());
             UITask::getInstance().update_co(co_avg.getAverage());
+            UITask::getInstance().update_water_sensor(liquid_level_sensor_water_detected);
 
             haManager.publishHighPressureStatus(is_pressure_high);
             haManager.publishFanStatus(fan_status != FAN_STATUS_OFF);
@@ -394,7 +395,7 @@ void process_packet(String packet) {
                 voc_avg.getAverage(), nox_avg.getAverage(), 
                 amps,
                 pm1_avg.getAverage(), pm25_avg.getAverage(), pm4_avg.getAverage(), pm10_avg.getAverage(),
-                compressor_amps_avg.getAverage(), geothermal_pump_amps_avg.getAverage(), liquid_level_sensor_state,
+                compressor_amps_avg.getAverage(), geothermal_pump_amps_avg.getAverage(), liquid_level_sensor_water_detected,
                 co_avg.getAverage());
 
             sensorTask.setEnvironmentalData(t, h);

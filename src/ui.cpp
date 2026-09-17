@@ -106,7 +106,7 @@ void UI::update_pm10(float pm10) { if (tileManager) tileManager->update_pm10(pm1
 void UI::update_fan_amps(float amps) { if (tileManager) tileManager->update_fan_amps(amps); }
 void UI::update_compressor_amps(float amps) { if (tileManager) tileManager->update_compressor_amps(amps); }
 void UI::update_pump_amps(float amps) { if (tileManager) tileManager->update_pump_amps(amps); }
-void UI::update_water_sensor(bool water_ok) { if (tileManager) tileManager->update_water_sensor(water_ok); }
+void UI::update_water_sensor(bool water_detected) { if (tileManager) tileManager->update_water_sensor(water_detected); }
 void UI::update_fan_status(FanStatus s) { if (tileManager) tileManager->update_fan_status(s); }
 void UI::update_co2(float co2) { if (tileManager) tileManager->update_co2(co2); }
 void UI::update_voc(int32_t voc_index) { if (tileManager) tileManager->update_voc(voc_index); }

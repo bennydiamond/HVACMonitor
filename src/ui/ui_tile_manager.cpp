@@ -83,7 +83,7 @@ void UITileManager::update_pm10(float pm10) { if (secondary_tile) secondary_tile
 void UITileManager::update_fan_amps(float amps) { if (powerdraw_tile) powerdraw_tile->update_fan_current(amps, FAN_STATUS_NORMAL); }
 void UITileManager::update_compressor_amps(float amps) { if (powerdraw_tile) powerdraw_tile->update_compressor_current(amps); }
 void UITileManager::update_pump_amps(float amps) { if (powerdraw_tile) powerdraw_tile->update_pump_current(amps); }
-void UITileManager::update_water_sensor(bool water_ok) { if (powerdraw_tile) powerdraw_tile->update_water_sensor(water_ok); }
+void UITileManager::update_water_sensor(bool water_detected) { if (powerdraw_tile) powerdraw_tile->update_water_sensor(water_detected); }
 void UITileManager::update_sps30_fan_interval(unsigned long v) { if (sps30_tile) sps30_tile->update_sps30_fan_interval(v); }
 void UITileManager::update_sps30_fan_days(unsigned long v) { if (sps30_tile) sps30_tile->update_sps30_fan_days(v); }
 void UITileManager::update_sgp41_test_status(int v) { if (sgp41_tile) sgp41_tile->update_sgp41_test_status(v); }

@@ -33,7 +33,7 @@ class UI : public IUIManager, public IUIUpdater {
     void update_fan_amps(float amps) override;
     void update_compressor_amps(float amps) override;
     void update_pump_amps(float amps) override;
-    void update_water_sensor(bool water_ok) override;
+    void update_water_sensor(bool water_detected) override;
     void update_fan_status(FanStatus status) override;
     void update_high_pressure_status(bool is_high) override;
     void update_wifi_status(bool connected, int8_t rssi) override;

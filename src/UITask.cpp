@@ -347,8 +347,8 @@ void UITask::update_compressor_amps(float amps) {
 void UITask::update_pump_amps(float amps) {
     queueSendOrWarn(UIMessage{UI_PUMP_AMPS, amps});
 }
-void UITask::update_water_sensor(bool water_ok) {
-    queueSendOrWarn(UIMessage{UI_WATER_SENSOR, water_ok});
+void UITask::update_water_sensor(bool water_detected) {
+    queueSendOrWarn(UIMessage{UI_WATER_SENSOR, water_detected});
 }
 void UITask::update_pm_values(float v1, float v2, float v3, float v4) {
     queueSendOrWarn(UIMessage{UI_PM1, v1});

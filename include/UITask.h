@@ -113,7 +113,7 @@ public:
     void update_fan_current(float amps, FanStatus fan_status);
     void update_compressor_amps(float amps);
     void update_pump_amps(float amps);
-    void update_water_sensor(bool water_ok);
+    void update_water_sensor(bool water_detected);
     void update_co2(float value);
     void update_voc(float value);
     void update_no2(float value);

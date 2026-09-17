@@ -14,7 +14,7 @@ public:
     void update_compressor_current(float amps);
     void update_pump_current(float amps);
     void update_fan_status(FanStatus status);
-    void update_water_sensor(bool water_ok);
+    void update_water_sensor(bool water_detected);
     void clear_readings();
     void set_fan_status_icon(lv_obj_t* icon);
     void set_visible(bool visible);

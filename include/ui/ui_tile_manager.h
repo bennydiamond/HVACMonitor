@@ -48,7 +48,7 @@ public:
     void update_fan_amps(float amps);
     void update_compressor_amps(float amps);
     void update_pump_amps(float amps);
-    void update_water_sensor(bool water_ok);
+    void update_water_sensor(bool water_detected);
     void update_fan_status(FanStatus status);
     void set_initial_debug_info(const char* ver, const char* rst_reason);
     void update_scd30_autocal(bool enabled);
