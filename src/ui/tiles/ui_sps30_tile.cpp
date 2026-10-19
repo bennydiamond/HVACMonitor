@@ -12,8 +12,20 @@ const int DAYS_LABEL_Y = 90;
 const int CLEAN_BTN_Y = 130;
 const int LABEL_X = 10;
 
+UISPS30Tile::UISPS30Tile() :
+tile_obj(nullptr),
+interval_label(nullptr),
+days_label(nullptr)
+{}
+
+UISPS30Tile::~UISPS30Tile() {
+    if(interval_label) lv_obj_del(interval_label);
+    if(days_label) lv_obj_del(days_label);
+}
+
 lv_obj_t* UISPS30Tile::create_tile(lv_obj_t* parent_tv) {
-    lv_obj_t* tile = lv_tileview_add_tile(parent_tv, 2, 2, LV_DIR_RIGHT | LV_DIR_VER);
+    tile_obj = lv_tileview_add_tile(parent_tv, 2, 2, LV_DIR_RIGHT | LV_DIR_VER);
+    lv_obj_t* tile = tile_obj;
     
     lv_obj_t* title = lv_label_create(tile);
     lv_label_set_text(title, "SPS30");
@@ -59,4 +71,13 @@ void UISPS30Tile::update_sps30_fan_days(unsigned long fan_days) {
 
 void UISPS30Tile::manual_clean_cb(lv_event_t* e) {
     MainTaskEventNotifier::getInstance().sendEvent(MainTaskEventNotifier::EVT_SPS30_CLEAN);
+}
+void UISPS30Tile::set_visible(bool visible) {
+    if (tile_obj) {
+        if (visible) {
+            lv_obj_clear_flag(tile_obj, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(tile_obj, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
 }

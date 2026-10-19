@@ -62,8 +62,11 @@ def format_packet(p, pulse_count, t, h, co2, voc, nox, amps, pm1, pm25, pm4, pm1
                  compressor_amps, geothermal_pump_amps, liquid_level_sensor_state,
                  aht20_temp, aht20_humidity, bmp280_pressure, bmp280_temp, 
                  zmod4510_o3, zmod4510_no2, zmod4510_fast_aqi, zmod4510_epa_aqi):
-    """Formats the data into the <pressure,pulse_count,temp,humi,co2,voc,nox,amps,pm...,aht20_temp,aht20_humidity,bmp280_pressure,bmp280_temp,zmod4510_o3,zmod4510_no2,zmod4510_fast_aqi,zmod4510_epa_aqi,checksum>\n protocol."""
-    # Scale float values to integers to match the Arduino Nano's new format
+    """Formats the data into the sensor response format."""
+    import time
+    timestamp = int(time.time() * 1000)  # Current timestamp in milliseconds
+    
+    # Scale float values to integers to match the Arduino Nano's format
     p_val = int(p * 10)
     t_val = int(t * 10)
     h_val = int(h * 10)
@@ -73,20 +76,11 @@ def format_packet(p, pulse_count, t, h, co2, voc, nox, amps, pm1, pm25, pm4, pm1
     pm25_val = int(pm25 * 10)
     pm4_val = int(pm4 * 10)
     pm10_val = int(pm10 * 10)
+    co_val = 0  # CO sensor value (dummy)
     
-    # I2C Bridge sensor values (scaled to integers)
-    aht20_temp_val = int(aht20_temp * 10)
-    aht20_humidity_val = int(aht20_humidity * 10)
-    bmp280_pressure_val = int(bmp280_pressure / 10)  # Pressure in Pa, scale down
-    bmp280_temp_val = int(bmp280_temp * 10)
-    zmod4510_o3_val = int(zmod4510_o3)
-    zmod4510_no2_val = int(zmod4510_no2)
-    zmod4510_fast_aqi_val = int(zmod4510_fast_aqi)
-    zmod4510_epa_aqi_val = int(zmod4510_epa_aqi)
-
-    # Format the data part with scaled integers
-    payload = f"{p_val},{pulse_count},{t_val},{h_val},{co2_val},{int(voc)},{int(nox)},{amps_val},{pm1_val},{pm25_val},{pm4_val},{pm10_val},{int(compressor_amps * 100)},{int(geothermal_pump_amps * 100)},{int(liquid_level_sensor_state)},{aht20_temp_val},{aht20_humidity_val},{bmp280_pressure_val},{bmp280_temp_val},{zmod4510_o3_val},{zmod4510_no2_val},{zmod4510_fast_aqi_val},{zmod4510_epa_aqi_val}"
-    data_part = f"S{payload}"
+    # Format the data part with timestamp first
+    payload = f"{timestamp},{p_val},{pulse_count},{t_val},{h_val},{co2_val},{int(voc)},{int(nox)},{amps_val},{pm1_val},{pm25_val},{pm4_val},{pm10_val},{int(compressor_amps * 100)},{int(geothermal_pump_amps * 100)},{int(liquid_level_sensor_state)},{co_val}"
+    data_part = f"s{payload}"
     checksum = calculate_checksum(data_part)
     return f"<{data_part},{checksum}>\n"
 
@@ -275,22 +269,61 @@ def handle_command_packet(ser, packet_str):
         
         cmd = data_part[0]
         
-        if cmd.startswith('V'):  # Version request
+        if cmd == 'V':  # Version request
             response = "v1.0.0,I2C_Bridge_Simulator"
             checksum = calculate_checksum(response)
             packet = f"<{response},{checksum}>\n"
             ser.write(packet.encode())
             print(f"[CMD] Sent version response: {packet.strip()}")
             
-        elif cmd.startswith('H'):  # Health request
-            response = "h1,1,1,1,1,1"  # All sensors healthy
+        elif cmd == 'H':  # Health request
+            response = "h0,512,1"  # first_time_flag=0, free_ram=512, reset_cause=1
             checksum = calculate_checksum(response)
             packet = f"<{response},{checksum}>\n"
             ser.write(packet.encode())
             print(f"[CMD] Sent health response: {packet.strip()}")
             
-        elif cmd.startswith('A'):  # ACK Health
+        elif cmd == 'A':  # ACK Health
             print("[CMD] Acknowledged health status")
+            
+        elif cmd == 'P':  # SPS30 Info request
+            response = "p0,2,8,0,168,0,0,0,0"  # SPS30 info response
+            checksum = calculate_checksum(response)
+            packet = f"<{response},{checksum}>\n"
+            ser.write(packet.encode())
+            print(f"[CMD] Sent SPS30 info response: {packet.strip()}")
+            
+        elif cmd.startswith('I'):  # I2C Read request
+            # Parse I2C read command: I<address>,<num_bytes>
+            if len(data_part) >= 2:
+                try:
+                    address = int(data_part[0][1:], 16)
+                    num_bytes = int(data_part[1], 16)
+                    handle_i2c_read_request(ser, address, num_bytes)
+                except ValueError:
+                    print(f"[CMD] Invalid I2C read command format: {cmd}")
+            else:
+                print(f"[CMD] Incomplete I2C read command: {cmd}")
+            
+        elif cmd == 'D':  # CMD_GET_SCD30_INFO request
+            response = "d0,2,0,1,0,190,0,0,0,0,0,3,4"  # SCD30 info response
+            checksum = calculate_checksum(response)
+            packet = f"<{response},{checksum}>\n"
+            ser.write(packet.encode())
+            print(f"[CMD] Sent SCD30 info response: {packet.strip()}")
+            
+        elif cmd == 'S':  # Sensor data request
+            # Send current sensor data
+            packet = format_packet(
+                current_pressure, current_pulse_count, current_temperature, current_humidity,
+                current_co2, current_voc_raw, current_nox_raw, current_amps,
+                current_pm1_0, current_pm2_5, current_pm4_0, current_pm10_0,
+                current_compressor_amps, current_geothermal_pump_amps, current_liquid_level_sensor_state,
+                current_aht20_temp, current_aht20_humidity, current_bmp280_pressure, current_bmp280_temp,
+                current_zmod4510_o3, current_zmod4510_no2, current_zmod4510_fast_aqi, current_zmod4510_epa_aqi
+            )
+            ser.write(packet.encode('ascii'))
+            print(f"[CMD] Sent sensor data: {packet.strip()}")
             
         else:
             print(f"[CMD] Unknown command: {cmd}")
@@ -424,24 +457,8 @@ def main():
 
     try:
         while not stop_threads:
-            # Pass all variables including new sensors to the packet formatter
-            packet = format_packet(
-                current_pressure, current_pulse_count, current_temperature, current_humidity,
-                current_co2, current_voc_raw, current_nox_raw, current_amps,
-                current_pm1_0, current_pm2_5, current_pm4_0, current_pm10_0,
-                current_compressor_amps, current_geothermal_pump_amps, current_liquid_level_sensor_state,
-                current_aht20_temp, current_aht20_humidity, current_bmp280_pressure, current_bmp280_temp,
-                current_zmod4510_o3, current_zmod4510_no2, current_zmod4510_fast_aqi, current_zmod4510_epa_aqi
-            )
-            
-            print(f"--> [SIM Sending]: {packet.strip()}")
-            ser.write(packet.encode('ascii'))
-            
-            # Sleep in small chunks to allow for quick exit
-            for _ in range(SEND_INTERVAL_SECONDS * 4):
-                if stop_threads:
-                    break
-                time.sleep(0.25)
+            # No automatic sending - only respond to commands
+            time.sleep(0.1)
             
     except KeyboardInterrupt:
         print("\nExiting simulator.")

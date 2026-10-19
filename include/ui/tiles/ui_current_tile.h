@@ -2,11 +2,12 @@
 #define UI_CURRENT_TILE_H
 
 #include "../ui_common.h"
-#include "ConfigManager.h"
 
 class UICurrentTile {
 public:
-    UICurrentTile(ConfigManager* config);
+    UICurrentTile();
+    ~UICurrentTile();
+
     lv_obj_t* create_tile(lv_obj_t* parent_tv);
     void update_fan_current(float amps, FanStatus status);
     void update_compressor_current(float amps);
@@ -14,9 +15,10 @@ public:
     void update_fan_status(FanStatus status);
     void clear_readings();
     void set_fan_status_icon(lv_obj_t* icon);
+    void set_visible(bool visible);
 private:
     static void fan_alert_blink_cb(lv_timer_t* timer);
-    ConfigManager* _config;
+    lv_obj_t* tile_obj;
     lv_obj_t* fan_icon, *fan_label;
     lv_obj_t* compressor_icon, *compressor_label;
     lv_obj_t* pump_icon, *pump_label;

@@ -6,6 +6,8 @@
 class UISecondaryTile {
 public:
     UISecondaryTile();
+    ~UISecondaryTile();
+    
     lv_obj_t* create_tile(lv_obj_t* parent_tv);
     void update_pm_values(float pm1, float pm25, float pm4, float pm10);
     void clear_readings();
@@ -17,7 +19,9 @@ public:
     void update_sps30_fan_days(unsigned long fan_days);
     void update_sgp41_test_status(int ret_status);
     void update_sgp41_test_value(uint16_t raw_value);
+    void set_visible(bool visible);
 private:
+    lv_obj_t* tile_obj;
     lv_obj_t* pm1_icon, *pm1_label;
     lv_obj_t* pm25_icon, *pm25_label;
     lv_obj_t* pm4_icon, *pm4_label;

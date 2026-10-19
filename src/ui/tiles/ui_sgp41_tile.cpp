@@ -11,8 +11,20 @@ const int RESULT_LABEL_Y = 120;
 const int VALUE_LABEL_Y = 152;
 const int LABEL_X = 10;
 
+UISGP41Tile::UISGP41Tile() : 
+tile_obj(nullptr),
+result_label(nullptr),
+value_label(nullptr)
+{}
+
+UISGP41Tile::~UISGP41Tile() {
+    if(result_label) lv_obj_del(result_label);
+    if(value_label) lv_obj_del(value_label);
+}
+
 lv_obj_t* UISGP41Tile::create_tile(lv_obj_t* parent_tv) {
-    lv_obj_t* tile = lv_tileview_add_tile(parent_tv, 2, 3, LV_DIR_RIGHT | LV_DIR_VER);
+    tile_obj = lv_tileview_add_tile(parent_tv, 2, 3, LV_DIR_RIGHT | LV_DIR_VER);
+    lv_obj_t* tile = tile_obj;
     
     lv_obj_t* title = lv_label_create(tile);
     lv_label_set_text(title, "SGP41");
@@ -80,4 +92,13 @@ void UISGP41Tile::update_sgp41_test_value(uint16_t raw_value) {
 
 void UISGP41Tile::selftest_btn_cb(lv_event_t* e) {
     MainTaskEventNotifier::getInstance().sendEvent(MainTaskEventNotifier::EVT_SGP41_TEST);
+}
+void UISGP41Tile::set_visible(bool visible) {
+    if (tile_obj) {
+        if (visible) {
+            lv_obj_clear_flag(tile_obj, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(tile_obj, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
 }

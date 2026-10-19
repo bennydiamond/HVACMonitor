@@ -21,7 +21,7 @@ public:
     virtual void update_fan_amps(float amps) = 0;
     virtual void update_compressor_amps(float amps) = 0;
     virtual void update_pump_amps(float amps) = 0;
-    virtual void update_water_sensor(bool water_ok) = 0;
+    virtual void update_water_sensor(bool water_detected) = 0;
     virtual void update_fan_status(FanStatus status) = 0;
     virtual void update_high_pressure_status(bool is_high) = 0;
     virtual void update_wifi_status(bool connected, int8_t rssi) = 0;

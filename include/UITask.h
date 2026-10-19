@@ -52,7 +52,8 @@ class IUIUpdater;
     X(UI_SENSORSTACK_UPTIME) \
     X(UI_SENSORSTACK_RAM) \
     X(UI_NETWORK_RSSI) \
-    X(UI_NETWORK_HA_CONN)
+    X(UI_NETWORK_HA_CONN) \
+    X(UI_SHOW_OTA_POPUP)
 
 // X-macro for string message types
 #define UI_STRING_TYPE_LIST \
@@ -64,7 +65,6 @@ class IUIUpdater;
 class UITask {
 public:
     UITask();
-    ~UITask();
     void start();
     static UITask& getInstance();
 
@@ -98,7 +98,12 @@ public:
 
     uint8_t get_brightness() const {
         return brightness.load();
-    }   
+    }
+    
+    static void prepare_for_ota();
+    static void restore_after_ota();   
+
+    static void SetPauseState(bool paused);
 
     // UI update methods (enqueue messages)
     void update_pressure(float p);
@@ -108,7 +113,7 @@ public:
     void update_fan_current(float amps, FanStatus fan_status);
     void update_compressor_amps(float amps);
     void update_pump_amps(float amps);
-    void update_water_sensor(bool water_ok);
+    void update_water_sensor(bool water_detected);
     void update_co2(float value);
     void update_voc(float value);
     void update_no2(float value);
@@ -140,7 +145,11 @@ public:
     void update_network_rssi(int8_t rssi);
     void update_network_ha_conn(bool ha_conn);
 
+    void queue_ota_popup();
+
 private:
+    static const auto UI_QUEUE_SIZE = 20;
+    static const auto UI_STRING_QUEUE_SIZE = 8;
     static const uint32_t UI_DEQUEUE_TIME_MS = 20;
     static const uint32_t UITASK_SLEEP_TIME_MS = 15; // 66 fps
     static const uint32_t UI_QUEUE_WAIT_MAX_TIMES = 30;
@@ -148,6 +157,8 @@ private:
 
     static const uint8_t DEFAULT_LCD_BRIGHTNESS = 255;
 
+    ~UITask();
+    
     static void taskFunc(void* param);
     void run();
     void dispatchMessage(const UIMessage& msg);
@@ -163,6 +174,7 @@ private:
     QueueHandle_t uiQueue;
 
     std::atomic<uint8_t> brightness = DEFAULT_LCD_BRIGHTNESS;
+    bool uiIsInit;
 
     // Static table of function pointers for dispatch
     using UIUpdateFunc = void(*)(IUIUpdater*, const UIMessage&);
@@ -193,4 +205,5 @@ private:
     static const UIStringUpdateFunc stringUpdateTable[UI_STRING_COUNT];
 
     bool queueSendStringOrWarn(const UIStringMessage& msg);
+    void show_ota_popup();
 }; 

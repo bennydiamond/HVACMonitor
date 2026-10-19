@@ -7,6 +7,8 @@
 class UIMainTile {
 public:
     UIMainTile();
+    ~UIMainTile();
+    
     lv_obj_t* create_tile(lv_obj_t* parent_tv);
     void update_pressure(float p);
     void update_co2(float co2);
@@ -16,6 +18,7 @@ public:
     void update_temp(float temp);
     void update_humi(float humi);
     void clear_readings();
+    void set_visible(bool visible);
 private:
     void create_pressure_widgets(lv_obj_t* parent);
     void create_co2_widgets(lv_obj_t* parent);
@@ -24,6 +27,7 @@ private:
     void create_temp_humi_widgets(lv_obj_t* parent);
 
     // ConfigManager pointer removed - using ConfigManagerAccessor instead
+    lv_obj_t* tile_obj;
     lv_obj_t* pressure_icon, *pressure_label;
     lv_obj_t* co2_icon, *co2_label;
     lv_obj_t* voc_icon, *voc_label;

@@ -16,17 +16,36 @@ lv_color_t* UI::buf1 = nullptr;
 lv_disp_drv_t UI::disp_drv;
 lv_indev_drv_t UI::indev_drv;
 
-UI* UI::_instance = nullptr;
+UI::UI() :
+tileview(nullptr),
+status_bar(nullptr),
+tileManager(nullptr),
+fan_icon_label(nullptr),
+wifi_icon_label(nullptr),
+ha_icon_label(nullptr),
+sensor_icon_label(nullptr),
+air_filter_icon_label(nullptr),
+high_pressure_blink_timer(nullptr)
+{
+    logger.info("UI top class created");
+}
 
-// Private constructor implementation
-UI::UI() {}
+UI::~UI() {
+    delete tileManager;
 
-// Static method to get the singleton instance
-UI& UI::getInstance() {
-    if (!_instance) {
-        _instance = new UI();
+    lv_obj_del(tileview);
+    lv_obj_del(fan_icon_label);
+    lv_obj_del(wifi_icon_label);
+    lv_obj_del(ha_icon_label);
+    lv_obj_del(sensor_icon_label);
+    lv_obj_del(air_filter_icon_label);
+    lv_obj_del(status_bar);
+    lv_timer_del(high_pressure_blink_timer);
+
+    if (buf1) {
+        heap_caps_free(buf1);
     }
-    return *_instance;
+    logger.info("UI top class destroyed");
 }
 
 void UI::init(LGFX* tft_instance, CST820* touch_instance) {
@@ -61,6 +80,9 @@ void UI::create_widgets() {
     
     tileManager = new UITileManager();
     tileManager->create_all_tiles(tileview, fan_icon_label);
+    
+    // Set initial tile visibility (main tile and adjacent tiles visible)
+    tileManager->update_tile_visibility(tileManager->get_tile1());
 
     lv_timer_create(inactivity_timer_cb_static, 1000, this);
     high_pressure_blink_timer = lv_timer_create(UIRuntimeTile::high_pressure_blink_cb, 750, air_filter_icon_label);
@@ -84,7 +106,7 @@ void UI::update_pm10(float pm10) { if (tileManager) tileManager->update_pm10(pm1
 void UI::update_fan_amps(float amps) { if (tileManager) tileManager->update_fan_amps(amps); }
 void UI::update_compressor_amps(float amps) { if (tileManager) tileManager->update_compressor_amps(amps); }
 void UI::update_pump_amps(float amps) { if (tileManager) tileManager->update_pump_amps(amps); }
-void UI::update_water_sensor(bool water_ok) { if (tileManager) tileManager->update_water_sensor(water_ok); }
+void UI::update_water_sensor(bool water_detected) { if (tileManager) tileManager->update_water_sensor(water_detected); }
 void UI::update_fan_status(FanStatus s) { if (tileManager) tileManager->update_fan_status(s); }
 void UI::update_co2(float co2) { if (tileManager) tileManager->update_co2(co2); }
 void UI::update_voc(int32_t voc_index) { if (tileManager) tileManager->update_voc(voc_index); }
@@ -237,11 +259,13 @@ void UI::inactivity_timer_cb(lv_timer_t *timer) {
     // Get the delay from ConfigManager - this is safe to call from UITask context
     // since ConfigManagerAccessor is thread-safe
     ConfigManagerAccessor config;
-    unsigned long delay = config->getInactivityTimerDelay()  * 1000; // Convert seconds to milliseconds
+    uint32_t delay = config->getInactivityTimerDelay()  * 1000; // Convert seconds to milliseconds
     
     if (lv_disp_get_inactive_time(NULL) > delay) {
         if (tileManager && lv_tileview_get_tile_act(tileview) != tileManager->get_tile1()) {
             lv_obj_set_tile_id(tileview, 0, 0, LV_ANIM_ON);
+            // Update tile visibility when returning to main tile
+            tileManager->update_tile_visibility(tileManager->get_tile1());
         }
     }
 }
@@ -260,6 +284,11 @@ void UI::tile_change_event_cb(lv_event_t * e) {
         tileManager->clear_sgp41_results();
     }
     prev_tile = active_tile;
+    
+    // Update tile visibility based on adjacency
+    if (tileManager) {
+        tileManager->update_tile_visibility(active_tile);
+    }
     
     if (tileManager && (active_tile == tileManager->get_tile1() || active_tile == tileManager->get_secondary_tile() || active_tile == tileManager->get_gas_tile() || active_tile == tileManager->get_powerdraw_tile())) {
         // Show status bar for first column tiles

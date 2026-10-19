@@ -174,43 +174,56 @@ bool I2CBridge::begin() {
 
 I2CBridge::Result I2CBridge::readBytes(uint8_t addr, uint8_t len) {
     Result result = {false, I2C_ERROR_PENDING, {0}, 0};
-    
-    // Make sure the queue is empty before sending a new request
-    xQueueReset(_response_queue);
-    
-    // Send the read request to the Nano
-    send_i2c_read_request(addr, len);
+    const int max_retries = 3;
+    int attempt = 0;
+
+    while (attempt < max_retries) {
+        // Make sure the queue is empty before sending a new request
+        xQueueReset(_response_queue);
+        
+        // Send the read request to the Nano
+        send_i2c_read_request(addr, len);
 #ifdef I2C_BRIDGE_DEBUG
-    logger.debugf("I2CBridge: Waiting for read response (addr=0x%02X, len=%d)", addr, len);
+        logger.debugf("I2CBridge: Waiting for read response (addr=0x%02X, len=%d, attempt=%d)", addr, len, attempt + 1);
 #endif
-    
-    // Wait for response with timeout
-    if (xQueueReceive(_response_queue, &result, pdMS_TO_TICKS(1000)) == pdTRUE) {
-        // Log the received data
-        if (result.data_len > 0) {
-            String hexData;
-            for (int i = 0; i < result.data_len; i++) {
-                if (i > 0) hexData += " ";
-                char hex[4];
-                sprintf(hex, "%02X", result.data[i]);
-                hexData += hex;
+        
+        // Wait for response with timeout
+        if (xQueueReceive(_response_queue, &result, pdMS_TO_TICKS(1000)) == pdTRUE) {
+            // Log the received data
+            if (result.data_len > 0) {
+                String hexData;
+                for (int i = 0; i < result.data_len; i++) {
+                    if (i > 0) hexData += " ";
+                    char hex[4];
+                    sprintf(hex, "%02X", result.data[i]);
+                    hexData += hex;
+                }
+#ifdef I2C_BRIDGE_DEBUG
+                logger.debugf("I2CBridge: Read response received - addr=0x%02X, status=%d, data=%s, attempt=%d", 
+                             addr, result.error_code, hexData.c_str(), attempt + 1);
+#endif
+            } 
+#ifdef I2C_BRIDGE_DEBUG
+            else {
+                logger.debugf("I2CBridge: Read response received - addr=0x%02X, status=%d, no data, attempt=%d", 
+                             addr, result.error_code, attempt + 1);
             }
-#ifdef I2C_BRIDGE_DEBUG
-            logger.debugf("I2CBridge: Read response received - addr=0x%02X, status=%d, data=%s", 
-                         addr, result.error_code, hexData.c_str());
 #endif
-        } 
-#ifdef I2C_BRIDGE_DEBUG
-        else {
-            logger.debugf("I2CBridge: Read response received - addr=0x%02X, status=%d, no data", 
-                         addr, result.error_code);
+            if (result.success) {
+                return result;
+            }
         }
-#endif
-        return result;
+
+        // Timeout or error occurred
+        attempt++;
+        if (attempt < max_retries) {
+            logger.warningf("I2CBridge: Read attempt %d failed for addr=0x%02X, retrying...", attempt, addr);
+            delay(1); // Small delay before retry
+        }
     }
     
-    // Timeout occurred
-    logger.warningf("I2CBridge: Read response timeout for addr=0x%02X", addr);
+    // All retries failed
+    logger.warningf("I2CBridge: Read response timeout after %d attempts for addr=0x%02X", max_retries, addr);
     result.error_code = I2C_ERROR_TIMEOUT;
     return result;
 }

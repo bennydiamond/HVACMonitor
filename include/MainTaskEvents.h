@@ -11,6 +11,8 @@ public:
         EVT_SCD30_AUTOCAL_OFF  = (1UL << 1),
         EVT_SPS30_CLEAN        = (1UL << 2),
         EVT_SGP41_TEST         = (1UL << 3),
+        EVT_REBOOT_NANO        = (1UL << 4),
+        EVT_REBOOT_ESP32       = (1UL << 5),
         // Add more events as needed
     };
 

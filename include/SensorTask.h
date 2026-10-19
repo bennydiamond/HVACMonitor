@@ -61,8 +61,13 @@ public:
     // Update environmental data for ZMOD4510 algo calculations (thread-safe)
     void setEnvironmentalData(float temperature_degc, float humidity_pct);
     
-    // Update connection status and first time flag (thread-safe)
-    void updateConnectionStatus(bool sensorStackConnected, bool firstTimeFlag);
+    // Task notification bits
+    static const uint32_t NOTIFY_SENSORSTACK_CONNECTED = (1UL << 0);
+    static const uint32_t NOTIFY_SENSORSTACK_OFFLINE = (1UL << 1);
+    static const uint32_t NOTIFY_SENSORSTACK_REBOOTED = (1UL << 2);
+    
+    // Notify sensor stack connection status (thread-safe)
+    void notifyConnectionStatus(bool connected, bool firstTimeFlag);
     
 private:
     static void taskFunction(void* parameter);
@@ -77,14 +82,12 @@ private:
 #endif
     // State variables
     bool previousFirstTimeFlag;
-    bool firstTimeFlag;
     bool firstHealthCheckReceived;
     bool rebootDetected;
     
     TaskHandle_t taskHandle;
     
     // Shared state variables
-    bool sensorStackConnected;
     SemaphoreHandle_t stateMutex;
     StaticSemaphore_t stateMutexBuffer;
 }; 

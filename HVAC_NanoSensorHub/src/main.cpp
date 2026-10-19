@@ -180,7 +180,7 @@ uint16_t geothermal_pump_ct_sample_count = 0;
 const uint16_t RMS_SAMPLE_COUNT = NUM_SAMPLES;
 
 // --- Rolling average variables for CO sensor ---
-const float CO_EMA_ALPHA = 0.1f; // Smoothing factor (0.1 = 10% new data, 90% old average)
+const float CO_EMA_ALPHA = 0.4f; // Smoothing factor (0.1 = 10% new data, 90% old average)
 float co_adc_ema = 0.0f; // Exponential moving average
 bool co_adc_ema_initialized = false;
 
@@ -590,11 +590,14 @@ void process_command(const char* buffer) {
   uint8_t i2c_status = I2C_ERROR_NONE;
 
   switch (command) {
-    case CMD_GET_VERSION:
-      snprintf_P(tx_command_buffer, sizeof(tx_command_buffer), FMT_GET_VERSION, RSP_VERSION, NANO_FIRMWARE_VERSION);
+    case CMD_GET_VERSION: {
+      char temp_version[10];
+      strncpy_P(temp_version, NANO_FIRMWARE_VERSION, 10);
+      snprintf_P(tx_command_buffer, sizeof(tx_command_buffer), FMT_GET_VERSION, RSP_VERSION, temp_version);
       checksum = calculate_checksum(tx_command_buffer);
       Serial.print('<'); Serial.print(tx_command_buffer); Serial.print(','); Serial.print(checksum); Serial.println('>');
       break;
+    }
 
     case CMD_GET_HEALTH:
       snprintf_P(tx_command_buffer, sizeof(tx_command_buffer), FMT_GET_HEALTH, RSP_HEALTH, first_health_status_sent ? 0 : 1, freeRam(), last_reset_cause);

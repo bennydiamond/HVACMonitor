@@ -3,8 +3,26 @@
 
 const int SCROLL_SPEED_MS_PX_NET = 5;
 
+UINetworkTile::UINetworkTile() :
+tile_obj(nullptr),
+ssid_label(nullptr),
+rssi_label(nullptr),
+ip_label(nullptr),
+mac_label(nullptr),
+ha_label(nullptr)
+{}
+
+UINetworkTile::~UINetworkTile() {
+    if(ssid_label) lv_obj_del(ssid_label);
+    if(rssi_label) lv_obj_del(rssi_label);
+    if(ip_label) lv_obj_del(ip_label);
+    if(mac_label) lv_obj_del(mac_label);
+    if(ha_label) lv_obj_del(ha_label);
+}   
+
 lv_obj_t* UINetworkTile::create_tile(lv_obj_t* parent_tv) {
-    lv_obj_t* tile = lv_tileview_add_tile(parent_tv, 1, 1, LV_DIR_HOR | LV_DIR_TOP);
+    tile_obj = lv_tileview_add_tile(parent_tv, 1, 1, LV_DIR_HOR | LV_DIR_VER);
+    lv_obj_t* tile = tile_obj;
     lv_obj_set_scroll_dir(tile, LV_DIR_NONE);
     
     static lv_coord_t col_dsc[] = {LV_GRID_CONTENT, lv_grid_fr(1), LV_GRID_TEMPLATE_LAST};
@@ -99,4 +117,13 @@ void UINetworkTile::update_ip(const char* ip) {
 }
 void UINetworkTile::update_mac(const char* mac) {
     if (mac_label) lv_label_set_text(mac_label, mac);
+}
+void UINetworkTile::set_visible(bool visible) {
+    if (tile_obj) {
+        if (visible) {
+            lv_obj_clear_flag(tile_obj, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(tile_obj, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
 }

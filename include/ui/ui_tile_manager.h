@@ -9,6 +9,7 @@
 #include "tiles/ui_powerdraw_tile.h"
 #include "tiles/ui_runtime_tile.h"
 #include "tiles/ui_network_tile.h"
+#include "tiles/ui_reboot_tile.h"
 #include "tiles/ui_sensorstack_tile.h"
 #include "tiles/ui_scd30_tile.h"
 #include "tiles/ui_sps30_tile.h"
@@ -17,6 +18,7 @@
 class UITileManager {
 public:
     UITileManager();
+    ~UITileManager();
     void create_all_tiles(lv_obj_t* parent_tv, lv_obj_t* fan_status_icon);
     lv_obj_t* get_tile1() { return main_tile_obj; }
     lv_obj_t* get_secondary_tile() { return secondary_tile_obj; }
@@ -24,6 +26,7 @@ public:
     lv_obj_t* get_powerdraw_tile() { return powerdraw_tile_obj; }
     lv_obj_t* get_tile3() { return runtime_tile_obj; }
     lv_obj_t* get_tile4() { return network_tile_obj; }
+    lv_obj_t* get_reboot_tile() { return reboot_tile_obj; }
     lv_obj_t* get_sensorstack_tile() { return sensorstack_tile_obj; }
     lv_obj_t* get_scd30_tile() { return scd30_tile_obj; }
     lv_obj_t* get_sps30_tile() { return sps30_tile_obj; }
@@ -47,7 +50,7 @@ public:
     void update_fan_amps(float amps);
     void update_compressor_amps(float amps);
     void update_pump_amps(float amps);
-    void update_water_sensor(bool water_ok);
+    void update_water_sensor(bool water_detected);
     void update_fan_status(FanStatus status);
     void set_initial_debug_info(const char* ver, const char* rst_reason);
     void update_scd30_autocal(bool enabled);
@@ -69,6 +72,7 @@ public:
     void update_ip(const char* ip);
     void update_mac(const char* mac);
     void update_fw_version(const char* fw);
+    void update_tile_visibility(lv_obj_t* current_tile);
 private:
     UIMainTile* main_tile = nullptr;
     UISecondaryTile* secondary_tile = nullptr;
@@ -76,6 +80,7 @@ private:
     UIPowerdrawTile* powerdraw_tile = nullptr;
     UIRuntimeTile* runtime_tile = nullptr;
     UINetworkTile* network_tile = nullptr;
+    UIRebootTile* reboot_tile = nullptr;
     UISensorStackTile* sensorstack_tile = nullptr;
     UISCD30Tile* scd30_tile = nullptr;
     UISPS30Tile* sps30_tile = nullptr;
@@ -85,6 +90,7 @@ private:
     lv_obj_t* gas_tile_obj = nullptr;
     lv_obj_t* powerdraw_tile_obj = nullptr;
     lv_obj_t* runtime_tile_obj = nullptr;
+    lv_obj_t* reboot_tile_obj = nullptr;
     lv_obj_t* network_tile_obj = nullptr;
     lv_obj_t* sensorstack_tile_obj = nullptr;
     lv_obj_t* scd30_tile_obj = nullptr;
