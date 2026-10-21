@@ -97,24 +97,24 @@ lv_obj_t* UIRuntimeTile::create_tile(lv_obj_t* parent_tv) {
 }
 
 void UIRuntimeTile::set_initial_info(const char* ver, const char* rst_reason) {
-    if(fw_label) lv_label_set_text_fmt(fw_label, "FW: %s", ver);
-    if(reset_label) lv_label_set_text_fmt(reset_label, "Reset: %s", rst_reason);
+    if(fw_label) ui_set_label_text_fmt(fw_label, "FW: %s", ver);
+    if(reset_label) ui_set_label_text_fmt(reset_label, "Reset: %s", rst_reason);
 }
 
 void UIRuntimeTile::update_runtime_free_heap(uint32_t free_heap) {
     if(mem_label) {
         if (free_heap < 10000) {
-            lv_label_set_text_fmt(mem_label, "Mem: %lu b", free_heap);
+            ui_set_label_text_fmt(mem_label, "Mem: %lu b", free_heap);
         } else {
-            lv_label_set_text_fmt(mem_label, "Mem: %lu kB", free_heap / 1024);
+            ui_set_label_text_fmt(mem_label, "Mem: %lu kB", free_heap / 1024);
         }
         lv_color_t color;
         if (free_heap < 20480) { color = COLOR_HIGH; }
         else if (free_heap < 51200) { color = COLOR_MID; }
         else { color = COLOR_GREEN; }
-        lv_obj_set_style_text_color(mem_label, color, 0);
+        ui_set_text_color(mem_label, color);
         lv_obj_t* mem_icon = lv_obj_get_child(lv_obj_get_parent(mem_label), lv_obj_get_index(mem_label) - 1);
-        if (mem_icon) lv_obj_set_style_text_color(mem_icon, color, 0);
+        if (mem_icon) ui_set_text_color(mem_icon, color);
     }
 }
 void UIRuntimeTile::update_runtime_uptime(unsigned long system_uptime) {
@@ -123,17 +123,17 @@ void UIRuntimeTile::update_runtime_uptime(unsigned long system_uptime) {
         unsigned long minutes = seconds / 60;
         unsigned long hours = minutes / 60;
         unsigned long days = hours / 24;
-        lv_label_set_text_fmt(uptime_label, "Up: %lud %luh %02lum", days, hours % 24, minutes % 60);
+        ui_set_label_text_fmt(uptime_label, "Up: %lud %luh %02lum", days, hours % 24, minutes % 60);
     }
 }
 void UIRuntimeTile::update_sensor_status(bool connected) {
-    lv_label_set_text(pkt_icon, connected ? ICON_LAN_CONNECT : ICON_LAN_DISCONNECT);
-    lv_obj_set_style_text_color(pkt_icon, connected ? COLOR_GREEN : COLOR_DISCONNECTED, 0);
-    lv_obj_set_style_text_color(pkt_label, connected ? COLOR_GREEN : COLOR_DISCONNECTED, 0);
+    ui_set_label_text(pkt_icon, connected ? ICON_LAN_CONNECT : ICON_LAN_DISCONNECT);
+    ui_set_text_color(pkt_icon, connected ? COLOR_GREEN : COLOR_DISCONNECTED);
+    ui_set_text_color(pkt_label, connected ? COLOR_GREEN : COLOR_DISCONNECTED);
 }
 
 void UIRuntimeTile::update_last_packet_time(uint32_t seconds_since_packet) {
-    lv_label_set_text_fmt(pkt_label, "Pkt: %lu s", seconds_since_packet);
+    ui_set_label_text_fmt(pkt_label, "Pkt: %lu s", seconds_since_packet);
 }
 
 void UIRuntimeTile::high_pressure_blink_cb(lv_timer_t* timer) {

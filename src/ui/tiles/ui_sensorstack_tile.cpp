@@ -97,26 +97,26 @@ void UISensorStackTile::update_sensorstack_uptime(uint32_t uptime) {
         unsigned long minutes = uptime / 60;
         unsigned long hours = minutes / 60;
         unsigned long days = hours / 24;
-        lv_label_set_text_fmt(uptime_label, "Up: %lud %luh %02lum", days, hours % 24, minutes % 60);
+        ui_set_label_text_fmt(uptime_label, "Up: %lud %luh %02lum", days, hours % 24, minutes % 60);
     }
 }
 void UISensorStackTile::update_sensorstack_ram(uint16_t ram) {
     if(ram_label) {
-        lv_label_set_text_fmt(ram_label, "RAM: %u B", ram);
+        ui_set_label_text_fmt(ram_label, "RAM: %u B", ram);
     }
 }
 void UISensorStackTile::update_sensor_status(bool connected) {
-    lv_label_set_text(status_icon, connected ? ICON_LAN_CONNECT : ICON_LAN_DISCONNECT);
-    lv_label_set_text(status_label, connected ? "Connected" : "Disconnected");
-    lv_obj_set_style_text_color(status_icon, connected ? COLOR_GREEN : COLOR_DISCONNECTED, 0);
-    lv_obj_set_style_text_color(status_label, connected ? COLOR_GREEN : COLOR_DISCONNECTED, 0);
+    ui_set_label_text(status_icon, connected ? ICON_LAN_CONNECT : ICON_LAN_DISCONNECT);
+    ui_set_label_text(status_label, connected ? "Connected" : "Disconnected");
+    ui_set_text_color(status_icon, connected ? COLOR_GREEN : COLOR_DISCONNECTED);
+    ui_set_text_color(status_label, connected ? COLOR_GREEN : COLOR_DISCONNECTED);
     if(connected == false) {
         update_sensorstack_uptime(0);
     }
 }
 
 void UISensorStackTile::update_fw_version(const char* fw) {
-    if (version_label) lv_label_set_text(version_label, fw);
+    if (version_label) ui_set_label_text(version_label, fw);
 }
 void UISensorStackTile::set_visible(bool visible) {
     if (tile_obj) {

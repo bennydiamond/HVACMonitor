@@ -151,7 +151,8 @@ private:
     static const auto UI_QUEUE_SIZE = 20;
     static const auto UI_STRING_QUEUE_SIZE = 8;
     static const uint32_t UI_DEQUEUE_TIME_MS = 20;
-    static const uint32_t UITASK_SLEEP_TIME_MS = 15; // 66 fps
+    static const uint32_t UITASK_SLEEP_TIME_MS = 15; // fallback sleep when UI manager absent
+    static const uint32_t UITASK_SLEEP_TIME_MS_MAX = 10; // max sleep between LVGL handler calls
     static const uint32_t UI_QUEUE_WAIT_MAX_TIMES = 30;
     static const uint32_t STACK_CHECK_INTERVAL_MS = 60000;
 

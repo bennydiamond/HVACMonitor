@@ -75,18 +75,18 @@ void UISGP41Tile::clear_test_results() {
 void UISGP41Tile::update_sgp41_test_status(int ret_status) {
     if (result_label) {
         if (ret_status != 0) {
-            lv_label_set_text(result_label, "Test Result: Error!");
-            lv_obj_set_style_text_color(result_label, COLOR_HIGH, 0);
+            ui_set_label_text(result_label, "Test Result: Error!");
+            ui_set_text_color(result_label, COLOR_HIGH);
         } else {
-            lv_label_set_text(result_label, "Test Result: OK!");
-            lv_obj_set_style_text_color(result_label, COLOR_GREEN, 0);
+            ui_set_label_text(result_label, "Test Result: OK!");
+            ui_set_text_color(result_label, COLOR_GREEN);
         }
     }
 }
 void UISGP41Tile::update_sgp41_test_value(uint16_t raw_value) {
     if (value_label) {
-        lv_label_set_text_fmt(value_label, "Value: 0x%04X", raw_value);
-        lv_obj_set_style_text_color(value_label, COLOR_GREEN, 0);
+        ui_set_label_text_fmt(value_label, "Value: 0x%04X", raw_value);
+        ui_set_text_color(value_label, COLOR_GREEN);
     }
 }
 

@@ -62,9 +62,7 @@ void UISCD30Tile::update_autocal_state(bool enabled) {
 }
 
 void UISCD30Tile::update_forcecal_value(uint16_t ppm) {
-    char buf[32];
-    snprintf(buf, sizeof(buf), "Force Cal: %u ppm", ppm);
-    lv_label_set_text(forcecal_label, buf);
+    if (forcecal_label) ui_set_label_text_fmt(forcecal_label, "Force Cal: %u ppm", ppm);
 }
 
 void UISCD30Tile::autocal_switch_cb(lv_event_t* e) {

@@ -2,10 +2,10 @@
 #include "Logger.h"
 
 ZMOD4510Sensor::ZMOD4510Sensor() 
-    : state(STATE_IDLE), 
-      new_data_available(false),
-      temperature_degc(-300), // Default to use on-chip temperature sensor
+    : temperature_degc(-300), // Default to use on-chip temperature sensor
       humidity_pct(50),       // Default to 50% humidity
+      state(STATE_IDLE),
+      new_data_available(false),
       measurement_start_time(0)
 {
     memset(&latest_results, 0, sizeof(Results));
@@ -99,6 +99,10 @@ void ZMOD4510Sensor::process() {
             
         case STATE_DATA_READY:
             // Wait for data to be consumed
+            break;
+
+        case STATE_WAITING:
+        default:
             break;
     }
 }

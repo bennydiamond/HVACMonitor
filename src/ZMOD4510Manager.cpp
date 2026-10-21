@@ -4,13 +4,13 @@
 
 ZMOD4510Manager::ZMOD4510Manager()
     : sensor(),
-      latestValues(),
       initialized_(false),
       healthy_(false),
       new_data_available_(false),
       nano_connected_(false),
       nano_reboot_detected_(false),
-      previous_nano_connected_(false) {
+      previous_nano_connected_(false),
+      latestValues() {
 }
 
 void ZMOD4510Manager::init() {

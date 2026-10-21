@@ -37,6 +37,8 @@ const char* ConfigManager::KEY_HUMI_COMFORTABLE_HIGH = "humi_comfortable_high";
 const char* ConfigManager::KEY_HUMI_ACCEPTABLE_LOW = "humi_acceptable_low";
 const char* ConfigManager::KEY_HUMI_ACCEPTABLE_HIGH = "humi_acceptable_high";
 const char* ConfigManager::KEY_INACTIVITY_TIMER_DELAY = "inactivity_timer_delay";
+const char* ConfigManager::KEY_WIFI_SSID = "wifi_ssid";
+const char* ConfigManager::KEY_WIFI_PASSWORD = "wifi_pass";
 const char* ConfigManager::KEY_MQTT_HOST = "mqtt_host";
 const char* ConfigManager::KEY_MQTT_PORT = "mqtt_port";
 const char* ConfigManager::KEY_MQTT_USER = "mqtt_user";
@@ -91,6 +93,8 @@ const float ConfigManager::DEFAULT_HUMI_COMFORTABLE_HIGH = 60.0f;
 const float ConfigManager::DEFAULT_HUMI_ACCEPTABLE_LOW = 20.0f;
 const float ConfigManager::DEFAULT_HUMI_ACCEPTABLE_HIGH = 70.0f;
 const int ConfigManager::DEFAULT_INACTIVITY_TIMER_DELAY = 30; // 30 seconds
+const char* ConfigManager::DEFAULT_WIFI_SSID = WIFI_SSID;
+const char* ConfigManager::DEFAULT_WIFI_PASSWORD = WIFI_PASSWORD;
 const char* ConfigManager::DEFAULT_MQTT_HOST = MQTT_HOST;
 const int ConfigManager::DEFAULT_MQTT_PORT = MQTT_PORT;
 const char* ConfigManager::DEFAULT_MQTT_USER = MQTT_USER;
@@ -168,6 +172,8 @@ void ConfigManager::init() {
         pm4DangerThreshold = DEFAULT_PM4_DANGER_THRESHOLD;
         pm10WarnThreshold = DEFAULT_PM10_WARN_THRESHOLD;
         pm10DangerThreshold = DEFAULT_PM10_DANGER_THRESHOLD;
+        strcpy(wifiSsid, DEFAULT_WIFI_SSID);
+        strcpy(wifiPassword, DEFAULT_WIFI_PASSWORD);
         strcpy(mqttHost, DEFAULT_MQTT_HOST);
         mqttPort = DEFAULT_MQTT_PORT;
         strcpy(mqttUser, DEFAULT_MQTT_USER);
@@ -229,6 +235,31 @@ void ConfigManager::init() {
     pm4DangerThreshold = preferences.getInt(KEY_PM4_DANGER, DEFAULT_PM4_DANGER_THRESHOLD);
     pm10WarnThreshold = preferences.getInt(KEY_PM10_WARN, DEFAULT_PM10_WARN_THRESHOLD);
     pm10DangerThreshold = preferences.getInt(KEY_PM10_DANGER, DEFAULT_PM10_DANGER_THRESHOLD);
+    
+    // Load WiFi configuration with validation
+    size_t ssidLen = preferences.getString(KEY_WIFI_SSID, wifiSsid, sizeof(wifiSsid));
+    bool validSsid = (ssidLen > 0 && ssidLen <= 32);
+    if (validSsid) {
+        bool allSpaces = true;
+        for (size_t i = 0; i < ssidLen; i++) {
+            if (wifiSsid[i] != ' ' && wifiSsid[i] != '\t') {
+                allSpaces = false;
+                break;
+            }
+        }
+        if (allSpaces) validSsid = false;
+    }
+    if (!validSsid) {
+        logger.warningf("Invalid WiFi SSID in NVS; falling back to default.");
+        snprintf(wifiSsid, sizeof(wifiSsid), "%s", DEFAULT_WIFI_SSID);
+    }
+
+    size_t passLen = preferences.getString(KEY_WIFI_PASSWORD, wifiPassword, sizeof(wifiPassword));
+    // If password is not set in NVS (passLen == 0) or invalid length, fall back to default
+    if (passLen == 0 || (passLen < 8 || passLen > 64)) {
+        logger.warningf("WiFi password not set or invalid in NVS (length %u); falling back to default.", passLen);
+        snprintf(wifiPassword, sizeof(wifiPassword), "%s", DEFAULT_WIFI_PASSWORD);
+    }
     
     // Load MQTT configuration
     if (preferences.getString(KEY_MQTT_HOST, mqttHost, sizeof(mqttHost)) == 0) {
@@ -390,6 +421,8 @@ float ConfigManager::getHumiComfortableHigh() { return humiComfortableHigh; }
 float ConfigManager::getHumiAcceptableLow() { return humiAcceptableLow; }
 float ConfigManager::getHumiAcceptableHigh() { return humiAcceptableHigh; }
 uint32_t ConfigManager::getInactivityTimerDelay() { return inactivityTimerDelay; }
+const char* ConfigManager::getWifiSsid() { return wifiSsid; }
+const char* ConfigManager::getWifiPassword() { return wifiPassword; }
 const char* ConfigManager::getMqttHost() { return mqttHost; }
 int ConfigManager::getMqttPort() { return mqttPort; }
 const char* ConfigManager::getMqttUser() { return mqttUser; }
@@ -757,6 +790,40 @@ void ConfigManager::setPm10DangerThreshold(int value) {
             logger.infof("Saved new PM10 DANGER threshold: %d", value);
         } else {
             logger.errorf("Failed to save key '%s' to NVS.", KEY_PM10_DANGER);
+        }
+    }
+}
+
+void ConfigManager::setWifiSsid(const char* value) {
+    if (!value) return;
+    size_t len = strlen(value);
+    if (len == 0 || len > 32) {
+        logger.errorf("Rejected invalid WiFi SSID (length %u, max 32)", len);
+        return;
+    }
+    if (strcmp(wifiSsid, value) != 0) {
+        snprintf(wifiSsid, sizeof(wifiSsid), "%s", value);
+        if (preferences.putString(KEY_WIFI_SSID, wifiSsid) > 0) {
+            logger.infof("Saved new WiFi SSID: %s", wifiSsid);
+        } else {
+            logger.errorf("Failed to save key '%s' to NVS.", KEY_WIFI_SSID);
+        }
+    }
+}
+
+void ConfigManager::setWifiPassword(const char* value) {
+    if (!value) return;
+    size_t len = strlen(value);
+    if (len > 0 && (len < 8 || len > 64)) {
+        logger.errorf("Rejected invalid WiFi password (length %u, must be 0 or 8-64)", len);
+        return;
+    }
+    if (strcmp(wifiPassword, value) != 0) {
+        snprintf(wifiPassword, sizeof(wifiPassword), "%s", value);
+        if (preferences.putString(KEY_WIFI_PASSWORD, wifiPassword) > 0) {
+            logger.info("Saved new WiFi password to NVS.");
+        } else {
+            logger.errorf("Failed to save key '%s' to NVS.", KEY_WIFI_PASSWORD);
         }
     }
 }

@@ -11,8 +11,8 @@
 #include "WatchdogManager.h"
 #endif
 
-const unsigned long FORCE_PUBLISH_INTERVAL_MS = 20000;
-const unsigned long SENSOR_EXPIRE_TIMEOUT_S = 30;
+const unsigned long FORCE_PUBLISH_INTERVAL_MS = 120000;
+const unsigned long SENSOR_EXPIRE_TIMEOUT_S = 300;
 #define RANDOM_SUFFIX "_HVAC_MON_01"
 
 HomeAssistantManager* HomeAssistantManager::_instance = nullptr;
@@ -58,7 +58,11 @@ HomeAssistantManager::HomeAssistantManager() :
     _voc_index_sensor("voc_index" RANDOM_SUFFIX, HASensor::PrecisionP0),
     _nox_index_sensor("nox_index" RANDOM_SUFFIX, HASensor::PrecisionP0),
     _currentSensor("current" RANDOM_SUFFIX, HASensor::PrecisionP2),
+    _compressorCurrentSensor("compressor_current" RANDOM_SUFFIX, HASensorNumber::PrecisionP2),
+    _geothermalPumpCurrentSensor("geothermal_pump_current" RANDOM_SUFFIX, HASensorNumber::PrecisionP2),
+    _liquidLevelSensor("liquid_level_sensor" RANDOM_SUFFIX),
     _sensorStackResetCauseSensor("nano_reset_cause" RANDOM_SUFFIX),
+    _inactivityTimerDelay("inactivity_timer_delay" RANDOM_SUFFIX, HANumber::PrecisionP0),
     _getSps30InfoButton("get_sps30_info" RANDOM_SUFFIX),
     _Sps30ManualCleanButton("sps30_manual_clean" RANDOM_SUFFIX),
     _getSgp41SelftestButton("get_sgp41_selftest" RANDOM_SUFFIX),
@@ -66,11 +70,7 @@ HomeAssistantManager::HomeAssistantManager() :
     _scd30AutoCalSwitch("scd30_autocal" RANDOM_SUFFIX),
     _scd30ForceCalNumber("scd30_forcecal" RANDOM_SUFFIX, HANumber::PrecisionP0),
     _esp32FreeRamSensor("esp32_free_ram" RANDOM_SUFFIX, HASensor::PrecisionP0),
-    _esp32UptimeSensor("esp32_uptime" RANDOM_SUFFIX, HASensorNumber::PrecisionP0),
-    _compressorCurrentSensor("compressor_current" RANDOM_SUFFIX, HASensorNumber::PrecisionP2),
-    _geothermalPumpCurrentSensor("geothermal_pump_current" RANDOM_SUFFIX, HASensorNumber::PrecisionP2),
-    _liquidLevelSensor("liquid_level_sensor" RANDOM_SUFFIX),
-    _inactivityTimerDelay("inactivity_timer_delay" RANDOM_SUFFIX, HANumber::PrecisionP0)
+    _esp32UptimeSensor("esp32_uptime" RANDOM_SUFFIX, HASensorNumber::PrecisionP0)
 {
     _instance = this;
 
@@ -138,6 +138,9 @@ HomeAssistantManager::HomeAssistantManager() :
     _lastGeothermalPumpAmpsPublishTime = 0;
     _lastLiquidLevelPublishTime = 0;
     _lastInactivityTimerDelayPublishTime = 0;
+    _lastSensorStackFreeRamPublishTime = 0;
+    _lastEsp32FreeRamPublishTime = 0;
+    _lastEsp32UptimePublishTime = 0;
 }
 
 HomeAssistantManager::~HomeAssistantManager() {
@@ -371,13 +374,12 @@ void HomeAssistantManager::init(const char* firmware_version) {
     _sensorStackFreeRamSensor.setIcon("mdi:memory");
     _sensorStackFreeRamSensor.setUnitOfMeasurement("B");
     _sensorStackFreeRamSensor.setEntityCategory(entity_category_diagnostic);
-    // Set expire time to > 2x the poll interval (30s * 2 + 5s buffer)
-    _sensorStackFreeRamSensor.setExpireAfter(65);
-
-    _sensorStackResetCauseSensor.setName("SensorStack Reset Cause");
-    _sensorStackResetCauseSensor.setIcon("mdi:restart-alert");
-    _sensorStackResetCauseSensor.setEntityCategory(entity_category_diagnostic);
-    _sensorStackResetCauseSensor.setExpireAfter(65);
+    _sensorStackFreeRamSensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
+ 
+     _sensorStackResetCauseSensor.setName("SensorStack Reset Cause");
+     _sensorStackResetCauseSensor.setIcon("mdi:restart-alert");
+     _sensorStackResetCauseSensor.setEntityCategory(entity_category_diagnostic);
+     _sensorStackResetCauseSensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
 
     _rebootButton.setName("Reboot Device");
     _rebootButton.setIcon("mdi:restart");
@@ -519,74 +521,122 @@ void HomeAssistantManager::onMqttDisconnected() {
 #endif
 }
 
-void HomeAssistantManager::publishSensorData(
-    float pressure, int cpm, float temp, float humi,
-    float co2, int32_t voc_index, int32_t nox_index, 
-    float amps,
-    float pm1, float pm25, float pm4, float pm10,
-    float compressor_amps, float geothermal_pump_amps, bool liquid_level_sensor_state,
-    float co_ppm
-) {
-    unsigned long currentTime = millis();
-    char data_str[10];
-
-    if (fabs(pressure - _lastPublishedPressure) > 0.05f || (currentTime - _lastPressurePublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+void HomeAssistantManager::publishDifferentialPressure(float pressure, unsigned long currentTime) {
+    char data_str[16];
+    bool diff_pressure_fast = fabs(pressure - _lastPublishedPressure) >= 10.0f;
+    bool diff_pressure_steady = (currentTime - _lastPressurePublishTime >= 30000 && fabs(pressure - _lastPublishedPressure) >= 1.0f);
+    if (diff_pressure_fast || diff_pressure_steady || (currentTime - _lastPressurePublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
         dtostrf(pressure, 4, 1, data_str);
         _pressureSensor.setValue(data_str);
         _lastPublishedPressure = pressure;
         _lastPressurePublishTime = currentTime;
     }
-    if (cpm != _lastPublishedCpm || (currentTime - _lastCpmPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+}
+
+void HomeAssistantManager::publishGeiger(int cpm, unsigned long currentTime) {
+    char data_str[16];
+    bool cpm_spike = (cpm >= 40 && _lastPublishedCpm < 40);
+    bool cpm_steady = (currentTime - _lastCpmPublishTime >= 60000 && cpm != _lastPublishedCpm);
+    if (cpm_spike || cpm_steady || (currentTime - _lastCpmPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
         itoa(cpm, data_str, 10);
         _geiger_cpm.setValue(data_str);
-        float usv_h = cpm * 0.0057;
+        float usv_h = cpm * 0.0057f;
         dtostrf(usv_h, 4, 2, data_str);
         _geiger_dose.setValue(data_str);
         _lastPublishedCpm = cpm;
         _lastCpmPublishTime = currentTime;
     }
-    if (fabs(temp - _lastPublishedTemp) > 0.05f || (currentTime - _lastTempPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+}
+
+void HomeAssistantManager::publishTemperature(float temp, unsigned long currentTime) {
+    char data_str[16];
+    bool temp_fast = (currentTime - _lastTempPublishTime >= 5000 && fabs(temp - _lastPublishedTemp) >= 0.5f);
+    bool temp_steady = (currentTime - _lastTempPublishTime >= 30000 && fabs(temp - _lastPublishedTemp) >= 0.15f);
+    if (temp_fast || temp_steady || (currentTime - _lastTempPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
         dtostrf(temp, 4, 1, data_str);
         _temperatureSensor.setValue(data_str);
         _lastPublishedTemp = temp;
         _lastTempPublishTime = currentTime;
     }
-    if (fabs(humi - _lastPublishedHumi) > 0.5f || (currentTime - _lastHumiPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+}
+
+void HomeAssistantManager::publishHumidity(float humi, unsigned long currentTime) {
+    char data_str[16];
+    bool humi_fast = (currentTime - _lastHumiPublishTime >= 5000 && fabs(humi - _lastPublishedHumi) >= 2.0f);
+    bool humi_steady = (currentTime - _lastHumiPublishTime >= 60000 && fabs(humi - _lastPublishedHumi) >= 0.5f);
+    if (humi_fast || humi_steady || (currentTime - _lastHumiPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
         dtostrf(humi, 4, 0, data_str);
         _humiditySensor.setValue(data_str);
         _lastPublishedHumi = humi;
         _lastHumiPublishTime = currentTime;
     }
-     if (fabs(amps - _lastPublishedAmps) > 0.01f || (currentTime - _lastAmpsPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+}
+
+void HomeAssistantManager::publishFanCurrent(float amps, unsigned long currentTime) {
+    char data_str[16];
+    ConfigManagerAccessor config;
+    float fan_thresh = config->getFanOffCurrentThreshold();
+    bool fan_state_changed = (_lastPublishedAmps >= 0.0f) && ((amps > fan_thresh) != (_lastPublishedAmps > fan_thresh));
+    bool fan_amps_steady = (currentTime - _lastAmpsPublishTime >= 60000 && fabs(amps - _lastPublishedAmps) >= 0.15f);
+    if (fan_state_changed || fan_amps_steady || (currentTime - _lastAmpsPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
         dtostrf(amps, 4, 2, data_str);
         _currentSensor.setValue(data_str);
         _lastPublishedAmps = amps;
         _lastAmpsPublishTime = currentTime;
     }
-    if (fabs(co2 - _lastPublishedCo2) > 1.0f || (currentTime - _lastCo2PublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+}
+
+void HomeAssistantManager::publishCO2(float co2, unsigned long currentTime) {
+    char data_str[16];
+    bool co2_fast = (currentTime - _lastCo2PublishTime >= 10000 && fabs(co2 - _lastPublishedCo2) >= 50.0f);
+    bool co2_steady = (currentTime - _lastCo2PublishTime >= 60000 && fabs(co2 - _lastPublishedCo2) >= 15.0f);
+    if (co2_fast || co2_steady || (currentTime - _lastCo2PublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
         dtostrf(co2, 4, 0, data_str);
         _co2_sensor.setValue(data_str);
         _lastPublishedCo2 = co2;
         _lastCo2PublishTime = currentTime;
     }
-    if (fabs(co_ppm - _lastPublishedCo) > 0.1f || (currentTime - _lastCoPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+}
+
+void HomeAssistantManager::publishCO(float co_ppm, unsigned long currentTime) {
+    bool co_alert = (co_ppm > 0.0f || (co_ppm == 0.0f && _lastPublishedCo > 0.0f));
+    bool co_steady = (currentTime - _lastCoPublishTime >= 60000 && fabs(co_ppm - _lastPublishedCo) >= 1.0f);
+    if (co_alert || co_steady || (currentTime - _lastCoPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
         _co_sensor.setValue(co_ppm, true);
         _lastPublishedCo = co_ppm;
         _lastCoPublishTime = currentTime;
     }
-    if (voc_index != _lastPublishedVocIndex || (currentTime - _lastVocPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+}
+
+void HomeAssistantManager::publishVOC(int32_t voc_index, unsigned long currentTime) {
+    char data_str[16];
+    bool voc_fast = (currentTime - _lastVocPublishTime >= 10000 && abs(voc_index - _lastPublishedVocIndex) >= 25);
+    bool voc_steady = (currentTime - _lastVocPublishTime >= 30000 && abs(voc_index - _lastPublishedVocIndex) >= 5);
+    if (voc_fast || voc_steady || (currentTime - _lastVocPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
         itoa(voc_index, data_str, 10);
         _voc_index_sensor.setValue(data_str);
         _lastPublishedVocIndex = voc_index;
         _lastVocPublishTime = currentTime;
     }
-    if (nox_index != _lastPublishedNOxIndex || (currentTime - _lastNOxPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+}
+
+void HomeAssistantManager::publishNOx(int32_t nox_index, unsigned long currentTime) {
+    char data_str[16];
+    bool nox_fast = (currentTime - _lastNOxPublishTime >= 10000 && abs(nox_index - _lastPublishedNOxIndex) >= 5);
+    bool nox_steady = (currentTime - _lastNOxPublishTime >= 60000 && abs(nox_index - _lastPublishedNOxIndex) >= 1);
+    if (nox_fast || nox_steady || (currentTime - _lastNOxPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
         itoa(nox_index, data_str, 10);
         _nox_index_sensor.setValue(data_str);
         _lastPublishedNOxIndex = nox_index;
         _lastNOxPublishTime = currentTime;
     }
-    if (fabs(pm1 - _lastPublishedPm1_0) > 0.1f || (currentTime - _lastPmPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+}
+
+void HomeAssistantManager::publishPM(float pm1, float pm25, float pm4, float pm10, unsigned long currentTime) {
+    char data_str[16];
+    bool pm_fast = (currentTime - _lastPmPublishTime >= 10000 && fabs(pm25 - _lastPublishedPm2_5) >= 10.0f);
+    bool pm_steady = (currentTime - _lastPmPublishTime >= 60000 && fabs(pm25 - _lastPublishedPm2_5) >= 1.0f);
+    if (pm_fast || pm_steady || (currentTime - _lastPmPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
         dtostrf(pm1, 4, 1, data_str); _pm1_0_sensor.setValue(data_str);
         dtostrf(pm25, 4, 1, data_str); _pm2_5_sensor.setValue(data_str);
         dtostrf(pm4, 4, 1, data_str); _pm4_0_sensor.setValue(data_str);
@@ -596,22 +646,33 @@ void HomeAssistantManager::publishSensorData(
         _lastPublishedPm4_0 = pm4; _lastPublishedPm10_0 = pm10;
         _lastPmPublishTime = currentTime;
     }
-    
-    // Publish compressor current
-    if (fabs(compressor_amps - _lastPublishedCompressorAmps) > 0.01f || (currentTime - _lastCompressorAmpsPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+}
+
+void HomeAssistantManager::publishCompressorCurrent(float compressor_amps, unsigned long currentTime) {
+    ConfigManagerAccessor config;
+    float comp_thresh = config->getCompressorOffCurrentThreshold();
+    bool comp_state_changed = (_lastPublishedCompressorAmps >= 0.0f) && ((compressor_amps > comp_thresh) != (_lastPublishedCompressorAmps > comp_thresh));
+    bool comp_amps_steady = (currentTime - _lastCompressorAmpsPublishTime >= 60000 && fabs(compressor_amps - _lastPublishedCompressorAmps) >= 0.2f);
+    if (comp_state_changed || comp_amps_steady || (currentTime - _lastCompressorAmpsPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
         _compressorCurrentSensor.setValue(compressor_amps, true);
         _lastPublishedCompressorAmps = compressor_amps;
         _lastCompressorAmpsPublishTime = currentTime;
     }
-    
-    // Publish geothermal pump current
-    if (fabs(geothermal_pump_amps - _lastPublishedGeothermalPumpAmps) > 0.01f || (currentTime - _lastGeothermalPumpAmpsPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+}
+
+void HomeAssistantManager::publishGeothermalPumpCurrent(float geothermal_pump_amps, unsigned long currentTime) {
+    ConfigManagerAccessor config;
+    float pump_thresh = config->getPumpOffCurrentThreshold();
+    bool pump_state_changed = (_lastPublishedGeothermalPumpAmps >= 0.0f) && ((geothermal_pump_amps > pump_thresh) != (_lastPublishedGeothermalPumpAmps > pump_thresh));
+    bool pump_amps_steady = (currentTime - _lastGeothermalPumpAmpsPublishTime >= 60000 && fabs(geothermal_pump_amps - _lastPublishedGeothermalPumpAmps) >= 0.15f);
+    if (pump_state_changed || pump_amps_steady || (currentTime - _lastGeothermalPumpAmpsPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
         _geothermalPumpCurrentSensor.setValue(geothermal_pump_amps, true);
         _lastPublishedGeothermalPumpAmps = geothermal_pump_amps;
         _lastGeothermalPumpAmpsPublishTime = currentTime;
     }
-    
-    // Publish liquid level sensor state
+}
+
+void HomeAssistantManager::publishLiquidLevel(bool liquid_level_sensor_state, unsigned long currentTime) {
     if (liquid_level_sensor_state != _lastPublishedLiquidLevelState || (currentTime - _lastLiquidLevelPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
         _liquidLevelSensor.setState(liquid_level_sensor_state, true);
         _lastPublishedLiquidLevelState = liquid_level_sensor_state;
@@ -619,43 +680,79 @@ void HomeAssistantManager::publishSensorData(
     }
 }
 
+void HomeAssistantManager::publishSensorData(
+    float pressure, int cpm, float temp, float humi,
+    float co2, int32_t voc_index, int32_t nox_index, 
+    float amps,
+    float pm1, float pm25, float pm4, float pm10,
+    float compressor_amps, float geothermal_pump_amps, bool liquid_level_sensor_state,
+    float co_ppm
+) {
+    unsigned long currentTime = millis();
+
+    publishDifferentialPressure(pressure, currentTime);
+    publishGeiger(cpm, currentTime);
+    publishTemperature(temp, currentTime);
+    publishHumidity(humi, currentTime);
+    publishFanCurrent(amps, currentTime);
+    publishCO2(co2, currentTime);
+    publishCO(co_ppm, currentTime);
+    publishVOC(voc_index, currentTime);
+    publishNOx(nox_index, currentTime);
+    publishPM(pm1, pm25, pm4, pm10, currentTime);
+    publishCompressorCurrent(compressor_amps, currentTime);
+    publishGeothermalPumpCurrent(geothermal_pump_amps, currentTime);
+    publishLiquidLevel(liquid_level_sensor_state, currentTime);
+}
+
 void HomeAssistantManager::publish_O3_NOx_Values(
-        float o3_conc_ug_per_m3, float no2_conc_ug_per_m3, 
-        uint16_t fast_aqi, uint16_t epa_aqi
-    )
-    {
-        unsigned long currentTime = millis();
+    float o3_conc_ug_per_m3, float no2_conc_ug_per_m3, 
+    uint16_t fast_aqi, uint16_t epa_aqi
+) {
+    unsigned long currentTime = millis();
 
-        if(o3_conc_ug_per_m3 != _lastPublishedO3 || (currentTime - _LastO3PublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
-            _o3_sensor.setValue(o3_conc_ug_per_m3, true);
-            _lastPublishedO3 = o3_conc_ug_per_m3;
-            _LastO3PublishTime = currentTime;
-        }
-
-        if(no2_conc_ug_per_m3 != _lastPublishedNO2 || (currentTime - _lastNO2PublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
-            _no2_sensor.setValue(no2_conc_ug_per_m3, true);
-            _lastPublishedNO2 = no2_conc_ug_per_m3;
-            _lastNO2PublishTime = currentTime;
-        }
-
-        if(fast_aqi != _lastPublishedFastAQI || (currentTime - _lastFastAQIPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
-            _fast_aqi_sensor.setValue(fast_aqi, true);
-            _lastPublishedFastAQI = fast_aqi;
-            _lastFastAQIPublishTime = currentTime;
-        }
-
-        if(epa_aqi != _lastPublishedEPAAQI || (currentTime - _lastEPAAQIPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
-            _epa_aqi_sensor.setValue(epa_aqi, true);
-            _lastPublishedEPAAQI = epa_aqi;
-            _lastEPAAQIPublishTime = currentTime;
-        }
+    bool o3_fast = (fabs(o3_conc_ug_per_m3 - _lastPublishedO3) >= 10.0f);
+    bool o3_steady = (currentTime - _LastO3PublishTime >= 60000 && fabs(o3_conc_ug_per_m3 - _lastPublishedO3) >= 2.0f);
+    if (o3_fast || o3_steady || (currentTime - _LastO3PublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+        _o3_sensor.setValue(o3_conc_ug_per_m3, true);
+        _lastPublishedO3 = o3_conc_ug_per_m3;
+        _LastO3PublishTime = currentTime;
     }
+
+    bool no2_fast = (fabs(no2_conc_ug_per_m3 - _lastPublishedNO2) >= 10.0f);
+    bool no2_steady = (currentTime - _lastNO2PublishTime >= 60000 && fabs(no2_conc_ug_per_m3 - _lastPublishedNO2) >= 2.0f);
+    if (no2_fast || no2_steady || (currentTime - _lastNO2PublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+        _no2_sensor.setValue(no2_conc_ug_per_m3, true);
+        _lastPublishedNO2 = no2_conc_ug_per_m3;
+        _lastNO2PublishTime = currentTime;
+    }
+
+    bool fast_aqi_fast = (abs((int)fast_aqi - (int)_lastPublishedFastAQI) >= 20);
+    bool fast_aqi_steady = (currentTime - _lastFastAQIPublishTime >= 60000 && fast_aqi != _lastPublishedFastAQI);
+    if (fast_aqi_fast || fast_aqi_steady || (currentTime - _lastFastAQIPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+        _fast_aqi_sensor.setValue(fast_aqi, true);
+        _lastPublishedFastAQI = fast_aqi;
+        _lastFastAQIPublishTime = currentTime;
+    }
+
+    bool epa_aqi_fast = (abs((int)epa_aqi - (int)_lastPublishedEPAAQI) >= 20);
+    bool epa_aqi_steady = (currentTime - _lastEPAAQIPublishTime >= 60000 && epa_aqi != _lastPublishedEPAAQI);
+    if (epa_aqi_fast || epa_aqi_steady || (currentTime - _lastEPAAQIPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+        _epa_aqi_sensor.setValue(epa_aqi, true);
+        _lastPublishedEPAAQI = epa_aqi;
+        _lastEPAAQIPublishTime = currentTime;
+    }
+}
 
 #ifdef BMP280_ENABLED
 void HomeAssistantManager::publishBMP280Data(float pressure_pa) {
     unsigned long currentTime = millis();
     
-    if(pressure_pa != _lastPublishedBMP280Pressure || (currentTime - _lastBMP280PressurePublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+    // Fast transient: >= 20.0 Pa jump (blower started/stopped) -> publish immediately!
+    // Steady state: 60s rate limit with >= 5.0 Pa deadband, or heartbeat
+    bool pressure_fast = fabs(pressure_pa - _lastPublishedBMP280Pressure) >= 20.0f;
+    bool pressure_steady = (currentTime - _lastBMP280PressurePublishTime >= 60000 && fabs(pressure_pa - _lastPublishedBMP280Pressure) >= 5.0f);
+    if (pressure_fast || pressure_steady || (currentTime - _lastBMP280PressurePublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
         _bmp280PressureSensor.setValue(pressure_pa, true);
         _lastPublishedBMP280Pressure = pressure_pa;
         _lastBMP280PressurePublishTime = currentTime;
@@ -665,15 +762,20 @@ void HomeAssistantManager::publishBMP280Data(float pressure_pa) {
 void HomeAssistantManager::publishBMP280Data(float pressure_pa, float temperature_degc) {
     unsigned long currentTime = millis();
     
-    // Publish pressure if changed or force interval reached
-    if(pressure_pa != _lastPublishedBMP280Pressure || (currentTime - _lastBMP280PressurePublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+    // Fast transient: >= 20.0 Pa jump (blower started/stopped) -> publish immediately!
+    bool pressure_fast = fabs(pressure_pa - _lastPublishedBMP280Pressure) >= 20.0f;
+    bool pressure_steady = (currentTime - _lastBMP280PressurePublishTime >= 60000 && fabs(pressure_pa - _lastPublishedBMP280Pressure) >= 5.0f);
+    if (pressure_fast || pressure_steady || (currentTime - _lastBMP280PressurePublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
         _bmp280PressureSensor.setValue(pressure_pa, true);
         _lastPublishedBMP280Pressure = pressure_pa;
         _lastBMP280PressurePublishTime = currentTime;
     }
     
-    // Publish temperature if changed or force interval reached
-    if(temperature_degc != _lastPublishedBMP280Temperature || (currentTime - _lastBMP280TemperaturePublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+    // Fast transient: >= 0.5 °C shift (e.g. heating/cooling started) -> min 5s debounce
+    // Steady state: 60s rate limit with >= 0.2 °C deadband, or heartbeat
+    bool temp_fast = (currentTime - _lastBMP280TemperaturePublishTime >= 5000 && fabs(temperature_degc - _lastPublishedBMP280Temperature) >= 0.5f);
+    bool temp_steady = (currentTime - _lastBMP280TemperaturePublishTime >= 60000 && fabs(temperature_degc - _lastPublishedBMP280Temperature) >= 0.2f);
+    if (temp_fast || temp_steady || (currentTime - _lastBMP280TemperaturePublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
         _bmp280TemperatureSensor.setValue(temperature_degc, true);
         _lastPublishedBMP280Temperature = temperature_degc;
         _lastBMP280TemperaturePublishTime = currentTime;
@@ -685,15 +787,17 @@ void HomeAssistantManager::publishBMP280Data(float pressure_pa, float temperatur
 void HomeAssistantManager::publishAHT20Data(float temperature_degc, float humidity_pct) {
     unsigned long currentTime = millis();
     
-    // Publish temperature if changed or force interval reached
-    if(temperature_degc != _lastPublishedAHT20Temperature || (currentTime - _lastAHT20TemperaturePublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+    bool temp_fast = (currentTime - _lastAHT20TemperaturePublishTime >= 5000 && fabs(temperature_degc - _lastPublishedAHT20Temperature) >= 0.5f);
+    bool temp_steady = (currentTime - _lastAHT20TemperaturePublishTime >= 60000 && fabs(temperature_degc - _lastPublishedAHT20Temperature) >= 0.2f);
+    if (temp_fast || temp_steady || (currentTime - _lastAHT20TemperaturePublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
         _aht20TemperatureSensor.setValue(temperature_degc, true);
         _lastPublishedAHT20Temperature = temperature_degc;
         _lastAHT20TemperaturePublishTime = currentTime;
     }
     
-    // Publish humidity if changed or force interval reached
-    if(humidity_pct != _lastPublishedAHT20Humidity || (currentTime - _lastAHT20HumidityPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+    bool humi_fast = (currentTime - _lastAHT20HumidityPublishTime >= 5000 && fabs(humidity_pct - _lastPublishedAHT20Humidity) >= 2.0f);
+    bool humi_steady = (currentTime - _lastAHT20HumidityPublishTime >= 60000 && fabs(humidity_pct - _lastPublishedAHT20Humidity) >= 0.5f);
+    if (humi_fast || humi_steady || (currentTime - _lastAHT20HumidityPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
         _aht20HumiditySensor.setValue(humidity_pct, true);
         _lastPublishedAHT20Humidity = humidity_pct;
         _lastAHT20HumidityPublishTime = currentTime;
@@ -703,7 +807,9 @@ void HomeAssistantManager::publishAHT20Data(float temperature_degc, float humidi
 
 void HomeAssistantManager::publishWiFiStatus(bool connected, int8_t rssi, const char* ssid, const char* ip) {
     unsigned long currentTime = millis();
-    if (connected != _lastPublishedWifiConnected || rssi != _lastPublishedWifiRssi || (currentTime - _lastWifiStatusPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
+    bool state_change = (connected != _lastPublishedWifiConnected);
+    bool rssi_change = (currentTime - _lastWifiStatusPublishTime >= 60000 && abs(rssi - _lastPublishedWifiRssi) >= 5);
+    if (state_change || rssi_change || (currentTime - _lastWifiStatusPublishTime > 300000)) {
         if (connected) {
             _wifi_rssi.setValue(rssi, true);
         } else {
@@ -765,10 +871,8 @@ void HomeAssistantManager::setSensorStackVersionUnavailable() {
 void HomeAssistantManager::publishSensorStackUptime(uint32_t uptime_seconds, bool force) {
     uint32_t currentTime = millis();
 
-    // The check below ensures we either publish on a regular interval, or when forced.
-    // The underlying ArduinoHA library's setValue() method is smart and will only
-    // actually send an MQTT message if the value has changed, preventing spam.
-    if (force || (currentTime - _lastSensorStackUptimePublishTime >= FORCE_PUBLISH_INTERVAL_MS)) {
+    // The check below ensures we either publish on a regular interval (60s), or when forced.
+    if (force || (currentTime - _lastSensorStackUptimePublishTime >= 60000)) {
         _sensorStackUptimeSensor.setValue(uptime_seconds);
         _lastSensorStackUptimePublishTime = currentTime;
 
@@ -779,7 +883,11 @@ void HomeAssistantManager::publishSensorStackUptime(uint32_t uptime_seconds, boo
 }
 
 void HomeAssistantManager::publishSensorStackFreeRam(uint16_t free_ram) {
-    _sensorStackFreeRamSensor.setValue(free_ram, true);
+    uint32_t currentTime = millis();
+    if (currentTime - _lastSensorStackFreeRamPublishTime >= 60000) {
+        _sensorStackFreeRamSensor.setValue(free_ram, true);
+        _lastSensorStackFreeRamPublishTime = currentTime;
+    }
 }
 
 void HomeAssistantManager::onRebootCommand(HAButton* sender) {
@@ -906,11 +1014,19 @@ void HomeAssistantManager::onInactivityTimerDelayCommand(HANumeric number, HANum
 }
 
 void HomeAssistantManager::publishEsp32FreeRam(uint32_t free_ram) {
-    _esp32FreeRamSensor.setValue(free_ram, true);
+    unsigned long currentTime = millis();
+    if (currentTime - _lastEsp32FreeRamPublishTime >= 60000) {
+        _esp32FreeRamSensor.setValue(free_ram, true);
+        _lastEsp32FreeRamPublishTime = currentTime;
+    }
 }
 
 void HomeAssistantManager::publishEsp32Uptime(uint32_t uptime_seconds) {
-    _esp32UptimeSensor.setValue(uptime_seconds);
+    unsigned long currentTime = millis();
+    if (currentTime - _lastEsp32UptimePublishTime >= 60000) {
+        _esp32UptimeSensor.setValue(uptime_seconds);
+        _lastEsp32UptimePublishTime = currentTime;
+    }
 }
 
 void HomeAssistantManager::updateInactivityTimerDelayState() {

@@ -38,6 +38,8 @@ public:
     float getHumiAcceptableLow();
     float getHumiAcceptableHigh();
     uint32_t getInactivityTimerDelay();
+    const char* getWifiSsid();
+    const char* getWifiPassword();
     const char* getMqttHost();
     int getMqttPort();
     const char* getMqttUser();
@@ -93,6 +95,8 @@ public:
     void setHumiAcceptableLow(float value);
     void setHumiAcceptableHigh(float value);
     void setInactivityTimerDelay(int value);
+    void setWifiSsid(const char* value);
+    void setWifiPassword(const char* value);
     void setMqttHost(const char* value);
     void setMqttPort(int value);
     void setMqttUser(const char* value);
@@ -147,6 +151,8 @@ private:
     char mqttPassword[64];
     char mqttDeviceId[32];
     char mqttDeviceName[64];
+    char wifiSsid[33];
+    char wifiPassword[65];
     
     // NVS Keys
     static const char* KEY_LOG_LEVEL;
@@ -174,6 +180,8 @@ private:
     static const char* KEY_HUMI_ACCEPTABLE_LOW;
     static const char* KEY_HUMI_ACCEPTABLE_HIGH;
     static const char* KEY_INACTIVITY_TIMER_DELAY;
+    static const char* KEY_WIFI_SSID;
+    static const char* KEY_WIFI_PASSWORD;
     static const char* KEY_MQTT_HOST;
     static const char* KEY_MQTT_PORT;
     static const char* KEY_MQTT_USER;
@@ -227,6 +235,8 @@ private:
     static const float DEFAULT_HUMI_ACCEPTABLE_LOW;
     static const float DEFAULT_HUMI_ACCEPTABLE_HIGH;
     static const int DEFAULT_INACTIVITY_TIMER_DELAY;
+    static const char* DEFAULT_WIFI_SSID;
+    static const char* DEFAULT_WIFI_PASSWORD;
     static const char* DEFAULT_MQTT_HOST;
     static const int DEFAULT_MQTT_PORT;
     static const char* DEFAULT_MQTT_USER;

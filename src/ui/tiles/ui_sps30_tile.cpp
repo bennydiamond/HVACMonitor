@@ -53,20 +53,15 @@ lv_obj_t* UISPS30Tile::create_tile(lv_obj_t* parent_tv) {
 }
 
 void UISPS30Tile::update_sps30_info(uint32_t fan_interval, uint8_t fan_days) {
-    char buf[64];
-    
-    snprintf(buf, sizeof(buf), "Fan sec.: %lus", fan_interval);
-    lv_label_set_text(interval_label, buf);
-    
-    snprintf(buf, sizeof(buf), "Fan Days: %u", fan_days);
-    lv_label_set_text(days_label, buf);
+    if (interval_label) ui_set_label_text_fmt(interval_label, "Fan sec.: %lus", fan_interval);
+    if (days_label) ui_set_label_text_fmt(days_label, "Fan Days: %u", fan_days);
 }
 
 void UISPS30Tile::update_sps30_fan_interval(unsigned long fan_interval) {
-    if (interval_label) lv_label_set_text_fmt(interval_label, "Fan sec.: %lu", fan_interval);
+    if (interval_label) ui_set_label_text_fmt(interval_label, "Fan sec.: %lu", fan_interval);
 }
 void UISPS30Tile::update_sps30_fan_days(unsigned long fan_days) {
-    if (days_label) lv_label_set_text_fmt(days_label, "Fan Days: %lu", fan_days);
+    if (days_label) ui_set_label_text_fmt(days_label, "Fan Days: %lu", fan_days);
 }
 
 void UISPS30Tile::manual_clean_cb(lv_event_t* e) {

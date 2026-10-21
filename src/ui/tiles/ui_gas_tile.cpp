@@ -5,14 +5,14 @@ const int SCROLL_SPEED_MS_PX_SEC = 5;
 
 UIGasTile::UIGasTile() :
 tile_obj(nullptr),
-no2_label(nullptr),
 no2_icon(nullptr),
-o3_label(nullptr),
+no2_label(nullptr),
 o3_icon(nullptr),
-nox_label(nullptr),
+o3_label(nullptr),
 nox_icon(nullptr),
-co_label(nullptr),
-co_icon(nullptr)
+nox_label(nullptr),
+co_icon(nullptr),
+co_label(nullptr)
 {}
 
 UIGasTile::~UIGasTile() {
@@ -124,7 +124,7 @@ void UIGasTile::clear_readings() {
 }
 
 void UIGasTile::update_no2(float no2) {
-    lv_label_set_text_fmt(no2_label, "NO2: %.0f µg/m³", no2);
+    ui_set_label_text_fmt(no2_label, "NO2: %.0f µg/m³", no2);
     lv_color_t color;
     ConfigManagerAccessor config;
     if (no2 <= config->getNo2WarnThreshold()) { // Good air quality
@@ -134,12 +134,12 @@ void UIGasTile::update_no2(float no2) {
     } else { // Poor air quality
         color = COLOR_HIGH;
     }
-    lv_obj_set_style_text_color(no2_label, color, 0);
-    lv_obj_set_style_text_color(no2_icon, color, 0);
+    ui_set_text_color(no2_label, color);
+    ui_set_text_color(no2_icon, color);
 }
 
 void UIGasTile::update_o3(float o3) {
-    lv_label_set_text_fmt(o3_label, "O3: %.0f µg/m³", o3);
+    ui_set_label_text_fmt(o3_label, "O3: %.0f µg/m³", o3);
     lv_color_t color;
     ConfigManagerAccessor config;
     if (o3 <= config->getO3WarnThreshold()) { // Good air quality
@@ -149,12 +149,12 @@ void UIGasTile::update_o3(float o3) {
     } else { // Poor air quality
         color = COLOR_HIGH;
     }
-    lv_obj_set_style_text_color(o3_label, color, 0);
-    lv_obj_set_style_text_color(o3_icon, color, 0);
+    ui_set_text_color(o3_label, color);
+    ui_set_text_color(o3_icon, color);
 }
 
 void UIGasTile::update_nox(float nox) {
-    lv_label_set_text_fmt(nox_label, "NOx: %.0f", nox);
+    ui_set_label_text_fmt(nox_label, "NOx: %.0f", nox);
     lv_color_t color;
     ConfigManagerAccessor config;
     if (nox <= config->getNoxWarnThreshold()) { // Excellent air quality
@@ -164,12 +164,12 @@ void UIGasTile::update_nox(float nox) {
     } else { // Poor air quality
         color = COLOR_HIGH;
     }
-    lv_obj_set_style_text_color(nox_label, color, 0);
-    lv_obj_set_style_text_color(nox_icon, color, 0);
+    ui_set_text_color(nox_label, color);
+    ui_set_text_color(nox_icon, color);
 }
 
 void UIGasTile::update_co(float co) {
-    lv_label_set_text_fmt(co_label, "CO: %.1f ppm", co);
+    ui_set_label_text_fmt(co_label, "CO: %.1f ppm", co);
     lv_color_t color;
     ConfigManagerAccessor config;
     if (co <= config->getCoWarnThreshold()) { // Good air quality
@@ -179,8 +179,8 @@ void UIGasTile::update_co(float co) {
     } else { // Poor air quality
         color = COLOR_HIGH;
     }
-    lv_obj_set_style_text_color(co_label, color, 0);
-    lv_obj_set_style_text_color(co_icon, color, 0);
+    ui_set_text_color(co_label, color);
+    ui_set_text_color(co_icon, color);
 } 
 void UIGasTile::set_visible(bool visible) {
     if (tile_obj) {

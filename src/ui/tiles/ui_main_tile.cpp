@@ -165,7 +165,7 @@ void UIMainTile::clear_readings() {
 void UIMainTile::update_pressure(float p) {
     char pressure_str[10];
     dtostrf(p, 4, 1, pressure_str);
-    lv_label_set_text_fmt(pressure_label, "%s Pa", pressure_str);
+    ui_set_label_text_fmt(pressure_label, "%s Pa", pressure_str);
 
     lv_color_t color;
     const char* icon_str;
@@ -182,31 +182,31 @@ void UIMainTile::update_pressure(float p) {
         icon_str = ICON_GAUGE_FULL;
     }
     
-    lv_label_set_text(pressure_icon, icon_str);
-    lv_obj_set_style_text_color(pressure_label, color, 0);
-    lv_obj_set_style_text_color(pressure_icon, color, 0);
+    ui_set_label_text(pressure_icon, icon_str);
+    ui_set_text_color(pressure_label, color);
+    ui_set_text_color(pressure_icon, color);
 }
 
 void UIMainTile::update_co2(float co2) {
-    lv_label_set_text_fmt(co2_label, "%.0f ppm", co2);
+    ui_set_label_text_fmt(co2_label, "%.0f ppm", co2);
     lv_color_t color;
     ConfigManagerAccessor config;
     if (co2 < config->getCo2WarnThreshold()) { color = COLOR_GREEN; }
     else if (co2 < config->getCo2DangerThreshold()) { color = COLOR_MID; }
     else { color = COLOR_HIGH; }
-    lv_obj_set_style_text_color(co2_label, color, 0);
-    lv_obj_set_style_text_color(co2_icon, color, 0);
+    ui_set_text_color(co2_label, color);
+    ui_set_text_color(co2_icon, color);
 }
 
 void UIMainTile::update_voc(int32_t voc) {
-    lv_label_set_text_fmt(voc_label, "VOC: %d", (int)voc);
+    ui_set_label_text_fmt(voc_label, "VOC: %d", (int)voc);
     lv_color_t color;
     ConfigManagerAccessor config;
     if (voc < config->getVocWarnThreshold()) { color = COLOR_GREEN; }
     else if (voc < config->getVocDangerThreshold()) { color = COLOR_MID; }
     else { color = COLOR_HIGH; }
-    lv_obj_set_style_text_color(voc_label, color, 0);
-    lv_obj_set_style_text_color(voc_icon, color, 0);
+    ui_set_text_color(voc_label, color);
+    ui_set_text_color(voc_icon, color);
 }
 
 void UIMainTile::update_geiger_cpm(int cpm) {
@@ -216,7 +216,7 @@ void UIMainTile::update_geiger_cpm(int cpm) {
 void UIMainTile::update_geiger_usvh(float usv) {
     char usv_str[10];
     dtostrf(usv, 4, 2, usv_str);
-    lv_label_set_text_fmt(usv_label, "%s µSv/h", usv_str);
+    ui_set_label_text_fmt(usv_label, "%s µSv/h", usv_str);
     
     lv_color_t color;
     ConfigManagerAccessor config;
@@ -230,11 +230,11 @@ void UIMainTile::update_geiger_usvh(float usv) {
         color = COLOR_HIGH;       // Danger high (red)
     }
     
-    lv_obj_set_style_text_color(usv_label, color, 0);
-    lv_obj_set_style_text_color(usv_icon, color, 0);
+    ui_set_text_color(usv_label, color);
+    ui_set_text_color(usv_icon, color);
 }
 void UIMainTile::update_temp(float temp) {
-    lv_label_set_text_fmt(temp_label, "%.1f °C", temp);
+    ui_set_label_text_fmt(temp_label, "%.1f °C", temp);
     
     lv_color_t color;
     ConfigManagerAccessor config;
@@ -246,11 +246,11 @@ void UIMainTile::update_temp(float temp) {
         color = COLOR_HIGH;      // Extreme temperatures
     }
     
-    lv_obj_set_style_text_color(temp_label, color, 0);
-    lv_obj_set_style_text_color(temp_icon, color, 0);
+    ui_set_text_color(temp_label, color);
+    ui_set_text_color(temp_icon, color);
 }
 void UIMainTile::update_humi(float humi) {
-    lv_label_set_text_fmt(humi_label, "%.0f %%", humi);
+    ui_set_label_text_fmt(humi_label, "%.0f %%", humi);
     
     lv_color_t color;
     ConfigManagerAccessor config;
@@ -262,8 +262,8 @@ void UIMainTile::update_humi(float humi) {
         color = COLOR_HIGH;      // Too dry or too humid
     }
     
-    lv_obj_set_style_text_color(humi_label, color, 0);
-    lv_obj_set_style_text_color(humi_icon, color, 0);
+    ui_set_text_color(humi_label, color);
+    ui_set_text_color(humi_icon, color);
 }
 
 void UIMainTile::set_visible(bool visible) {

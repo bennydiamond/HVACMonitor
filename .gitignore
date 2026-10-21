@@ -4,3 +4,4 @@
 .vscode/launch.json
 .vscode/ipch
 firmware.map
+compile_commands.json

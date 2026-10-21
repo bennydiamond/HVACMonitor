@@ -18,7 +18,7 @@ class UI : public IUIManager, public IUIUpdater {
     // --- IUIManager Implementation ---
     void init(LGFX* tft, CST820* touch) override;
     void create_widgets(void) override;
-    void run(void) override;
+    uint32_t run(void) override;
     // --- IUIUpdater Implementation ---
     void clearSensorReadings(void) override;
     void update_pressure(float p) override;
@@ -69,6 +69,7 @@ private:
     static CST820* _touch;
     static lv_disp_draw_buf_t draw_buf;
     static lv_color_t* buf1;
+    static lv_color_t* buf2;
     static lv_disp_drv_t disp_drv;
     static lv_indev_drv_t indev_drv;
 

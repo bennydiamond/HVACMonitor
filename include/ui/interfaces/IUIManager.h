@@ -14,7 +14,7 @@ public:
 
     virtual void init(LGFX* tft, CST820* touch) = 0;
     virtual void create_widgets(void) = 0;
-    virtual void run(void) = 0; // For lv_timer_handler
+    virtual uint32_t run(void) = 0; // For lv_timer_handler; returns ms until next timer
 };
 
 #endif // IUI_MANAGER_H

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <esp_idf_version.h>
 #include <esp_task_wdt.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -20,6 +21,11 @@ public:
     static void taskIsMonitored();
     
 private:
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
     static esp_task_wdt_config_t _config;
+#else
+    static bool _panic;
+    static uint32_t _currentTimeout;
+#endif
 };
 #endif

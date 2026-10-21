@@ -5,7 +5,6 @@
 const int SCROLL_SPEED_MS_PX_SEC = 5;
 
 UIPowerdrawTile::UIPowerdrawTile() :
-fan_blink_timer(nullptr),
 tile_obj(nullptr),
 fan_icon(nullptr),
 fan_label(nullptr),
@@ -14,7 +13,8 @@ compressor_label(nullptr),
 pump_icon(nullptr),
 pump_label(nullptr),
 water_icon(nullptr),
-water_label(nullptr)
+water_label(nullptr),
+fan_blink_timer(nullptr)
 {}
 
 UIPowerdrawTile::~UIPowerdrawTile() {
@@ -136,74 +136,74 @@ void UIPowerdrawTile::clear_readings() {
 }
 
 void UIPowerdrawTile::update_fan_current(float amps, FanStatus status) {
-    lv_label_set_text_fmt(fan_label, "Fan: %.2f A", amps);
+    ui_set_label_text_fmt(fan_label, "Fan: %.2f A", amps);
     
     switch (status) {
         case FAN_STATUS_OFF:
-            lv_label_set_text(fan_icon, ICON_FAN_OFF);
-            lv_obj_set_style_text_color(fan_label, COLOR_DEFAULT_ICON, 0);
-            lv_obj_set_style_text_color(fan_icon, COLOR_DEFAULT_ICON, 0);
+            ui_set_label_text(fan_icon, ICON_FAN_OFF);
+            ui_set_text_color(fan_label, COLOR_DEFAULT_ICON);
+            ui_set_text_color(fan_icon, COLOR_DEFAULT_ICON);
             break;
         case FAN_STATUS_NORMAL:
-            lv_label_set_text(fan_icon, ICON_FAN);
-            lv_obj_set_style_text_color(fan_label, COLOR_GREEN, 0);
-            lv_obj_set_style_text_color(fan_icon, COLOR_GREEN, 0);
+            ui_set_label_text(fan_icon, ICON_FAN);
+            ui_set_text_color(fan_label, COLOR_GREEN);
+            ui_set_text_color(fan_icon, COLOR_GREEN);
             break;
         case FAN_STATUS_ALERT:
-            lv_label_set_text(fan_icon, ICON_FAN_ALERT);
-            lv_obj_set_style_text_color(fan_label, COLOR_HIGH, 0);
-            lv_obj_set_style_text_color(fan_icon, COLOR_HIGH, 0);
+            ui_set_label_text(fan_icon, ICON_FAN_ALERT);
+            ui_set_text_color(fan_label, COLOR_HIGH);
+            ui_set_text_color(fan_icon, COLOR_HIGH);
             break;
     }
 }
 
 void UIPowerdrawTile::update_compressor_current(float amps) {
-    lv_label_set_text_fmt(compressor_label, "Comp: %.2f A", amps);
+    ui_set_label_text_fmt(compressor_label, "Comp: %.2f A", amps);
     
     lv_color_t color;
     ConfigManagerAccessor config;
     if (amps <= config->getCompressorOffCurrentThreshold()) {
         color = COLOR_DEFAULT_ICON;
-        lv_obj_set_style_text_color(compressor_icon, COLOR_DEFAULT_ICON, 0);
+        ui_set_text_color(compressor_icon, COLOR_DEFAULT_ICON);
     } else if (amps < config->getCompressorHighCurrentThreshold()) {
         color = COLOR_GREEN;
-        lv_obj_set_style_text_color(compressor_icon, COLOR_GREEN, 0);
+        ui_set_text_color(compressor_icon, COLOR_GREEN);
     } else { // High current alert
         color = COLOR_HIGH;
-        lv_obj_set_style_text_color(compressor_icon, COLOR_HIGH, 0);
+        ui_set_text_color(compressor_icon, COLOR_HIGH);
     }
-    lv_obj_set_style_text_color(compressor_label, color, 0);
+    ui_set_text_color(compressor_label, color);
 }
 
 void UIPowerdrawTile::update_pump_current(float amps) {
-    lv_label_set_text_fmt(pump_label, "Pompe: %.2f A", amps);
+    ui_set_label_text_fmt(pump_label, "Pompe: %.2f A", amps);
     
     lv_color_t color;
     ConfigManagerAccessor config;
     if (amps <= config->getPumpOffCurrentThreshold()) {
         color = COLOR_DEFAULT_ICON;
-        lv_obj_set_style_text_color(pump_icon, COLOR_DEFAULT_ICON, 0);
+        ui_set_text_color(pump_icon, COLOR_DEFAULT_ICON);
     } else if (amps < config->getPumpHighCurrentThreshold()) {
         color = COLOR_GREEN;
-        lv_obj_set_style_text_color(pump_icon, COLOR_GREEN, 0);
+        ui_set_text_color(pump_icon, COLOR_GREEN);
     } else { // High current alert
         color = COLOR_HIGH;
-        lv_obj_set_style_text_color(pump_icon, COLOR_HIGH, 0);
+        ui_set_text_color(pump_icon, COLOR_HIGH);
     }
-    lv_obj_set_style_text_color(pump_label, color, 0);
+    ui_set_text_color(pump_label, color);
 }
 
 void UIPowerdrawTile::update_water_sensor(bool water_detected) {
     if (water_detected) {
-        lv_label_set_text(water_label, "Panne: Problème");
-        lv_label_set_text(water_icon, ICON_WATER_ALERT);
-        lv_obj_set_style_text_color(water_label, COLOR_HIGH, 0);
-        lv_obj_set_style_text_color(water_icon, COLOR_HIGH, 0);
+        ui_set_label_text(water_label, "Panne: Problème");
+        ui_set_label_text(water_icon, ICON_WATER_ALERT);
+        ui_set_text_color(water_label, COLOR_HIGH);
+        ui_set_text_color(water_icon, COLOR_HIGH);
     } else {
-        lv_label_set_text(water_label, "Panne: OK");
-        lv_label_set_text(water_icon, ICON_WATER);
-        lv_obj_set_style_text_color(water_label, COLOR_GREEN, 0);
-        lv_obj_set_style_text_color(water_icon, COLOR_GREEN, 0);
+        ui_set_label_text(water_label, "Panne: OK");
+        ui_set_label_text(water_icon, ICON_WATER);
+        ui_set_text_color(water_label, COLOR_GREEN);
+        ui_set_text_color(water_icon, COLOR_GREEN);
     }
 }
 
@@ -217,13 +217,13 @@ void UIPowerdrawTile::update_fan_status(FanStatus status) {
     switch (status) {
         case FAN_STATUS_NORMAL:
             lv_obj_clear_flag(fan_alert_icons.status_bar_icon, LV_OBJ_FLAG_HIDDEN);
-            lv_label_set_text(fan_alert_icons.status_bar_icon, ICON_FAN);
-            lv_obj_set_style_text_color(fan_alert_icons.status_bar_icon, COLOR_GREEN, 0);
+            ui_set_label_text(fan_alert_icons.status_bar_icon, ICON_FAN);
+            ui_set_text_color(fan_alert_icons.status_bar_icon, COLOR_GREEN);
             break;
         case FAN_STATUS_ALERT:
             lv_obj_clear_flag(fan_alert_icons.status_bar_icon, LV_OBJ_FLAG_HIDDEN);
-            lv_label_set_text(fan_alert_icons.status_bar_icon, ICON_FAN_ALERT);
-            lv_obj_set_style_text_color(fan_alert_icons.status_bar_icon, COLOR_HIGH, 0);
+            ui_set_label_text(fan_alert_icons.status_bar_icon, ICON_FAN_ALERT);
+            ui_set_text_color(fan_alert_icons.status_bar_icon, COLOR_HIGH);
             if(fan_blink_timer && fan_blink_timer->paused) {
                 lv_timer_reset(fan_blink_timer);
                 lv_timer_resume(fan_blink_timer);

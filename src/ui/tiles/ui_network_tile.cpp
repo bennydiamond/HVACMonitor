@@ -96,27 +96,27 @@ lv_obj_t* UINetworkTile::create_tile(lv_obj_t* parent_tv) {
 
 void UINetworkTile::update_network_rssi(int8_t rssi) {
     if(rssi_label) {
-        lv_label_set_text_fmt(rssi_label, "RSSI: %d dBm", rssi);
+        ui_set_label_text_fmt(rssi_label, "RSSI: %d dBm", rssi);
     }
 }
 void UINetworkTile::update_network_ha_conn(bool ha_conn) {
     if(ha_label) {
         lv_color_t color = ha_conn ? COLOR_HA_BLUE : COLOR_DISCONNECTED;
-        lv_obj_set_style_text_color(ha_label, color, 0);
+        ui_set_text_color(ha_label, color);
         lv_obj_t* ha_icon_in_tile = lv_obj_get_child(lv_obj_get_parent(ha_label), lv_obj_get_index(ha_label) - 1);
-        lv_obj_set_style_text_color(ha_icon_in_tile, color, 0);
-        lv_label_set_text(ha_label, ha_conn ? "HA: Connected" : "HA: Disconnected");
+        if (ha_icon_in_tile) ui_set_text_color(ha_icon_in_tile, color);
+        ui_set_label_text(ha_label, ha_conn ? "HA: Connected" : "HA: Disconnected");
     }
 }
 
 void UINetworkTile::update_ssid(const char* ssid) {
-    if (ssid_label) lv_label_set_text(ssid_label, ssid);
+    if (ssid_label) ui_set_label_text(ssid_label, ssid);
 }
 void UINetworkTile::update_ip(const char* ip) {
-    if (ip_label) lv_label_set_text(ip_label, ip);
+    if (ip_label) ui_set_label_text(ip_label, ip);
 }
 void UINetworkTile::update_mac(const char* mac) {
-    if (mac_label) lv_label_set_text(mac_label, mac);
+    if (mac_label) ui_set_label_text(mac_label, mac);
 }
 void UINetworkTile::set_visible(bool visible) {
     if (tile_obj) {

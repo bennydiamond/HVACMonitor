@@ -1,6 +1,8 @@
 #include "WatchdogManager.h"
 #include "Logger.h"
 #ifdef ENABLE_TASK_WATCHDOG
+
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
 esp_task_wdt_config_t WatchdogManager::_config = { .timeout_ms = WatchdogManager::_defaultTimeout * 1000, .idle_core_mask = 0, .trigger_panic = false };
 
 void WatchdogManager::init(uint32_t timeoutSeconds, bool panic) {
@@ -14,6 +16,21 @@ void WatchdogManager::init(uint32_t timeoutSeconds, bool panic) {
         setTimeout(_config.timeout_ms);
     }
 }
+#else
+bool WatchdogManager::_panic = false;
+uint32_t WatchdogManager::_currentTimeout = WatchdogManager::_defaultTimeout;
+
+void WatchdogManager::init(uint32_t timeoutSeconds, bool panic) {
+    _currentTimeout = timeoutSeconds;
+    _panic = panic;
+    esp_err_t err = esp_task_wdt_init(timeoutSeconds, panic);
+    if (err == ESP_OK) {
+        logger.infof("Watchdog initialized: timeout=%us, panic=%s", timeoutSeconds, panic ? "true" : "false");
+    } else {
+        logger.errorf("Watchdog init failed: %s", esp_err_to_name(err));
+    }
+}
+#endif
 
 void WatchdogManager::addCurrentTask() {
     addTask(NULL);
@@ -74,6 +91,7 @@ void WatchdogManager::reset() {
 
 void WatchdogManager::setTimeout(uint32_t timeoutSeconds) {
     esp_err_t status = esp_task_wdt_status(NULL);
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
     _config.timeout_ms = timeoutSeconds * 1000;
     if (status != ESP_ERR_INVALID_STATE) {
         esp_err_t err = esp_task_wdt_reconfigure(&_config);
@@ -85,20 +103,22 @@ void WatchdogManager::setTimeout(uint32_t timeoutSeconds) {
     } else {
         logger.errorf("Watchdog not initialized, cannot change timeout");
     }
+#else
+    _currentTimeout = timeoutSeconds;
+    if (status != ESP_ERR_INVALID_STATE) {
+        esp_err_t err = esp_task_wdt_init(timeoutSeconds, _panic);
+        if (err == ESP_OK) {
+            logger.debugf("Watchdog timeout changed to %us", timeoutSeconds);
+        } else {
+            logger.errorf("Watchdog timeout change failed: %s", esp_err_to_name(err));
+        }
+    } else {
+        logger.errorf("Watchdog not initialized, cannot change timeout");
+    }
+#endif
 }
 
 void WatchdogManager::restoreDefaultTimeout() {
-    esp_err_t status = esp_task_wdt_status(NULL);
-    _config.timeout_ms = _defaultTimeout * 1000;
-    if (status != ESP_ERR_INVALID_STATE) {
-        esp_err_t err = esp_task_wdt_reconfigure(&_config);
-        if (err == ESP_OK) {
-            logger.debugf("Watchdog timeout restored to default %us", _defaultTimeout);
-        } else {
-            logger.errorf("Watchdog timeout restore failed: %s", esp_err_to_name(err));
-        }
-    } else {
-        logger.errorf("Watchdog not initialized, cannot restore timeout");
-    }
+    setTimeout(_defaultTimeout);
 }
 #endif

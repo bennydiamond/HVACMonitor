@@ -12,6 +12,9 @@ CST820::CST820(int8_t sda_pin, int8_t scl_pin, int8_t rst_pin, int8_t int_pin)
 void CST820::begin(void)
 {
     Wire.begin(_sda, _scl);
+    // CST820 supports 400 kHz fast mode (tBUF >= 4.5 us between STOP and START;
+    // satisfied by the Wire driver's per-transaction overhead).
+    Wire.setClock(400000);
 
     // Perform hardware reset if a reset pin is specified
     if (_rst != -1)

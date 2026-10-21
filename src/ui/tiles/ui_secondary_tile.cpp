@@ -122,83 +122,83 @@ void UISecondaryTile::clear_readings() {
 }
 
 void UISecondaryTile::update_pm_values(float pm1, float pm25, float pm4, float pm10) {
-    lv_label_set_text_fmt(pm1_label, "PM1.0: %.1f µg/m³", pm1);
-    lv_label_set_text_fmt(pm25_label, "PM2.5: %.1f µg/m³", pm25);
-    lv_label_set_text_fmt(pm4_label, "PM4.0: %.1f µg/m³", pm4);
-    lv_label_set_text_fmt(pm10_label, "PM10:  %.1f µg/m³", pm10);
+    ui_set_label_text_fmt(pm1_label, "PM1.0: %.1f µg/m³", pm1);
+    ui_set_label_text_fmt(pm25_label, "PM2.5: %.1f µg/m³", pm25);
+    ui_set_label_text_fmt(pm4_label, "PM4.0: %.1f µg/m³", pm4);
+    ui_set_label_text_fmt(pm10_label, "PM10:  %.1f µg/m³", pm10);
 
     ConfigManagerAccessor config;
     lv_color_t pm1_color;
     if (pm1 < config->getPm1WarnThreshold()) { pm1_color = COLOR_GREEN; }
     else if (pm1 < config->getPm1DangerThreshold()) { pm1_color = COLOR_MID; }
     else { pm1_color = COLOR_HIGH; }
-    lv_obj_set_style_text_color(pm1_label, pm1_color, 0);
-    lv_obj_set_style_text_color(pm1_icon, pm1_color, 0);
+    ui_set_text_color(pm1_label, pm1_color);
+    ui_set_text_color(pm1_icon, pm1_color);
 
     lv_color_t pm25_color;
     if (pm25 < config->getPm25WarnThreshold()) { pm25_color = COLOR_GREEN; }
     else if (pm25 < config->getPm25DangerThreshold()) { pm25_color = COLOR_MID; }
     else { pm25_color = COLOR_HIGH; }
-    lv_obj_set_style_text_color(pm25_label, pm25_color, 0);
-    lv_obj_set_style_text_color(pm25_icon, pm25_color, 0);
+    ui_set_text_color(pm25_label, pm25_color);
+    ui_set_text_color(pm25_icon, pm25_color);
 
     lv_color_t pm4_color;
     if (pm4 < config->getPm4WarnThreshold()) { pm4_color = COLOR_GREEN; }
     else if (pm4 < config->getPm4DangerThreshold()) { pm4_color = COLOR_MID; }
     else { pm4_color = COLOR_HIGH; }
-    lv_obj_set_style_text_color(pm4_label, pm4_color, 0);
-    lv_obj_set_style_text_color(pm4_icon, pm4_color, 0);
+    ui_set_text_color(pm4_label, pm4_color);
+    ui_set_text_color(pm4_icon, pm4_color);
 
     lv_color_t pm10_color;
     if (pm10 < config->getPm10WarnThreshold()) { pm10_color = COLOR_GREEN; }
     else if (pm10 < config->getPm10DangerThreshold()) { pm10_color = COLOR_MID; }
     else { pm10_color = COLOR_HIGH; }
-    lv_obj_set_style_text_color(pm10_label, pm10_color, 0);
-    lv_obj_set_style_text_color(pm10_icon, pm10_color, 0);
+    ui_set_text_color(pm10_label, pm10_color);
+    ui_set_text_color(pm10_icon, pm10_color);
 }
 
 void UISecondaryTile::update_pm1(float pm1) {
-    lv_label_set_text_fmt(pm1_label, "PM1.0: %.1f µg/m³", pm1);
+    ui_set_label_text_fmt(pm1_label, "PM1.0: %.1f µg/m³", pm1);
     lv_color_t pm1_color;
     ConfigManagerAccessor config;
     if (pm1 < config->getPm1WarnThreshold()) { pm1_color = COLOR_GREEN; }
     else if (pm1 < config->getPm1DangerThreshold()) { pm1_color = COLOR_MID; }
     else { pm1_color = COLOR_HIGH; }
-    lv_obj_set_style_text_color(pm1_label, pm1_color, 0);
-    lv_obj_set_style_text_color(pm1_icon, pm1_color, 0);
+    ui_set_text_color(pm1_label, pm1_color);
+    ui_set_text_color(pm1_icon, pm1_color);
 }
 
 void UISecondaryTile::update_pm25(float pm25) {
-    lv_label_set_text_fmt(pm25_label, "PM2.5: %.1f µg/m³", pm25);
+    ui_set_label_text_fmt(pm25_label, "PM2.5: %.1f µg/m³", pm25);
     lv_color_t pm25_color;
     ConfigManagerAccessor config;
     if (pm25 < config->getPm25WarnThreshold()) { pm25_color = COLOR_GREEN; }
     else if (pm25 < config->getPm25DangerThreshold()) { pm25_color = COLOR_MID; }
     else { pm25_color = COLOR_HIGH; }
-    lv_obj_set_style_text_color(pm25_label, pm25_color, 0);
-    lv_obj_set_style_text_color(pm25_icon, pm25_color, 0);
+    ui_set_text_color(pm25_label, pm25_color);
+    ui_set_text_color(pm25_icon, pm25_color);
 }
 
 void UISecondaryTile::update_pm4(float pm4) {
-    lv_label_set_text_fmt(pm4_label, "PM4.0: %.1f µg/m³", pm4);
+    ui_set_label_text_fmt(pm4_label, "PM4.0: %.1f µg/m³", pm4);
     lv_color_t pm4_color;
     ConfigManagerAccessor config;
     if (pm4 < config->getPm4WarnThreshold()) { pm4_color = COLOR_GREEN; }
     else if (pm4 < config->getPm4DangerThreshold()) { pm4_color = COLOR_MID; }
     else { pm4_color = COLOR_HIGH; }
-    lv_obj_set_style_text_color(pm4_label, pm4_color, 0);
-    lv_obj_set_style_text_color(pm4_icon, pm4_color, 0);
+    ui_set_text_color(pm4_label, pm4_color);
+    ui_set_text_color(pm4_icon, pm4_color);
 }
 
 void UISecondaryTile::update_pm10(float pm10) {
-    lv_label_set_text_fmt(pm10_label, "PM10: %.1f µg/m³", pm10);
+    ui_set_label_text_fmt(pm10_label, "PM10: %.1f µg/m³", pm10);
     lv_color_t pm10_color;
     ConfigManagerAccessor config;
     if (pm10 < config->getPm10WarnThreshold()) { pm10_color = COLOR_GREEN; }
     else if (pm10 < config->getPm10DangerThreshold()) { pm10_color = COLOR_MID; }
     else { pm10_color = COLOR_HIGH; }
-    lv_obj_set_style_text_color(pm10_label, pm10_color, 0);
-    lv_obj_set_style_text_color(pm10_icon, pm10_color, 0);
+    ui_set_text_color(pm10_label, pm10_color);
+    ui_set_text_color(pm10_icon, pm10_color);
 }
 void UISecondaryTile::set_visible(bool visible) {
     if (tile_obj) {

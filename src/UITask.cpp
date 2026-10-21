@@ -117,8 +117,8 @@ touch(nullptr),
 uiManager(nullptr),
 uiUpdater(nullptr),
 taskHandle(nullptr),
-uiIsInit(false),
 uiQueue(nullptr),
+uiIsInit(false),
 uiStringQueue(nullptr)
 {
     otaPopupDrawn.store(false);
@@ -257,23 +257,25 @@ void UITask::run() {
             if(uiQueue != nullptr)
             {
                 UIMessage msg;
-                BaseType_t queueReturn = pdTRUE;
-                while (uiQueue && queueReturn == pdTRUE) {
-                    queueReturn = xQueueReceive(uiQueue, &msg, 0);
+                while (uiQueue && xQueueReceive(uiQueue, &msg, 0) == pdTRUE) {
                     dispatchMessage(msg);
 #ifdef ENABLE_TASK_WATCHDOG
                     WatchdogManager::reset();
 #endif
                 }
             }
+            uint32_t sleepMs = UITASK_SLEEP_TIME_MS;
             if(uiManager != nullptr)
             {
-                uiManager->run();
+                uint32_t next = uiManager->run();
+                // Sleep only until LVGL's next timer is due; cap so queued messages
+                // are still handled promptly and floor at 1ms so we always yield.
+                sleepMs = next < 1 ? 1 : (next > UITASK_SLEEP_TIME_MS_MAX ? UITASK_SLEEP_TIME_MS_MAX : next);
             }
 #ifdef ENABLE_TASK_WATCHDOG
             WatchdogManager::reset();
 #endif
-            vTaskDelay(pdMS_TO_TICKS(UITASK_SLEEP_TIME_MS));
+            vTaskDelay(pdMS_TO_TICKS(sleepMs));
         }
     }
 }

@@ -12,6 +12,7 @@
 #include "HomeAssistantManager.h"
 #include "OtaManager.h"
 #include "WebServerManager.h"
+#include "SdUpdateManager.h"
 #include "Logger.h"
 #include "ConfigManager.h"
 #include "RollingAverage.h"
@@ -186,9 +187,21 @@ const char* nano_reset_cause_to_string(uint8_t code) {
 }
 
 void update_wifi_status() {
-    UITask::getInstance().update_wifi_status(WiFi.status() == WL_CONNECTED, WiFi.RSSI());
-    haManager.publishWiFiStatus(WiFi.status() == WL_CONNECTED, WiFi.RSSI(), WIFI_SSID, WiFi.localIP().toString().c_str());
-    UITask::getInstance().update_ssid(WIFI_SSID);
+    char current_ssid[33];
+    {
+        ConfigManagerAccessor config;
+        snprintf(current_ssid, sizeof(current_ssid), "%s", config->getWifiSsid());
+    }
+    if (strlen(current_ssid) == 0) {
+        snprintf(current_ssid, sizeof(current_ssid), "%s", WIFI_SSID);
+    }
+    bool connected = (WiFi.status() == WL_CONNECTED);
+    int8_t rssi = connected ? WiFi.RSSI() : 0;
+
+    UITask::getInstance().update_wifi_status(connected, rssi);
+    UITask::getInstance().update_network_rssi(rssi);
+    haManager.publishWiFiStatus(connected, rssi, current_ssid, WiFi.localIP().toString().c_str());
+    UITask::getInstance().update_ssid(current_ssid);
     UITask::getInstance().update_ip(WiFi.localIP().toString().c_str());
     UITask::getInstance().update_mac(WiFi.macAddress().c_str());
 }
@@ -499,6 +512,7 @@ void process_packet(String packet) {
             int ret_status = atoi(token);
 
             logger.debugf("SPS30 Manual Fan Cleaning: Status=%d", ret_status);
+            break;
         }
         case RSP_SGP41_TEST: {
             // Format: g<ret_status>,<raw_value>
@@ -532,19 +546,19 @@ void process_packet(String packet) {
 
             char* token;
 
-            token = strtok(payload_cstr, ","); int16_t ret_interval = parse_hex_s16(token);
-            token = strtok(NULL, ",");        uint16_t measurement_interval = parse_hex_u16(token);
-            token = strtok(NULL, ",");        int16_t ret_auto_cal = parse_hex_s16(token);
+            token = strtok(payload_cstr, ","); [[maybe_unused]] int16_t ret_interval = parse_hex_s16(token);
+            token = strtok(NULL, ",");        [[maybe_unused]] uint16_t measurement_interval = parse_hex_u16(token);
+            token = strtok(NULL, ",");        [[maybe_unused]] int16_t ret_auto_cal = parse_hex_s16(token);
             token = strtok(NULL, ",");        uint16_t auto_calibration = parse_hex_u16(token);
-            token = strtok(NULL, ",");        int16_t ret_forced_cal = parse_hex_s16(token);
+            token = strtok(NULL, ",");        [[maybe_unused]] int16_t ret_forced_cal = parse_hex_s16(token);
             token = strtok(NULL, ",");        uint16_t forced_recalibration_value = parse_hex_u16(token);
-            token = strtok(NULL, ",");        int16_t ret_temp_offset = parse_hex_s16(token);
-            token = strtok(NULL, ",");        uint16_t temperature_offset = parse_hex_u16(token);
-            token = strtok(NULL, ",");        int16_t ret_altitude = parse_hex_s16(token);
-            token = strtok(NULL, ",");        uint16_t altitude_compensation = parse_hex_u16(token);
-            token = strtok(NULL, ",");        int16_t ret_firmware = parse_hex_s16(token);
-            token = strtok(NULL, ",");        uint8_t fw_major = parse_hex_u16(token);
-            token = strtok(NULL, ",");        uint8_t fw_minor = parse_hex_u16(token);
+            token = strtok(NULL, ",");        [[maybe_unused]] int16_t ret_temp_offset = parse_hex_s16(token);
+            token = strtok(NULL, ",");        [[maybe_unused]] uint16_t temperature_offset = parse_hex_u16(token);
+            token = strtok(NULL, ",");        [[maybe_unused]] int16_t ret_altitude = parse_hex_s16(token);
+            token = strtok(NULL, ",");        [[maybe_unused]] uint16_t altitude_compensation = parse_hex_u16(token);
+            token = strtok(NULL, ",");        [[maybe_unused]] int16_t ret_firmware = parse_hex_s16(token);
+            token = strtok(NULL, ",");        [[maybe_unused]] uint8_t fw_major = parse_hex_u16(token);
+            token = strtok(NULL, ",");        [[maybe_unused]] uint8_t fw_minor = parse_hex_u16(token);
 
 #ifdef SERIAL_PACKET_DEBUG
             logger.debugf(
@@ -698,19 +712,49 @@ void process_packet(String packet) {
 // =================== SETUP & LOOP ===================
 void setup_wifi() {
     logger.info("Connecting to WiFi...");
+    char ssid[33];
+    char password[65];
+    {
+        ConfigManagerAccessor config;
+        snprintf(ssid, sizeof(ssid), "%s", config->getWifiSsid());
+        snprintf(password, sizeof(password), "%s", config->getWifiPassword());
+    }
+
+    size_t ssid_len = strlen(ssid);
+    if (ssid_len == 0 || ssid_len > 32) {
+        logger.warningf("WiFi SSID empty or invalid; falling back to default '%s'.", WIFI_SSID);
+        snprintf(ssid, sizeof(ssid), "%s", WIFI_SSID);
+    }
+
+    size_t pass_len = strlen(password);
+    if (pass_len == 0 && strlen(WIFI_PASSWORD) > 0) {
+        logger.info("WiFi password empty; falling back to default password from secrets.");
+        snprintf(password, sizeof(password), "%s", WIFI_PASSWORD);
+    } else if (pass_len > 0 && (pass_len < 8 || pass_len > 64)) {
+        logger.errorf("Invalid WiFi password (length %u); falling back to default password.", pass_len);
+        snprintf(password, sizeof(password), "%s", WIFI_PASSWORD);
+    }
+
+    logger.infof("Initiating WiFi connection to SSID '%s'", ssid);
     WiFi.mode(WIFI_STA);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    WiFi.setAutoReconnect(true);
+    WiFi.setSleep(false);
+    WiFi.begin(ssid, password);
     unsigned long start_time = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - start_time < 15000) { delay(500); }
     if (WiFi.status() == WL_CONNECTED) {
-        logger.infof("WiFi connected. IP address: %s", WiFi.localIP().toString().c_str());
+        WiFi.setSleep(false);
+        logger.infof("WiFi connected. IP address: %s, RSSI: %d dBm", WiFi.localIP().toString().c_str(), WiFi.RSSI());
     } else {
-        logger.error("WiFi connection failed.");
+        logger.errorf("WiFi connection failed (status: %d).", WiFi.status());
     }
     update_wifi_status();
 }
 
 void setup() {
+    // Check for failsafe firmware update or config on MicroSD card before runtime tasks start
+    SdUpdateManager::checkForUpdate();
+
     SerialMutex::getInstance().init();
     MainTaskEventNotifier::getInstance().setMainTaskHandle(xTaskGetCurrentTaskHandle());
     vTaskPrioritySet(NULL, TASK_PRIORITY_MAIN);
@@ -819,6 +863,9 @@ void loop() {
 
     if (millis() - last_wifi_check_time > WIFI_CHECK_INTERVAL_MS) {
         last_wifi_check_time = millis();
+        if (WiFi.status() != WL_CONNECTED) {
+            WiFi.reconnect();
+        }
         update_wifi_status();
         UITask::getInstance().update_network_ha_conn(ha_conn);
     }
@@ -847,6 +894,7 @@ void loop() {
                 case CMD_HEALTH: cmd_to_send = CMD_GET_HEALTH; break;
                 case CMD_SPS30_INFO: cmd_to_send = CMD_GET_SPS30_INFO; break;
                 case CMD_SCD30_INFO: cmd_to_send = CMD_GET_SCD30_INFO; break;
+                default: break;
             }
             if (cmd_to_send) {
                 logger.infof("Sending init command %d/%d: %c", current_init_command_index + 1, 4, cmd_to_send);
@@ -883,15 +931,6 @@ void loop() {
             UITask::getInstance().update_sensorstack_uptime(0);
             UITask::getInstance().update_sensorstack_ram(0);
         }
-
-        bool wifi_connected = (WiFi.status() == WL_CONNECTED);
-        String ip = wifi_connected ? WiFi.localIP().toString() : "N/A";
-        int8_t rssi = wifi_connected ? WiFi.RSSI() : 0;
-        String ssid = wifi_connected ? WIFI_SSID : "N/A";
-        
-        UITask::getInstance().update_network_rssi(rssi);
-        UITask::getInstance().update_ssid(ssid.c_str());
-        UITask::getInstance().update_ip(ip.c_str());
     }
 
     if (millis() - last_sensor_data_time > NANO_PACKET_TIMEOUT_MS) {
@@ -1044,4 +1083,13 @@ void loop() {
 
     // Handles its own value refresh logic
     haManager.updateInactivityTimerDelayState();
+
+    // Cooperative yield:
+    // If incoming serial bytes are buffered, yield 1ms to process serial promptly.
+    // Otherwise, yield for 10ms so lower-priority tasks (UI & sensors) get a solid timeslice.
+    if (Serial.available() > 0) {
+        vTaskDelay(pdMS_TO_TICKS(1));
+    } else {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
 }
