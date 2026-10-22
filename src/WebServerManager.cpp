@@ -204,6 +204,8 @@ void WebServerManager::handleApiStatus() {
   int o3_w = 100, o3_d = 180;
   int no2_w = 100, no2_d = 200;
   float fan_off = 0.5f;
+  float temp_cl = 15.0f, temp_ch = 25.0f, temp_al = 10.0f, temp_ah = 30.0f;
+  float humi_cl = 30.0f, humi_ch = 60.0f, humi_al = 20.0f, humi_ah = 70.0f;
 
   {
     ConfigManagerAccessor config;
@@ -228,6 +230,14 @@ void WebServerManager::handleApiStatus() {
     no2_w = config->getNo2WarnThreshold();
     no2_d = config->getNo2DangerThreshold();
     fan_off = config->getFanOffCurrentThreshold();
+    temp_cl = config->getTempComfortableLow();
+    temp_ch = config->getTempComfortableHigh();
+    temp_al = config->getTempAcceptableLow();
+    temp_ah = config->getTempAcceptableHigh();
+    humi_cl = config->getHumiComfortableLow();
+    humi_ch = config->getHumiComfortableHigh();
+    humi_al = config->getHumiAcceptableLow();
+    humi_ah = config->getHumiAcceptableHigh();
   }
 
   server.setContentLength(CONTENT_LENGTH_UNKNOWN);
@@ -240,9 +250,9 @@ void WebServerManager::handleApiStatus() {
 
   // Section: iaq
   snprintf(chunk, sizeof(chunk),
-           "{\"iaq\":{\"epa_aqi\":%u,\"fast_aqi\":%u,\"co2\":%.1f,\"voc\":%ld,\"nox\":%ld,"
+           "{\"iaq\":{\"epa_aqi\":%d,\"fast_aqi\":%d,\"co2\":%.1f,\"voc\":%ld,\"nox\":%ld,"
            "\"pm1\":%.1f,\"pm25\":%.1f,\"pm4\":%.1f,\"pm10\":%.1f,\"t\":%.1f,\"h\":%.1f,"
-           "\"baro\":%.1f,\"co\":%u,\"o3\":%.1f,\"no2\":%.1f,\"usv\":%.2f,\"cpm\":%d},",
+           "\"baro\":%.1f,\"co\":%d,\"o3\":%.1f,\"no2\":%.1f,\"usv\":%.2f,\"cpm\":%d},",
            data.epa_aqi, data.fast_aqi, data.co2_ppm, (long)data.voc_index, (long)data.nox_index,
            data.pm1_ug, data.pm25_ug, data.pm4_ug, data.pm10_ug, data.temperature_c, data.humidity_pct,
            data.baro_pressure_hpa, data.co_ppm, data.o3_ug, data.no2_ug, data.geiger_usv_h, data.geiger_cpm);
@@ -285,11 +295,15 @@ void WebServerManager::handleApiStatus() {
            "\"th\":{\"co2_w\":%d,\"co2_d\":%d,\"voc_w\":%d,\"voc_d\":%d,\"nox_w\":%d,\"nox_d\":%d,"
            "\"pm1_w\":%d,\"pm1_d\":%d,\"pm25_w\":%d,\"pm25_d\":%d,\"pm4_w\":%d,\"pm4_d\":%d,"
            "\"pm10_w\":%d,\"pm10_d\":%d,\"co_w\":%d,\"co_d\":%d,\"o3_w\":%d,\"o3_d\":%d,"
-           "\"no2_w\":%d,\"no2_d\":%d,\"fan_off\":%.1f}}",
+           "\"no2_w\":%d,\"no2_d\":%d,\"fan_off\":%.1f,"
+           "\"t_cl\":%.1f,\"t_ch\":%.1f,\"t_al\":%.1f,\"t_ah\":%.1f,"
+           "\"h_cl\":%.1f,\"h_ch\":%.1f,\"h_al\":%.1f,\"h_ah\":%.1f}}",
            co2_w, co2_d, voc_w, voc_d, nox_w, nox_d,
            pm1_w, pm1_d, pm25_w, pm25_d, pm4_w, pm4_d,
            pm10_w, pm10_d, co_w, co_d, o3_w, o3_d,
-           no2_w, no2_d, fan_off);
+           no2_w, no2_d, fan_off,
+           temp_cl, temp_ch, temp_al, temp_ah,
+           humi_cl, humi_ch, humi_al, humi_ah);
   server.sendContent(chunk);
 }
 

@@ -644,6 +644,7 @@ void HomeAssistantManager::publishFilterPressure(float filter_pressure, unsigned
 }
 
 void HomeAssistantManager::publishGeiger(int cpm, unsigned long currentTime) {
+    if (cpm < 0) return; // Do not publish during warmup/settling until valid data is available
     char data_str[16];
     bool is_first = (_lastCpmPublishTime == 0);
     bool cpm_spike = (cpm >= GEIGER_CPM_SPIKE_THRESHOLD && _lastPublishedCpm < GEIGER_CPM_SPIKE_THRESHOLD);

@@ -1,0 +1,4 @@
+[submodule "lib/home-assistant-integration"]
+	path = lib/home-assistant-integration
+	url = git@github.com:bennydiamond/arduino-home-assistant.git
+	branch = main

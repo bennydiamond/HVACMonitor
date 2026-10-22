@@ -10,74 +10,74 @@ const char *dashboard_page_html =
 </div>
 
 <div class="summary-bar">
-<div class="summary-item"><span class="summary-label">Air Quality:</span><span class="pill pill-good" id="sum_aqi">Calculating...</span></div>
+<div class="summary-item"><span class="summary-label">Air Quality:</span><span class="pill pill-warmup" id="sum_aqi">Warmup</span></div>
 <div class="summary-item"><span class="summary-label">HVAC Blower:</span><span class="pill pill-info" id="sum_fan">Checking...</span></div>
-<div class="summary-item"><span class="summary-label">Filter:</span><span class="pill pill-good" id="sum_filter">OK</span></div>
+<div class="summary-item"><span class="summary-label">Filter:</span><span class="pill pill-warmup" id="sum_filter">Warmup</span></div>
 <div class="summary-item"><span class="summary-label">Sensor Hub:</span><span class="pill pill-good" id="sum_nano">Online</span></div>
 </div>
 
 <div class="section-card">
 <div class="section-hdr" onclick="toggleSection('sec_iaq')">
-<div class="section-title"><span>🌿 Indoor Air Quality & Climate</span><span class="sub-label">Sensirion SCD30, SPS30, SGP41, ZMOD4510</span></div>
+<div class="section-title"><span>🌿 Indoor Air Quality & Climate</span><span class="sub-label">Multi-Gas, Particulates & Climate Telemetry</span></div>
 <span class="chevron" id="chev_sec_iaq">▼</span>
 </div>
 <div class="section-body" id="sec_iaq">
 <div class="grid">
 
 <div class="metric-card">
-<div class="card-hdr"><span>EPA Air Quality Index</span><span class="pill pill-good" id="badge_epa_aqi">Good</span></div>
+<div class="card-hdr"><span>EPA Air Quality Index</span><span class="pill pill-warmup" id="badge_epa_aqi">Warmup</span></div>
 <div class="card-val"><span id="val_epa_aqi">--</span><span class="unit">AQI</span></div>
 <div class="card-sub">Fast AQI: <strong id="val_fast_aqi">--</strong></div>
 </div>
 
 <div class="metric-card">
-<div class="card-hdr"><span>Carbon Dioxide (CO₂)</span><span class="pill pill-good" id="badge_co2">Normal</span></div>
+<div class="card-hdr"><span>Carbon Dioxide (CO₂)</span><span class="pill pill-warmup" id="badge_co2">Warmup</span></div>
 <div class="card-val"><span id="val_co2">--</span><span class="unit">ppm</span></div>
-<div class="card-sub">SCD30 NDIR Sensor</div>
+<div class="card-sub">Optical NDIR Sensor</div>
 </div>
 
 <div class="metric-card">
-<div class="card-hdr"><span>Sensirion VOC Index</span><span class="pill pill-good" id="badge_voc">Good</span></div>
+<div class="card-hdr"><span>Sensirion VOC Index</span><span class="pill pill-warmup" id="badge_voc">Warmup</span></div>
 <div class="card-val"><span id="val_voc">--</span><span class="unit">/ 500</span></div>
-<div class="card-sub">SGP41 VOC Gas Index Algorithm</div>
+<div class="card-sub">Gas Index Algorithm</div>
 </div>
 
 <div class="metric-card">
-<div class="card-hdr"><span>Sensirion NOx Index</span><span class="pill pill-good" id="badge_nox">Good</span></div>
+<div class="card-hdr"><span>Sensirion NOx Index</span><span class="pill pill-warmup" id="badge_nox">Warmup</span></div>
 <div class="card-val"><span id="val_nox">--</span><span class="unit">/ 500</span></div>
-<div class="card-sub">SGP41 NOx Gas Index Algorithm</div>
+<div class="card-sub">Gas Index Algorithm</div>
 </div>
 
 <div class="metric-card" style="grid-column:1/-1">
-<div class="card-hdr"><span>Particulate Matter Concentration</span><span class="sub-label">SPS30 Laser Optical Particle Counter</span></div>
+<div class="card-hdr"><span>Particulate Matter Concentration</span><span class="sub-label">Laser Optical Particle Counter</span></div>
 <div class="pm-grid">
-<div class="pm-item"><span class="pm-label">PM 1.0</span><span class="pm-val" id="val_pm1">--</span><span class="unit">µg/m³</span><span class="pill pill-good" id="badge_pm1">Good</span></div>
-<div class="pm-item"><span class="pm-label">PM 2.5</span><span class="pm-val" id="val_pm25">--</span><span class="unit">µg/m³</span><span class="pill pill-good" id="badge_pm25">Good</span></div>
-<div class="pm-item"><span class="pm-label">PM 4.0</span><span class="pm-val" id="val_pm4">--</span><span class="unit">µg/m³</span><span class="pill pill-good" id="badge_pm4">Good</span></div>
-<div class="pm-item"><span class="pm-label">PM 10</span><span class="pm-val" id="val_pm10">--</span><span class="unit">µg/m³</span><span class="pill pill-good" id="badge_pm10">Good</span></div>
+<div class="pm-item"><span class="pm-label">PM 1.0</span><span class="pm-val" id="val_pm1">--</span><span class="unit">µg/m³</span><span class="pill pill-warmup" id="badge_pm1">Warmup</span></div>
+<div class="pm-item"><span class="pm-label">PM 2.5</span><span class="pm-val" id="val_pm25">--</span><span class="unit">µg/m³</span><span class="pill pill-warmup" id="badge_pm25">Warmup</span></div>
+<div class="pm-item"><span class="pm-label">PM 4.0</span><span class="pm-val" id="val_pm4">--</span><span class="unit">µg/m³</span><span class="pill pill-warmup" id="badge_pm4">Warmup</span></div>
+<div class="pm-item"><span class="pm-label">PM 10</span><span class="pm-val" id="val_pm10">--</span><span class="unit">µg/m³</span><span class="pill pill-warmup" id="badge_pm10">Warmup</span></div>
 </div>
 </div>
 
 <div class="metric-card">
-<div class="card-hdr"><span>Ambient Climate</span><button class="small-btn" onclick="toggleTempUnit(event)">°C / °F</button></div>
+<div class="card-hdr"><span>Ambient Climate</span></div>
 <div class="climate-row">
-<div><span class="climate-lbl">Temp:</span> <strong id="val_temp">--</strong></div>
-<div><span class="climate-lbl">Humidity:</span> <strong id="val_humi">--</strong> <span class="unit">% RH</span></div>
-<div><span class="climate-lbl">Baro:</span> <strong id="val_baro">--</strong> <span class="unit">hPa</span></div>
+<div><span class="climate-lbl">Temp:</span> <strong id="val_temp">--</strong> <span class="sub-badge pill-warmup" id="badge_temp">Warmup</span></div>
+<div><span class="climate-lbl">Humidity:</span> <span><strong id="val_humi">--</strong> <span class="unit">% RH</span></span> <span class="sub-badge pill-warmup" id="badge_humi">Warmup</span></div>
+<div><span class="climate-lbl">Baro:</span> <span><strong id="val_baro">--</strong> <span class="unit">hPa</span></span></div>
 </div>
 </div>
 
 <div class="metric-card">
 <div class="card-hdr"><span>Trace & Toxic Gases</span><span class="sub-label">Electrochemical & MOx</span></div>
 <div class="trace-grid">
-<div><span class="trace-lbl">CO:</span> <strong id="val_co">--</strong> <span class="unit">ppm</span> <span class="sub-badge" id="badge_co">OK</span></div>
-<div><span class="trace-lbl">O₃:</span> <strong id="val_o3">--</strong> <span class="unit">µg/m³</span> <span class="sub-badge" id="badge_o3">OK</span></div>
-<div><span class="trace-lbl">NO₂:</span> <strong id="val_no2">--</strong> <span class="unit">µg/m³</span> <span class="sub-badge" id="badge_no2">OK</span></div>
+<div><span class="trace-lbl">CO:</span> <span><strong id="val_co">--</strong> <span class="unit">ppm</span></span> <span class="sub-badge pill-warmup" id="badge_co">Warmup</span></div>
+<div><span class="trace-lbl">O₃:</span> <span><strong id="val_o3">--</strong> <span class="unit">µg/m³</span></span> <span class="sub-badge pill-warmup" id="badge_o3">Warmup</span></div>
+<div><span class="trace-lbl">NO₂:</span> <span><strong id="val_no2">--</strong> <span class="unit">µg/m³</span></span> <span class="sub-badge pill-warmup" id="badge_no2">Warmup</span></div>
 </div>
 </div>
 
 <div class="metric-card">
-<div class="card-hdr"><span>Ionizing Radiation</span><span class="sub-label">Geiger-Müller Tube</span></div>
+<div class="card-hdr"><span>Ionizing Radiation</span><span class="pill pill-warmup" id="badge_geiger">Warmup</span></div>
 <div class="card-val"><span id="val_geiger_usv">--</span><span class="unit">µSv/h</span></div>
 <div class="card-sub">Pulse Count: <strong id="val_geiger_cpm">--</strong> CPM</div>
 </div>
@@ -95,7 +95,7 @@ const char *dashboard_page_html =
 <div class="grid">
 
 <div class="metric-card">
-<div class="card-hdr"><span>Filter Static Pressure</span><span class="pill pill-good" id="badge_filter_pres">Normal</span></div>
+<div class="card-hdr"><span>Filter Static Pressure</span><span class="pill pill-warmup" id="badge_filter_pres">Warmup</span></div>
 <div class="card-val"><span id="val_filter_pres">--</span><span class="unit">Pa</span></div>
 <div class="card-sub">Raw Duct Differential: <strong id="val_diff_pres">--</strong> Pa</div>
 </div>

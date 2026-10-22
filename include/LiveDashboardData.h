@@ -4,23 +4,23 @@
 
 struct LiveDashboardData {
   // Indoor Air Quality & Climate
-  float temperature_c = 0.0f;
-  float humidity_pct = 0.0f;
-  float co2_ppm = 0.0f;
+  float temperature_c = -999.0f;
+  float humidity_pct = -1.0f;
+  float co2_ppm = -1.0f;
   int32_t voc_index = 0;
   int32_t nox_index = 0;
-  float pm1_ug = 0.0f;
-  float pm25_ug = 0.0f;
-  float pm4_ug = 0.0f;
-  float pm10_ug = 0.0f;
-  uint16_t co_ppm = 0;
-  float o3_ug = 0.0f;
-  float no2_ug = 0.0f;
-  uint16_t fast_aqi = 0;
-  uint16_t epa_aqi = 0;
-  int geiger_cpm = 0;
-  float geiger_usv_h = 0.0f;
-  float baro_pressure_hpa = 0.0f;
+  float pm1_ug = -1.0f;
+  float pm25_ug = -1.0f;
+  float pm4_ug = -1.0f;
+  float pm10_ug = -1.0f;
+  int co_ppm = -1;
+  float o3_ug = -1.0f;
+  float no2_ug = -1.0f;
+  int fast_aqi = -1;
+  int epa_aqi = -1;
+  int geiger_cpm = -1;
+  float geiger_usv_h = -1.0f;
+  float baro_pressure_hpa = -1.0f;
 
   // HVAC Equipment Operations
   float diff_pressure_pa = 0.0f;
