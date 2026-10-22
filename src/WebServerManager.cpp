@@ -2,39 +2,132 @@
 #include "ConfigManager.h"
 #include "HomeAssistantManager.h"
 #include "Logger.h"
+#include "RebootManager.h"
 #include <Update.h>
 #include <WiFi.h>
 #include <esp_task_wdt.h>
 
 #include "webserver/WebServerAssets.h"
+#include "webserver/WebServerDashboard.h"
+#include "webserver/WebServerOTA.h"
 #include "webserver/WebServerConfigClimate.h"
+#include "webserver/WebServerConfigMaintenance.h"
 #include "webserver/WebServerConfigSystem.h"
 #include "webserver/WebServerConfigTabs.h"
 #include "webserver/WebServerConfigTabsExtra.h"
+#include "LiveDashboardData.h"
+#include "NanoCommands.h"
+#include "UITask.h"
+#include "MainTaskEvents.h"
 
 WebServer server(80);
-String WebServerManager::_firmware_version;
+char WebServerManager::_firmware_version[16] = {0};
 
-const char *update_page_html =
-    R"rawliteral(<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>HVAC Sensor OTA Update</title><link rel="stylesheet" href="/style.css?v=%FIRMWARE_VERSION%"></head><body><div class="container" style="text-align:center"><h1>HVAC Sensor OTA Firmware Update</h1><div class="nav"><a href="/">OTA Update</a><a href="/config">Configuration</a></div><form method="POST" action="/upload" enctype="multipart/form-data"><input type="file" name="update" accept=".bin"><br><input type="submit" value="Upload Firmware"></form><div class="footer"><p>Device: HVAC Sensor Display | Version: %FIRMWARE_VERSION% | IP: %IP_ADDRESS%</p></div></div></body></html>)rawliteral";
+template <typename F>
+static void streamTemplate(const char *html_template, F resolver) {
+  server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+  server.sendHeader("Connection", "close");
+  server.send(200, "text/html", "");
+
+  char chunk[512];
+  size_t chunk_pos = 0;
+
+  auto flush_chunk = [&]() {
+    if (chunk_pos > 0) {
+      server.sendContent(chunk, chunk_pos);
+      chunk_pos = 0;
+    }
+  };
+
+  auto write_str = [&](const char *s, size_t len) {
+    while (len > 0) {
+      size_t space = sizeof(chunk) - chunk_pos;
+      if (space == 0) {
+        flush_chunk();
+        space = sizeof(chunk);
+      }
+      size_t to_copy = (len < space) ? len : space;
+      memcpy(chunk + chunk_pos, s, to_copy);
+      chunk_pos += to_copy;
+      s += to_copy;
+      len -= to_copy;
+    }
+  };
+
+  const char *p = html_template;
+  while (*p) {
+    const char *token_start = strchr(p, '%');
+    if (!token_start) {
+      write_str(p, strlen(p));
+      break;
+    }
+
+    if (token_start > p) {
+      write_str(p, token_start - p);
+    }
+
+    const char *token_end = strchr(token_start + 1, '%');
+    bool valid_token = false;
+    char key[32] = {0};
+
+    if (token_end && (token_end - token_start > 1) &&
+        (token_end - token_start < (int)sizeof(key))) {
+      size_t klen = token_end - token_start - 1;
+      valid_token = true;
+      for (size_t i = 0; i < klen; i++) {
+        char c = token_start[1 + i];
+        if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_')) {
+          valid_token = false;
+          break;
+        }
+      }
+      if (valid_token) {
+        memcpy(key, token_start + 1, klen);
+        key[klen] = '\0';
+      }
+    }
+
+    if (valid_token) {
+      char val_buf[96] = {0};
+      if (resolver(key, val_buf, sizeof(val_buf))) {
+        write_str(val_buf, strlen(val_buf));
+        p = token_end + 1;
+      } else {
+        // Unknown key, output literal token
+        write_str(token_start, token_end - token_start + 1);
+        p = token_end + 1;
+      }
+    } else {
+      // Lone '%' or not a placeholder token, output '%'
+      write_str(token_start, 1);
+      p = token_start + 1;
+    }
+  }
+
+  flush_chunk();
+  server.sendContent("", 0);
+}
 
 void WebServerManager::init(const char *firmware_version) {
-  _firmware_version = firmware_version;
+  strncpy(_firmware_version, firmware_version ? firmware_version : "", sizeof(_firmware_version) - 1);
+  _firmware_version[sizeof(_firmware_version) - 1] = '\0';
 
-  // Static assets (cached by browser with ETag matching firmware version)
+  // Static assets (no-cache ensures browsers always check for latest asset versions)
   server.on("/style.css", HTTP_GET, []() {
-    server.sendHeader("Cache-Control", "public, max-age=86400");
+    server.sendHeader("Cache-Control", "no-cache");
     server.sendHeader("ETag", _firmware_version);
     server.send_P(200, "text/css", style_css);
   });
   server.on("/app.js", HTTP_GET, []() {
-    server.sendHeader("Cache-Control", "public, max-age=86400");
+    server.sendHeader("Cache-Control", "no-cache");
     server.sendHeader("ETag", _firmware_version);
     server.send_P(200, "application/javascript", app_js);
   });
   server.on("/favicon.ico", HTTP_GET, []() { server.send(204); });
 
   server.on("/", HTTP_GET, handleRoot);
+  server.on("/ota", HTTP_GET, handleOTA);
+  server.on("/api/status", HTTP_GET, handleApiStatus);
   server.on("/config", HTTP_GET, handleConfig);
 
   server.on("/config/gas", HTTP_GET, handleConfigGas);
@@ -42,6 +135,7 @@ void WebServerManager::init(const char *firmware_version) {
   server.on("/config/hvac", HTTP_GET, handleConfigHVAC);
   server.on("/config/climate", HTTP_GET, handleConfigClimate);
   server.on("/config/system", HTTP_GET, handleConfigSystem);
+  server.on("/config/maintenance", HTTP_GET, handleConfigMaintenance);
   server.on("/config/update", HTTP_POST, handleConfigUpdate);
 
   server.on(
@@ -49,8 +143,7 @@ void WebServerManager::init(const char *firmware_version) {
       []() {
         server.sendHeader("Connection", "close");
         server.send(200, "text/plain", "Update complete! Rebooting...");
-        delay(500);
-        ESP.restart();
+        RebootManager::getInstance().requestReboot("Web OTA update complete", 500);
       },
       handleUpload);
 
@@ -74,29 +167,142 @@ void WebServerManager::handle() {
 }
 
 void WebServerManager::handleRoot() {
-  String html;
-  html.reserve(1024);
-  html = update_page_html;
-  html.replace("%IP_ADDRESS%", WiFi.localIP().toString());
-  html.replace("%FIRMWARE_VERSION%", _firmware_version);
+  streamTemplate(dashboard_page_html, [](const char *key, char *buf, size_t len) -> bool {
+    if (strcmp(key, "FIRMWARE_VERSION") == 0) {
+      snprintf(buf, len, "%s", _firmware_version);
+      return true;
+    }
+    return false;
+  });
+  logger.debug("Served live dashboard web page.");
+}
 
-  server.sendHeader("Connection", "close");
-  server.send(200, "text/html", html);
+void WebServerManager::handleOTA() {
+  streamTemplate(ota_page_html, [](const char *key, char *buf, size_t len) -> bool {
+    if (strcmp(key, "FIRMWARE_VERSION") == 0) {
+      snprintf(buf, len, "%s", _firmware_version);
+      return true;
+    }
+    return false;
+  });
   logger.debug("Served OTA update web page.");
+}
+
+void WebServerManager::handleApiStatus() {
+  LiveDashboardData data;
+  get_live_dashboard_data(data);
+
+  // Read configured thresholds
+  int co2_w = 1000, co2_d = 1500;
+  int voc_w = 250, voc_d = 400;
+  int nox_w = 10, nox_d = 20;
+  int pm1_w = 25, pm1_d = 50;
+  int pm25_w = 35, pm25_d = 75;
+  int pm4_w = 50, pm4_d = 100;
+  int pm10_w = 50, pm10_d = 150;
+  int co_w = 9, co_d = 25;
+  int o3_w = 100, o3_d = 180;
+  int no2_w = 100, no2_d = 200;
+  float fan_off = 0.5f;
+
+  {
+    ConfigManagerAccessor config;
+    co2_w = config->getCo2WarnThreshold();
+    co2_d = config->getCo2DangerThreshold();
+    voc_w = config->getVocWarnThreshold();
+    voc_d = config->getVocDangerThreshold();
+    nox_w = config->getNoxWarnThreshold();
+    nox_d = config->getNoxDangerThreshold();
+    pm1_w = config->getPm1WarnThreshold();
+    pm1_d = config->getPm1DangerThreshold();
+    pm25_w = config->getPm25WarnThreshold();
+    pm25_d = config->getPm25DangerThreshold();
+    pm4_w = config->getPm4WarnThreshold();
+    pm4_d = config->getPm4DangerThreshold();
+    pm10_w = config->getPm10WarnThreshold();
+    pm10_d = config->getPm10DangerThreshold();
+    co_w = config->getCoWarnThreshold();
+    co_d = config->getCoDangerThreshold();
+    o3_w = config->getO3WarnThreshold();
+    o3_d = config->getO3DangerThreshold();
+    no2_w = config->getNo2WarnThreshold();
+    no2_d = config->getNo2DangerThreshold();
+    fan_off = config->getFanOffCurrentThreshold();
+  }
+
+  server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+  server.sendHeader("Content-Type", "application/json");
+  server.sendHeader("Cache-Control", "no-cache");
+  server.sendHeader("Connection", "close");
+  server.send(200, "application/json", "");
+
+  char chunk[384];
+
+  // Section: iaq
+  snprintf(chunk, sizeof(chunk),
+           "{\"iaq\":{\"epa_aqi\":%u,\"fast_aqi\":%u,\"co2\":%.1f,\"voc\":%ld,\"nox\":%ld,"
+           "\"pm1\":%.1f,\"pm25\":%.1f,\"pm4\":%.1f,\"pm10\":%.1f,\"t\":%.1f,\"h\":%.1f,"
+           "\"baro\":%.1f,\"co\":%u,\"o3\":%.1f,\"no2\":%.1f,\"usv\":%.2f,\"cpm\":%d},",
+           data.epa_aqi, data.fast_aqi, data.co2_ppm, (long)data.voc_index, (long)data.nox_index,
+           data.pm1_ug, data.pm25_ug, data.pm4_ug, data.pm10_ug, data.temperature_c, data.humidity_pct,
+           data.baro_pressure_hpa, data.co_ppm, data.o3_ug, data.no2_ug, data.geiger_usv_h, data.geiger_cpm);
+  server.sendContent(chunk);
+
+  // Section: hvac
+  snprintf(chunk, sizeof(chunk),
+           "\"hvac\":{\"fp\":%.1f,\"dp\":%.1f,\"hp\":%s,\"fa\":%.2f,\"fs\":%u,"
+           "\"ca\":%.2f,\"pa\":%.2f,\"water\":%s},",
+           data.filter_pressure_pa, data.diff_pressure_pa, data.is_pressure_high ? "true" : "false",
+           data.fan_amps, data.fan_status, data.compressor_amps, data.pump_amps,
+           data.water_detected ? "true" : "false");
+  server.sendContent(chunk);
+
+  // Section: sys
+  snprintf(chunk, sizeof(chunk),
+           "\"sys\":{\"ssid\":\"%s\",\"ip\":\"%s\",\"rssi\":%d,\"mac\":\"%s\",\"wc\":%s,"
+           "\"mh\":\"%s\",\"mp\":%d,\"mc\":%s,\"nv\":\"%s\",\"dsp\":%lu,\"nu\":%lu,"
+           "\"sc\":%s,\"nrc\":\"%s\",\"nr\":%u},",
+           data.wifi_ssid, data.wifi_ip, (int)data.wifi_rssi, data.wifi_mac,
+           data.wifi_connected ? "true" : "false",
+           data.mqtt_host, data.mqtt_port, data.mqtt_connected ? "true" : "false",
+           data.nano_version, (unsigned long)data.seconds_since_packet,
+           (unsigned long)data.nano_uptime_seconds,
+           data.sensor_module_connected ? "true" : "false",
+           data.nano_reset_cause, (unsigned int)data.nano_free_ram);
+  server.sendContent(chunk);
+
+  // Section: diag
+  snprintf(chunk, sizeof(chunk),
+           "\"diag\":{\"heap\":%lu,\"min_heap\":%lu,\"max_alloc\":%lu,\"uptime\":%lu,"
+           "\"reset\":\"%s\",\"ver\":\"%s\"},",
+           (unsigned long)data.esp32_free_heap, (unsigned long)data.esp32_min_free_heap,
+           (unsigned long)data.esp32_max_alloc_heap, (unsigned long)data.esp32_uptime_seconds,
+           data.esp32_reset_reason, data.firmware_version);
+  server.sendContent(chunk);
+
+  // Section: th
+  snprintf(chunk, sizeof(chunk),
+           "\"th\":{\"co2_w\":%d,\"co2_d\":%d,\"voc_w\":%d,\"voc_d\":%d,\"nox_w\":%d,\"nox_d\":%d,"
+           "\"pm1_w\":%d,\"pm1_d\":%d,\"pm25_w\":%d,\"pm25_d\":%d,\"pm4_w\":%d,\"pm4_d\":%d,"
+           "\"pm10_w\":%d,\"pm10_d\":%d,\"co_w\":%d,\"co_d\":%d,\"o3_w\":%d,\"o3_d\":%d,"
+           "\"no2_w\":%d,\"no2_d\":%d,\"fan_off\":%.1f}}",
+           co2_w, co2_d, voc_w, voc_d, nox_w, nox_d,
+           pm1_w, pm1_d, pm25_w, pm25_d, pm4_w, pm4_d,
+           pm10_w, pm10_d, co_w, co_d, o3_w, o3_d,
+           no2_w, no2_d, fan_off);
+  server.sendContent(chunk);
 }
 
 void WebServerManager::handleConfig() {
   size_t freeHeap = ESP.getFreeHeap();
 
-  String html;
-  html.reserve(2048);
-  html = config_main_html;
-  html.replace("%IP_ADDRESS%", WiFi.localIP().toString());
-  html.replace("%FREE_HEAP%", String(freeHeap));
-  html.replace("%FIRMWARE_VERSION%", _firmware_version);
-
-  server.sendHeader("Connection", "close");
-  server.send(200, "text/html", html);
+  streamTemplate(config_main_html, [](const char *key, char *buf, size_t len) -> bool {
+    if (strcmp(key, "FIRMWARE_VERSION") == 0) {
+      snprintf(buf, len, "%s", _firmware_version);
+      return true;
+    }
+    return false;
+  });
   logger.infof("Served main config page. Free: %u, Min: %u, Max: %u bytes",
                freeHeap, ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
 }
@@ -146,8 +352,7 @@ void WebServerManager::handleConfigUpdate() {
     server.send(200, "text/plain",
                 "Wi-Fi configuration saved successfully. Rebooting device...");
 
-    delay(2000);
-    ESP.restart();
+    RebootManager::getInstance().requestReboot("Wi-Fi configuration updated", 2000);
     return;
   }
 
@@ -185,8 +390,64 @@ void WebServerManager::handleConfigUpdate() {
     server.send(200, "text/plain",
                 "Configuration saved successfully. Rebooting device...");
 
-    delay(2000);
-    ESP.restart();
+    RebootManager::getInstance().requestReboot("MQTT configuration updated", 2000);
+    return;
+  }
+
+  // Action requests (button triggers)
+  if (server.hasArg("action")) {
+    String action = server.arg("action");
+    if (action == "sps30_clean") {
+      logger.info("SPS30 manual fan clean requested via Web Server");
+      MainTaskEventNotifier::getInstance().sendEvent(MainTaskEventNotifier::EVT_SPS30_CLEAN);
+      server.send(200, "text/plain", "SPS30 fan clean started (10s cycle)");
+      return;
+    }
+    if (action == "sps30_info") {
+      logger.info("SPS30 info query requested via Web Server");
+      if (query_sps30_info_blocking(3000)) {
+        const SPS30DeviceInfo& info = get_sps30_device_info();
+        char resp[128];
+        snprintf(resp, sizeof(resp), "Firmware: v%u.%u | Clean Interval: %lus (%lud) | Status: 0x%08lX (%s)",
+                 info.fw_major, info.fw_minor, info.fan_interval, info.fan_days, info.status_reg,
+                 info.status_reg == 0 ? "OK" : "Fan Speed Warning");
+        server.send(200, "text/plain", resp);
+      } else {
+        server.send(504, "text/plain", "Timeout waiting for SPS30 info from sensor stack");
+      }
+      return;
+    }
+    if (action == "sgp41_test") {
+      logger.info("SGP41 self-test requested via Web Server");
+      if (run_sgp41_test_blocking(4000)) {
+        const SGP41TestResult& res = get_sgp41_test_result();
+        char resp[96];
+        if (res.ret_status == 0 && res.raw_value == 0xD400) {
+          snprintf(resp, sizeof(resp), "OK / Passed (Value: 0x%04X, Status: 0)", res.raw_value);
+        } else {
+          snprintf(resp, sizeof(resp), "Failed (Status: %d, Value: 0x%04X)",
+                   res.ret_status, res.raw_value);
+        }
+        server.send(200, "text/plain", resp);
+      } else {
+        server.send(504, "text/plain", "Timeout waiting for SGP41 test from sensor stack");
+      }
+      return;
+    }
+    if (action == "reboot_nano") {
+      logger.warning("Sensor Hub (Nano) reboot requested via Web Server");
+      MainTaskEventNotifier::getInstance().sendEvent(MainTaskEventNotifier::EVT_REBOOT_NANO);
+      server.send(200, "text/plain", "Sensor Hub reboot command sent");
+      return;
+    }
+    if (action == "reboot_esp32") {
+      logger.warning("ESP32 reboot requested via Web Server");
+      server.sendHeader("Connection", "close");
+      server.send(200, "text/plain", "Device rebooting in 2 seconds...");
+      RebootManager::getInstance().requestReboot("Web System page reboot", 2000);
+      return;
+    }
+    server.send(400, "text/plain", "Unknown action");
     return;
   }
 
@@ -333,10 +594,24 @@ void WebServerManager::handleConfigUpdate() {
       else
         ok = false;
     } else if (section == "inactivity") {
-      if (type == "timer_delay")
+      if (type == "timer_delay") {
         config->setInactivityTimerDelay(intVal);
-      else
+        HomeAssistantManager* ha = HomeAssistantManager::getInstance();
+        if (ha) ha->updateInactivityTimerDelayState(true);
+      } else {
         ok = false;
+      }
+    } else if (section == "log") {
+      if (type == "level" && intVal >= 0 && intVal <= 3) {
+        AppLogLevel level = static_cast<AppLogLevel>(intVal);
+        config->setLogLevel(level);
+        logger.setLogLevel(level);
+        HomeAssistantManager* ha = HomeAssistantManager::getInstance();
+        if (ha) ha->updateLogLevelState(level);
+        logger.infof("Log level updated to %d via Web Server", intVal);
+      } else {
+        ok = false;
+      }
     } else if (section == "mqtt") {
       if (type == "host")
         config->setMqttHost(valueStr.c_str());
@@ -359,6 +634,43 @@ void WebServerManager::handleConfigUpdate() {
         config->setVocDangerThreshold(intVal);
       else
         ok = false;
+    } else if (section == "display") {
+      if (type == "brightness" && intVal >= 0 && intVal <= 255) {
+        uint8_t b = static_cast<uint8_t>(intVal);
+        UITask::getInstance().set_brightness(b);
+        HomeAssistantManager* ha = HomeAssistantManager::getInstance();
+        if (ha) ha->updateBacklightState(b > 0, b);
+        logger.infof("Display brightness set to %u via Web Server", b);
+      } else if (type == "backlight") {
+        uint8_t curB = UITask::getInstance().get_brightness();
+        uint8_t newB = (intVal != 0) ? (curB == 0 ? 255 : curB) : 0;
+        UITask::getInstance().set_brightness(newB);
+        HomeAssistantManager* ha = HomeAssistantManager::getInstance();
+        if (ha) ha->updateBacklightState(intVal != 0, newB);
+        logger.infof("Display backlight set to %s via Web Server", intVal != 0 ? "ON" : "OFF");
+      } else {
+        ok = false;
+      }
+    } else if (section == "scd30") {
+      if (type == "autocal") {
+        bool enabled = (intVal != 0);
+        send_command_to_nano_with_param(CMD_SET_SCD30_AUTOCAL, enabled ? '1' : '0');
+        HomeAssistantManager* ha = HomeAssistantManager::getInstance();
+        if (ha) ha->updateScd30AutoCalState(enabled);
+        UITask::getInstance().update_scd30_autocal(enabled);
+        logger.infof("SCD30 AutoCalibration set to %s via Web Server", enabled ? "ON" : "OFF");
+      } else if (type == "forcecal" && intVal >= 400 && intVal <= 2000) {
+        uint16_t ppm = static_cast<uint16_t>(intVal);
+        char cmd_str[8];
+        snprintf(cmd_str, sizeof(cmd_str), "%c%u", CMD_SET_SCD30_FORCECAL, ppm);
+        send_command_to_nano_str(cmd_str);
+        HomeAssistantManager* ha = HomeAssistantManager::getInstance();
+        if (ha) ha->updateScd30ForceCalValue(ppm);
+        UITask::getInstance().update_scd30_forcecal(ppm);
+        logger.infof("SCD30 Force Calibration set to %u ppm via Web Server", ppm);
+      } else {
+        ok = false;
+      }
     } else {
       ok = false;
     }
@@ -401,135 +713,159 @@ void WebServerManager::handleUpload() {
 
 void WebServerManager::handleConfigGas() {
   ConfigManagerAccessor config;
-  String html;
-  html.reserve(3072);
-  html = config_gas_html;
-  html.replace("%FIRMWARE_VERSION%", _firmware_version);
-
-  html.replace("%NO2_WARN%", String(config->getNo2WarnThreshold()));
-  html.replace("%NO2_DANGER%", String(config->getNo2DangerThreshold()));
-  html.replace("%O3_WARN%", String(config->getO3WarnThreshold()));
-  html.replace("%O3_DANGER%", String(config->getO3DangerThreshold()));
-  html.replace("%NOX_WARN%", String(config->getNoxWarnThreshold()));
-  html.replace("%NOX_DANGER%", String(config->getNoxDangerThreshold()));
-  html.replace("%CO_WARN%", String(config->getCoWarnThreshold()));
-  html.replace("%CO_DANGER%", String(config->getCoDangerThreshold()));
-  html.replace("%CO2_WARN%", String(config->getCo2WarnThreshold()));
-  html.replace("%CO2_DANGER%", String(config->getCo2DangerThreshold()));
-  html.replace("%VOC_WARN%", String(config->getVocWarnThreshold()));
-  html.replace("%VOC_DANGER%", String(config->getVocDangerThreshold()));
-
-  server.sendHeader("Connection", "close");
-  server.send(200, "text/html", html);
+  streamTemplate(config_gas_html, [&](const char *key, char *buf, size_t len) -> bool {
+    if (strcmp(key, "FIRMWARE_VERSION") == 0) {
+      snprintf(buf, len, "%s", _firmware_version);
+      return true;
+    }
+    if (strcmp(key, "NO2_WARN") == 0) { snprintf(buf, len, "%d", config->getNo2WarnThreshold()); return true; }
+    if (strcmp(key, "NO2_DANGER") == 0) { snprintf(buf, len, "%d", config->getNo2DangerThreshold()); return true; }
+    if (strcmp(key, "O3_WARN") == 0) { snprintf(buf, len, "%d", config->getO3WarnThreshold()); return true; }
+    if (strcmp(key, "O3_DANGER") == 0) { snprintf(buf, len, "%d", config->getO3DangerThreshold()); return true; }
+    if (strcmp(key, "NOX_WARN") == 0) { snprintf(buf, len, "%d", config->getNoxWarnThreshold()); return true; }
+    if (strcmp(key, "NOX_DANGER") == 0) { snprintf(buf, len, "%d", config->getNoxDangerThreshold()); return true; }
+    if (strcmp(key, "CO_WARN") == 0) { snprintf(buf, len, "%d", config->getCoWarnThreshold()); return true; }
+    if (strcmp(key, "CO_DANGER") == 0) { snprintf(buf, len, "%d", config->getCoDangerThreshold()); return true; }
+    if (strcmp(key, "CO2_WARN") == 0) { snprintf(buf, len, "%d", config->getCo2WarnThreshold()); return true; }
+    if (strcmp(key, "CO2_DANGER") == 0) { snprintf(buf, len, "%d", config->getCo2DangerThreshold()); return true; }
+    if (strcmp(key, "VOC_WARN") == 0) { snprintf(buf, len, "%d", config->getVocWarnThreshold()); return true; }
+    if (strcmp(key, "VOC_DANGER") == 0) { snprintf(buf, len, "%d", config->getVocDangerThreshold()); return true; }
+    return false;
+  });
   logger.info("Served gas config page");
 }
 
 void WebServerManager::handleConfigPM() {
   ConfigManagerAccessor config;
-  String html;
-  html.reserve(2560);
-  html = config_pm_html;
-  html.replace("%FIRMWARE_VERSION%", _firmware_version);
-
-  html.replace("%PM1_WARN%", String(config->getPm1WarnThreshold()));
-  html.replace("%PM1_DANGER%", String(config->getPm1DangerThreshold()));
-  html.replace("%PM25_WARN%", String(config->getPm25WarnThreshold()));
-  html.replace("%PM25_DANGER%", String(config->getPm25DangerThreshold()));
-  html.replace("%PM4_WARN%", String(config->getPm4WarnThreshold()));
-  html.replace("%PM4_DANGER%", String(config->getPm4DangerThreshold()));
-  html.replace("%PM10_WARN%", String(config->getPm10WarnThreshold()));
-  html.replace("%PM10_DANGER%", String(config->getPm10DangerThreshold()));
-
-  server.sendHeader("Connection", "close");
-  server.send(200, "text/html", html);
+  streamTemplate(config_pm_html, [&](const char *key, char *buf, size_t len) -> bool {
+    if (strcmp(key, "FIRMWARE_VERSION") == 0) {
+      snprintf(buf, len, "%s", _firmware_version);
+      return true;
+    }
+    if (strcmp(key, "PM1_WARN") == 0) { snprintf(buf, len, "%d", config->getPm1WarnThreshold()); return true; }
+    if (strcmp(key, "PM1_DANGER") == 0) { snprintf(buf, len, "%d", config->getPm1DangerThreshold()); return true; }
+    if (strcmp(key, "PM25_WARN") == 0) { snprintf(buf, len, "%d", config->getPm25WarnThreshold()); return true; }
+    if (strcmp(key, "PM25_DANGER") == 0) { snprintf(buf, len, "%d", config->getPm25DangerThreshold()); return true; }
+    if (strcmp(key, "PM4_WARN") == 0) { snprintf(buf, len, "%d", config->getPm4WarnThreshold()); return true; }
+    if (strcmp(key, "PM4_DANGER") == 0) { snprintf(buf, len, "%d", config->getPm4DangerThreshold()); return true; }
+    if (strcmp(key, "PM10_WARN") == 0) { snprintf(buf, len, "%d", config->getPm10WarnThreshold()); return true; }
+    if (strcmp(key, "PM10_DANGER") == 0) { snprintf(buf, len, "%d", config->getPm10DangerThreshold()); return true; }
+    return false;
+  });
   logger.info("Served PM config page");
 }
 
 void WebServerManager::handleConfigHVAC() {
   ConfigManagerAccessor config;
-  String html;
-  html.reserve(4096);
-  html = config_hvac_html;
-  html.replace("%FIRMWARE_VERSION%", _firmware_version);
-
-  html.replace("%PRESSURE_LOW%", String(config->getPressureLowThreshold(), 1));
-  html.replace("%PRESSURE_MID%", String(config->getPressureMidThreshold(), 1));
-  html.replace("%PRESSURE_HIGH%",
-               String(config->getHighPressureThreshold(), 1));
-  html.replace("%FAN_ON%", String(config->getFanOnCurrentThreshold(), 1));
-  html.replace("%FAN_OFF%", String(config->getFanOffCurrentThreshold(), 1));
-  html.replace("%FAN_HIGH%", String(config->getFanHighCurrentThreshold(), 1));
-  html.replace("%COMPRESSOR_ON%",
-               String(config->getCompressorOnCurrentThreshold(), 1));
-  html.replace("%COMPRESSOR_OFF%",
-               String(config->getCompressorOffCurrentThreshold(), 1));
-  html.replace("%COMPRESSOR_HIGH%",
-               String(config->getCompressorHighCurrentThreshold(), 1));
-  html.replace("%PUMP_ON%", String(config->getPumpOnCurrentThreshold(), 1));
-  html.replace("%PUMP_OFF%", String(config->getPumpOffCurrentThreshold(), 1));
-  html.replace("%PUMP_HIGH%", String(config->getPumpHighCurrentThreshold(), 1));
-  html.replace("%GEIGER_ABNORMAL_LOW%",
-               String(config->getGeigerAbnormalLowThreshold(), 2));
-  html.replace("%GEIGER_ABNORMAL_HIGH%",
-               String(config->getGeigerAbnormalHighThreshold(), 2));
-  html.replace("%GEIGER_DANGER_HIGH%",
-               String(config->getGeigerDangerHighThreshold(), 2));
-
-  server.sendHeader("Connection", "close");
-  server.send(200, "text/html", html);
+  streamTemplate(config_hvac_html, [&](const char *key, char *buf, size_t len) -> bool {
+    if (strcmp(key, "FIRMWARE_VERSION") == 0) {
+      snprintf(buf, len, "%s", _firmware_version);
+      return true;
+    }
+    if (strcmp(key, "PRESSURE_LOW") == 0) { snprintf(buf, len, "%.1f", config->getPressureLowThreshold()); return true; }
+    if (strcmp(key, "PRESSURE_MID") == 0) { snprintf(buf, len, "%.1f", config->getPressureMidThreshold()); return true; }
+    if (strcmp(key, "PRESSURE_HIGH") == 0) { snprintf(buf, len, "%.1f", config->getHighPressureThreshold()); return true; }
+    if (strcmp(key, "FAN_ON") == 0) { snprintf(buf, len, "%.1f", config->getFanOnCurrentThreshold()); return true; }
+    if (strcmp(key, "FAN_OFF") == 0) { snprintf(buf, len, "%.1f", config->getFanOffCurrentThreshold()); return true; }
+    if (strcmp(key, "FAN_HIGH") == 0) { snprintf(buf, len, "%.1f", config->getFanHighCurrentThreshold()); return true; }
+    if (strcmp(key, "COMPRESSOR_ON") == 0) { snprintf(buf, len, "%.1f", config->getCompressorOnCurrentThreshold()); return true; }
+    if (strcmp(key, "COMPRESSOR_OFF") == 0) { snprintf(buf, len, "%.1f", config->getCompressorOffCurrentThreshold()); return true; }
+    if (strcmp(key, "COMPRESSOR_HIGH") == 0) { snprintf(buf, len, "%.1f", config->getCompressorHighCurrentThreshold()); return true; }
+    if (strcmp(key, "PUMP_ON") == 0) { snprintf(buf, len, "%.1f", config->getPumpOnCurrentThreshold()); return true; }
+    if (strcmp(key, "PUMP_OFF") == 0) { snprintf(buf, len, "%.1f", config->getPumpOffCurrentThreshold()); return true; }
+    if (strcmp(key, "PUMP_HIGH") == 0) { snprintf(buf, len, "%.1f", config->getPumpHighCurrentThreshold()); return true; }
+    if (strcmp(key, "GEIGER_ABNORMAL_LOW") == 0) { snprintf(buf, len, "%.2f", config->getGeigerAbnormalLowThreshold()); return true; }
+    if (strcmp(key, "GEIGER_ABNORMAL_HIGH") == 0) { snprintf(buf, len, "%.2f", config->getGeigerAbnormalHighThreshold()); return true; }
+    if (strcmp(key, "GEIGER_DANGER_HIGH") == 0) { snprintf(buf, len, "%.2f", config->getGeigerDangerHighThreshold()); return true; }
+    return false;
+  });
   logger.info("Served HVAC config page");
 }
 
 void WebServerManager::handleConfigClimate() {
   ConfigManagerAccessor config;
-  String html;
-  html.reserve(2560);
-  html = config_climate_html;
-  html.replace("%FIRMWARE_VERSION%", _firmware_version);
-
-  html.replace("%TEMP_COMFORTABLE_LOW%",
-               String(config->getTempComfortableLow(), 1));
-  html.replace("%TEMP_COMFORTABLE_HIGH%",
-               String(config->getTempComfortableHigh(), 1));
-  html.replace("%TEMP_ACCEPTABLE_LOW%",
-               String(config->getTempAcceptableLow(), 1));
-  html.replace("%TEMP_ACCEPTABLE_HIGH%",
-               String(config->getTempAcceptableHigh(), 1));
-  html.replace("%HUMI_COMFORTABLE_LOW%",
-               String(config->getHumiComfortableLow(), 1));
-  html.replace("%HUMI_COMFORTABLE_HIGH%",
-               String(config->getHumiComfortableHigh(), 1));
-  html.replace("%HUMI_ACCEPTABLE_LOW%",
-               String(config->getHumiAcceptableLow(), 1));
-  html.replace("%HUMI_ACCEPTABLE_HIGH%",
-               String(config->getHumiAcceptableHigh(), 1));
-
-  server.sendHeader("Connection", "close");
-  server.send(200, "text/html", html);
+  streamTemplate(config_climate_html, [&](const char *key, char *buf, size_t len) -> bool {
+    if (strcmp(key, "FIRMWARE_VERSION") == 0) {
+      snprintf(buf, len, "%s", _firmware_version);
+      return true;
+    }
+    if (strcmp(key, "TEMP_COMFORTABLE_LOW") == 0) { snprintf(buf, len, "%.1f", config->getTempComfortableLow()); return true; }
+    if (strcmp(key, "TEMP_COMFORTABLE_HIGH") == 0) { snprintf(buf, len, "%.1f", config->getTempComfortableHigh()); return true; }
+    if (strcmp(key, "TEMP_ACCEPTABLE_LOW") == 0) { snprintf(buf, len, "%.1f", config->getTempAcceptableLow()); return true; }
+    if (strcmp(key, "TEMP_ACCEPTABLE_HIGH") == 0) { snprintf(buf, len, "%.1f", config->getTempAcceptableHigh()); return true; }
+    if (strcmp(key, "HUMI_COMFORTABLE_LOW") == 0) { snprintf(buf, len, "%.1f", config->getHumiComfortableLow()); return true; }
+    if (strcmp(key, "HUMI_COMFORTABLE_HIGH") == 0) { snprintf(buf, len, "%.1f", config->getHumiComfortableHigh()); return true; }
+    if (strcmp(key, "HUMI_ACCEPTABLE_LOW") == 0) { snprintf(buf, len, "%.1f", config->getHumiAcceptableLow()); return true; }
+    if (strcmp(key, "HUMI_ACCEPTABLE_HIGH") == 0) { snprintf(buf, len, "%.1f", config->getHumiAcceptableHigh()); return true; }
+    return false;
+  });
   logger.info("Served climate config page");
 }
 
 void WebServerManager::handleConfigSystem() {
   ConfigManagerAccessor config;
-  String html;
-  html.reserve(3072);
-  html = config_system_html;
-  html.replace("%FIRMWARE_VERSION%", _firmware_version);
-
-  html.replace("%INACTIVITY_TIMER_DELAY%",
-               String(config->getInactivityTimerDelay()));
-  html.replace("%WIFI_SSID%", String(config->getWifiSsid()));
-  html.replace("%WIFI_PASSWORD%", String(config->getWifiPassword()));
-  html.replace("%MQTT_HOST%", String(config->getMqttHost()));
-  html.replace("%MQTT_PORT%", String(config->getMqttPort()));
-  html.replace("%MQTT_USER%", String(config->getMqttUser()));
-  html.replace("%MQTT_PASSWORD%", String(config->getMqttPassword()));
-  html.replace("%MQTT_DEVICE_ID%", String(config->getMqttDeviceId()));
-  html.replace("%MQTT_DEVICE_NAME%", String(config->getMqttDeviceName()));
-
-  server.sendHeader("Connection", "close");
-  server.send(200, "text/html", html);
+  streamTemplate(config_system_html, [&](const char *key, char *buf, size_t len) -> bool {
+    if (strcmp(key, "FIRMWARE_VERSION") == 0) {
+      snprintf(buf, len, "%s", _firmware_version);
+      return true;
+    }
+    AppLogLevel currentLevel = config->getLogLevel();
+    if (strcmp(key, "LOG_DEBUG_SEL") == 0) { if (currentLevel == APP_LOG_DEBUG) snprintf(buf, len, " selected"); return true; }
+    if (strcmp(key, "LOG_INFO_SEL") == 0) { if (currentLevel == APP_LOG_INFO) snprintf(buf, len, " selected"); return true; }
+    if (strcmp(key, "LOG_WARN_SEL") == 0) { if (currentLevel == APP_LOG_WARNING) snprintf(buf, len, " selected"); return true; }
+    if (strcmp(key, "LOG_ERROR_SEL") == 0) { if (currentLevel == APP_LOG_ERROR) snprintf(buf, len, " selected"); return true; }
+    uint8_t currentBrightness = UITask::getInstance().get_brightness();
+    if (strcmp(key, "DISPLAY_BRIGHTNESS") == 0) { snprintf(buf, len, "%u", currentBrightness); return true; }
+    if (strcmp(key, "BACKLIGHT_ON_SEL") == 0) { if (currentBrightness > 0) snprintf(buf, len, " selected"); return true; }
+    if (strcmp(key, "BACKLIGHT_OFF_SEL") == 0) { if (currentBrightness == 0) snprintf(buf, len, " selected"); return true; }
+    if (strcmp(key, "INACTIVITY_TIMER_DELAY") == 0) { snprintf(buf, len, "%u", config->getInactivityTimerDelay()); return true; }
+    if (strcmp(key, "WIFI_SSID") == 0) { snprintf(buf, len, "%s", config->getWifiSsid()); return true; }
+    if (strcmp(key, "WIFI_PASSWORD") == 0) { snprintf(buf, len, "%s", config->getWifiPassword()); return true; }
+    if (strcmp(key, "MQTT_HOST") == 0) { snprintf(buf, len, "%s", config->getMqttHost()); return true; }
+    if (strcmp(key, "MQTT_PORT") == 0) { snprintf(buf, len, "%u", config->getMqttPort()); return true; }
+    if (strcmp(key, "MQTT_USER") == 0) { snprintf(buf, len, "%s", config->getMqttUser()); return true; }
+    if (strcmp(key, "MQTT_PASSWORD") == 0) { snprintf(buf, len, "%s", config->getMqttPassword()); return true; }
+    if (strcmp(key, "MQTT_DEVICE_ID") == 0) { snprintf(buf, len, "%s", config->getMqttDeviceId()); return true; }
+    if (strcmp(key, "MQTT_DEVICE_NAME") == 0) { snprintf(buf, len, "%s", config->getMqttDeviceName()); return true; }
+    return false;
+  });
   logger.info("Served system config page");
+}
+
+void WebServerManager::handleConfigMaintenance() {
+  HomeAssistantManager *ha = HomeAssistantManager::getInstance();
+  bool autoCalState = ha ? ha->getScd30AutoCalState() : false;
+  uint16_t forceCalValue = ha ? ha->getScd30ForceCalValue() : 400;
+  if (forceCalValue == 0) forceCalValue = 400;
+
+  streamTemplate(config_maintenance_html, [&](const char *key, char *buf, size_t len) -> bool {
+    if (strcmp(key, "FIRMWARE_VERSION") == 0) {
+      snprintf(buf, len, "%s", _firmware_version);
+      return true;
+    }
+    if (strcmp(key, "SCD30_AUTOCAL_ON_SEL") == 0) {
+      if (autoCalState) snprintf(buf, len, " selected");
+      return true;
+    }
+    if (strcmp(key, "SCD30_AUTOCAL_OFF_SEL") == 0) {
+      if (!autoCalState) snprintf(buf, len, " selected");
+      return true;
+    }
+    if (strcmp(key, "SCD30_FORCECAL") == 0) {
+      snprintf(buf, len, "%u", forceCalValue);
+      return true;
+    }
+    if (strcmp(key, "SPS30_INFO") == 0) {
+      buf[0] = '\0';
+      return true;
+    }
+    if (strcmp(key, "SGP41_RESULT") == 0) {
+      buf[0] = '\0';
+      return true;
+    }
+    return false;
+  });
+  logger.info("Served sensor maintenance config page");
 }
 
 void WebServerManager::handleNotFound() {

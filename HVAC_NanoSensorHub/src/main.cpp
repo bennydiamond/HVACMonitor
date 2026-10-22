@@ -13,6 +13,7 @@
 #include <sps30.h>
 #include <SensirionI2cScd30.h>
 #include <SensirionI2CSgp41.h>
+#include "SensorDefines.h"
 
 #ifndef MINICORE
 #error "This project requires the Minicore AVR core for Arduino."
@@ -113,10 +114,11 @@ const unsigned long SCD30_INVALIDATE_TIMEOUT_MS = 60000;
 
 // --- Sensor Calculation Constants ---
 #define SHUNT_RESISTOR 150.0f
-#define NUM_SAMPLES    1000
+#define AC_MAINS_FREQ_HZ 60 // 60 Hz mains frequency (North America)
 #define FAN_CT_VOLTS_PER_AMP         (1.0f / 10.0f)   // 0.1 V/A, e.g. 1V at 10A
 #define COMPRESSOR_CT_VOLTS_PER_AMP (1.0f / 30.0f)   // 0.0333 V/A, SCT-013-030: 1V at 30A
 #define GEOTHERMAL_PUMP_CT_VOLTS_PER_AMP (1.0f / 5.0f)    // 0.2 V/A, 5A CT clamp: 1V at 5A
+const uint8_t PRESSURE_ADC_NUM_SAMPLES = 4;
 
 // --- Buffer Sizes ---
 #define MAX_COMMAND_LEN 150
@@ -167,22 +169,17 @@ uint8_t current_adc_channel = ADC_PRESSURE;
 unsigned long last_adc_read_time = 0;
 const unsigned long ADC_READ_INTERVAL_MS = 10; // 10ms between ADC reads
 
-// --- RMS calculation variables ---
-long fan_ct_sum_of_squares = 0;
-long fan_ct_sum_of_samples = 0;
-uint16_t fan_ct_sample_count = 0;
-long compressor_ct_sum_of_squares = 0;
-long compressor_ct_sum_of_samples = 0;
-uint16_t compressor_ct_sample_count = 0;
-long geothermal_pump_ct_sum_of_squares = 0;
-long geothermal_pump_ct_sum_of_samples = 0;
-uint16_t geothermal_pump_ct_sample_count = 0;
-const uint16_t RMS_SAMPLE_COUNT = NUM_SAMPLES;
+// --- CT Clamp Burst Sample Duration ---
+const unsigned long CT_BURST_DURATION_US = (2000000UL / AC_MAINS_FREQ_HZ); // 2 full cycles (33,333 us for 60 Hz)
 
 // --- Rolling average variables for CO sensor ---
-const float CO_EMA_ALPHA = 0.4f; // Smoothing factor (0.1 = 10% new data, 90% old average)
+const float CO_EMA_ALPHA = 0.3f; // Smoothing factor (0.3 = 30% new data, 70% old average)
 float co_adc_ema = 0.0f; // Exponential moving average
 bool co_adc_ema_initialized = false;
+
+// --- Geiger stale timeout variables ---
+const unsigned long GEIGER_STALE_TIMEOUT_MS = 4500;
+unsigned long last_geiger_poll_time = 0;
 
 // --- Forward Declarations ---
 unsigned long read_all_sensors();
@@ -194,6 +191,7 @@ bool checkAndRecoverI2C();
 void checkAndReportI2cTimeout();
 void send_error_response(const char* error_msg PROGMEM);
 void read_single_adc_channel();
+float read_ct_clamp_rms(uint8_t pin, float volts_per_amp);
 
 // ======================================================================
 
@@ -237,6 +235,37 @@ void blink_error_code(uint8_t blinks) {
 //  ROUND-ROBIN ADC READING
 // ======================================================================
 
+float read_ct_clamp_rms(uint8_t pin, float volts_per_amp) {
+  // Settle ADC multiplexer after channel switch
+  analogRead(pin);
+  delayMicroseconds(20);
+
+  unsigned long start_time = micros();
+  long sum_samples = 0;
+  long sum_squares = 0;
+  uint16_t sample_count = 0;
+
+  // Sample densely across 2 full AC cycles (33.33 ms for 60 Hz) for true cycle-integrated RMS
+  while (micros() - start_time < CT_BURST_DURATION_US) {
+    int reading = analogRead(pin);
+    sum_samples += reading;
+    sum_squares += (long)reading * reading;
+    sample_count++;
+  }
+
+  if (sample_count == 0) return 0.0f;
+
+  float mean_of_samples = (float)sum_samples / sample_count;
+  float mean_of_squares = (float)sum_squares / sample_count;
+  float variance = mean_of_squares - (mean_of_samples * mean_of_samples);
+  if (variance < 0.0f) {
+    variance = 0.0f;
+  }
+  float rms_adc = sqrt(variance);
+  float voltage = rms_adc * (5.0f / 1023.0f);
+  return (voltage / volts_per_amp);
+}
+
 void read_single_adc_channel() {
   unsigned long current_time = millis();
   
@@ -248,77 +277,35 @@ void read_single_adc_channel() {
   last_adc_read_time = current_time;
   
   switch (current_adc_channel) {
-    case ADC_PRESSURE:
-      pressure_adc_raw = analogRead(PRESSURE_SENSOR_PIN);
-      break;
-      
-    case ADC_FAN_CT: {
-      int reading = analogRead(FAN_CT_CLAMP_PIN);
-      fan_ct_sum_of_samples += reading;
-      fan_ct_sum_of_squares += (long)reading * reading;
-      fan_ct_sample_count++;
-      
-      if (fan_ct_sample_count >= RMS_SAMPLE_COUNT) {
-        float mean_of_samples = (float)fan_ct_sum_of_samples / RMS_SAMPLE_COUNT;
-        float mean_of_squares = (float)fan_ct_sum_of_squares / RMS_SAMPLE_COUNT;
-        float variance = mean_of_squares - (mean_of_samples * mean_of_samples);
-        float rms_adc = sqrt(variance);
-        float voltage = rms_adc * (5.0 / 1023.0);
-        fan_amps = voltage / FAN_CT_VOLTS_PER_AMP;
-        
-        // Reset for next calculation
-        fan_ct_sum_of_squares = 0;
-        fan_ct_sum_of_samples = 0;
-        fan_ct_sample_count = 0;
+    case ADC_PRESSURE: {
+      // Discard first reading after switching to settle S/H capacitor, then average readings
+      analogRead(PRESSURE_SENSOR_PIN);
+      delayMicroseconds(20);
+      uint16_t sum = 0;
+      for (uint8_t i = 0; i < PRESSURE_ADC_NUM_SAMPLES; i++) {
+        sum += analogRead(PRESSURE_SENSOR_PIN);
       }
+      // Integer division rounding: adding half the divisor (N/2) rounds to nearest integer
+      pressure_adc_raw = (sum + (PRESSURE_ADC_NUM_SAMPLES / 2)) / PRESSURE_ADC_NUM_SAMPLES;
       break;
     }
+      
+    case ADC_FAN_CT:
+      fan_amps = read_ct_clamp_rms(FAN_CT_CLAMP_PIN, FAN_CT_VOLTS_PER_AMP);
+      break;
     
-    case ADC_COMPRESSOR_CT: {
-      int reading = analogRead(COMPRESSOR_CT_CLAMP_PIN);
-      compressor_ct_sum_of_samples += reading;
-      compressor_ct_sum_of_squares += (long)reading * reading;
-      compressor_ct_sample_count++;
-      
-      if (compressor_ct_sample_count >= RMS_SAMPLE_COUNT) {
-        float mean_of_samples = (float)compressor_ct_sum_of_samples / RMS_SAMPLE_COUNT;
-        float mean_of_squares = (float)compressor_ct_sum_of_squares / RMS_SAMPLE_COUNT;
-        float variance = mean_of_squares - (mean_of_samples * mean_of_samples);
-        float rms_adc = sqrt(variance);
-        float voltage = rms_adc * (5.0 / 1023.0);
-        compressor_amps = voltage / COMPRESSOR_CT_VOLTS_PER_AMP;
-        
-        // Reset for next calculation
-        compressor_ct_sum_of_squares = 0;
-        compressor_ct_sum_of_samples = 0;
-        compressor_ct_sample_count = 0;
-      }
+    case ADC_COMPRESSOR_CT:
+      compressor_amps = read_ct_clamp_rms(COMPRESSOR_CT_CLAMP_PIN, COMPRESSOR_CT_VOLTS_PER_AMP);
       break;
-    }
     
-    case ADC_GEOTHERMAL_PUMP_CT: {
-      int reading = analogRead(GEOTHERMAL_PUMP_CT_CLAMP_PIN);
-      geothermal_pump_ct_sum_of_samples += reading;
-      geothermal_pump_ct_sum_of_squares += (long)reading * reading;
-      geothermal_pump_ct_sample_count++;
-      
-      if (geothermal_pump_ct_sample_count >= RMS_SAMPLE_COUNT) {
-        float mean_of_samples = (float)geothermal_pump_ct_sum_of_samples / RMS_SAMPLE_COUNT;
-        float mean_of_squares = (float)geothermal_pump_ct_sum_of_squares / RMS_SAMPLE_COUNT;
-        float variance = mean_of_squares - (mean_of_samples * mean_of_samples);
-        float rms_adc = sqrt(variance);
-        float voltage = rms_adc * (5.0 / 1023.0);
-        geothermal_pump_amps = voltage / GEOTHERMAL_PUMP_CT_VOLTS_PER_AMP;
-        
-        // Reset for next calculation
-        geothermal_pump_ct_sum_of_squares = 0;
-        geothermal_pump_ct_sum_of_samples = 0;
-        geothermal_pump_ct_sample_count = 0;
-      }
+    case ADC_GEOTHERMAL_PUMP_CT:
+      geothermal_pump_amps = read_ct_clamp_rms(GEOTHERMAL_PUMP_CT_CLAMP_PIN, GEOTHERMAL_PUMP_CT_VOLTS_PER_AMP);
       break;
-    }
     
     case ADC_CO_SENSOR: {
+      // Discard first reading after switching multiplexer to high-impedance CO op-amp channel to allow S/H capacitor to settle
+      analogRead(CO_SENSOR_PIN);
+      delayMicroseconds(50);
       uint16_t reading = analogRead(CO_SENSOR_PIN);
       
       // Update EMA (floating-point version)
@@ -398,6 +385,7 @@ void setup() {
     pinMode(COMPRESSOR_CT_CLAMP_PIN, INPUT);
     pinMode(GEOTHERMAL_PUMP_CT_CLAMP_PIN, INPUT);
     pinMode(CO_SENSOR_PIN, INPUT);
+    last_geiger_poll_time = millis();
 }
 
 // ======================================================================
@@ -414,6 +402,14 @@ void loop() {
 
   unsigned long current_time = millis();
 
+  // Reset geiger pulse count if no query received for 4.5 seconds (e.g. ESP32 rebooting or disconnected)
+  if (current_time - last_geiger_poll_time >= GEIGER_STALE_TIMEOUT_MS) {
+    noInterrupts();
+    geiger_pulse_count = 0;
+    interrupts();
+    last_geiger_poll_time = current_time;
+  }
+
   // Periodic I2C bus health check (every 10 seconds)
   if (current_time - last_i2c_check_time >= 10000) {
     last_i2c_check_time = current_time;
@@ -422,15 +418,14 @@ void loop() {
     }
   }
 
-  // Read one ADC channel per loop iteration (round-robin)
-  read_single_adc_channel();
-
+  // Timeout check for incomplete incoming commands before reading new serial bytes
   if (in_command && (current_time - command_start_time > COMMAND_TIMEOUT_MS)) {
     in_command = false;
     command_len = 0;
   }
 
-  if (Serial.available() > 0) {
+  // Process incoming serial data with priority until end-of-frame '>'
+  while (Serial.available() > 0) {
     char c = Serial.read();
 
     if (c == '<') {
@@ -443,6 +438,8 @@ void loop() {
         process_command(command_buffer);
       }
       in_command = false;
+      command_len = 0;
+      break; // End of frame received: exit loop so serial chatter does not starve main loop
     } else if (in_command) {
       if (command_len < (sizeof(command_buffer) - 1)) {
         command_buffer[command_len++] = c;
@@ -451,6 +448,11 @@ void loop() {
         command_len = 0;
       }
     }
+  }
+
+  // Read one ADC channel per round-robin tick only when not assembling a serial command
+  if (!in_command) {
+    read_single_adc_channel();
   }
 }
 
@@ -500,8 +502,18 @@ unsigned long read_all_sensors() {
     current_humi = NAN;
   }
   
-  uint16_t rh = static_cast<uint16_t>(current_humi * 65535.0f / 100.0f);
-  uint16_t temp = static_cast<uint16_t>((current_temp_c + 45.0f) * 65535.0f / 175.0f);
+  bool scd30_has_data = (last_scd30_update > 0 && !isnan(current_temp_c) && !isnan(current_humi));
+  bool scd30_warmup_expired = (millis() >= SCD30_WARMUP_TIMEOUT_MS);
+
+  uint16_t rh = SGP41_DEFAULT_RH_TICKS;
+  uint16_t temp = SGP41_DEFAULT_TEMP_TICKS;
+
+  if (scd30_has_data && current_humi >= SCD30_HUMI_MIN_VALID_PCT && current_humi <= SCD30_HUMI_MAX_VALID_PCT) {
+    rh = static_cast<uint16_t>(current_humi * 65535.0f / 100.0f);
+  }
+  if (scd30_has_data && current_temp_c >= SCD30_TEMP_MIN_VALID_C && current_temp_c <= SCD30_TEMP_MAX_VALID_C) {
+    temp = static_cast<uint16_t>((current_temp_c + 45.0f) * 65535.0f / 175.0f);
+  }
 
   if (conditioning_s > 0) {
     Wire.setClock(I2C_FAST_SPEED);
@@ -510,6 +522,7 @@ unsigned long read_all_sensors() {
       send_error_response(E_SGP41_CONDITIONING_ERROR_1);
     }
     conditioning_s--;
+    current_nox_raw = 0;
   } else {
     temp_uval = sgp41_sensor.measureRawSignals(rh, temp, current_voc_raw, current_nox_raw);
     if (temp_uval != 0) {
@@ -517,8 +530,8 @@ unsigned long read_all_sensors() {
     }
   }
   Wire.setClock(I2C_NORMAL_SPEED);
-  
-  if (temp_uval) {
+
+  if (temp_uval != 0 || conditioning_s > 0 || (!scd30_has_data && !scd30_warmup_expired)) {
     current_voc_raw = 0;
     current_nox_raw = 0;
   }
@@ -536,12 +549,13 @@ void send_data_packet(unsigned long timestamp) {
   pulse_count = geiger_pulse_count;
   geiger_pulse_count = 0;
   interrupts();
+  last_geiger_poll_time = millis();
 
   bool liquid_level_sensor_state = digitalRead(LIQUID_LEVEL_SENSOR_PIN);
   
-  long t_val = (long)(current_temp_c * 10);
-  long h_val = (long)(current_humi * 10);
-  long co2_val = (long)current_co2;
+  long t_val = isnan(current_temp_c) ? 0 : (long)(current_temp_c * 10);
+  long h_val = isnan(current_humi) ? 0 : (long)(current_humi * 10);
+  long co2_val = isnan(current_co2) ? 0 : (long)current_co2;
   long amps_val = (long)(fan_amps * 100);
   long pm1_val = (long)(current_sps_data.mc_1p0 * 10);
   long pm25_val = (long)(current_sps_data.mc_2p5 * 10);

@@ -2,18 +2,21 @@
 
 // System, Wi-Fi and MQTT configuration page
 const char *config_system_html =
-    R"rawliteral(<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>System & MQTT Configuration</title><link rel="stylesheet" href="/style.css?v=%FIRMWARE_VERSION%"><script src="/app.js?v=%FIRMWARE_VERSION%"></script></head><body><div class="container"><h1>System, Wi-Fi & MQTT Configuration</h1><div class="nav"><a href="/">OTA Update</a><a href="/config">← Back to Config</a></div>
+    R"rawliteral(<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>System & MQTT Configuration</title><link rel="stylesheet" href="/style.css?v=%FIRMWARE_VERSION%"><script src="/app.js?v=%FIRMWARE_VERSION%"></script></head><body><div class="container"><div class="header"><div class="brand">HVAC & IAQ Monitor</div><div class="nav"><a href="/">Dashboard</a><a href="/config">← Settings Hub</a><a href="/ota">OTA Update</a></div></div>
 <div class="config-section"><h2>System Configuration</h2>
 <div class="config-row"><div class="config-label">Inactivity Timer Delay (seconds):</div><div class="config-input"><input type="number" id="inactivity_timer_delay_input" value="%INACTIVITY_TIMER_DELAY%" min="5" max="120" step="5"></div><button class="config-button" onclick="updateThreshold('inactivity','timer_delay')" id="inactivity_timer_delay_button">Set</button></div><div id="inactivity_timer_delay_status" class="status"></div>
+<div class="config-row"><div class="config-label">System Log Level:</div><div class="config-input"><select id="log_level_input"><option value="0"%LOG_DEBUG_SEL%>Debug</option><option value="1"%LOG_INFO_SEL%>Info</option><option value="2"%LOG_WARN_SEL%>Warning</option><option value="3"%LOG_ERROR_SEL%>Error</option></select></div><button class="config-button" onclick="updateThreshold('log','level')" id="log_level_button">Set</button></div><div id="log_level_status" class="status"></div>
+<div class="config-row"><div class="config-label">Display Backlight:</div><div class="config-input"><select id="display_backlight_input"><option value="1"%BACKLIGHT_ON_SEL%>On</option><option value="0"%BACKLIGHT_OFF_SEL%>Off</option></select></div><button class="config-button" onclick="updateThreshold('display','backlight')" id="display_backlight_button">Set</button></div><div id="display_backlight_status" class="status"></div>
+<div class="config-row"><div class="config-label">Display Brightness (0-255):</div><div class="config-input"><input type="number" id="display_brightness_input" value="%DISPLAY_BRIGHTNESS%" min="0" max="255"></div><button class="config-button" onclick="updateThreshold('display','brightness')" id="display_brightness_button">Set</button></div><div id="display_brightness_status" class="status"></div>
 </div>
-<div class="config-section"><h2>Wi-Fi Configuration</h2><p style="color:#666;margin-bottom:15px">Updating Wi-Fi credentials will save them to NVS and reboot the device to connect to the new network.</p>
+<div class="config-section"><h2>Wi-Fi Configuration</h2><p style="color:var(--text-muted);margin-bottom:15px">Updating Wi-Fi credentials will save them to NVS and reboot the device to connect to the new network.</p>
 <div class="config-row"><div class="config-label">Wi-Fi SSID:</div><div class="config-input"><input type="text" id="wifi_ssid_input" value="%WIFI_SSID%" maxlength="32"></div></div>
 <div class="config-row"><div class="config-label">Wi-Fi Password:</div><div class="config-input"><input type="password" id="wifi_password_input" value="%WIFI_PASSWORD%" maxlength="64"></div></div>
 <button class="save-button" onclick="saveWifiConfig()" id="wifi-save-button">Save Wi-Fi Configuration</button>
 <div id="wifi-save-status" class="status"></div>
 <div id="wifi-reboot-message" class="reboot-message" style="display:none">Device will reboot in 3 seconds to connect to the new network...</div>
 </div>
-<div class="config-section"><h2>MQTT Device Configuration</h2><p style="color:#666;margin-bottom:15px">Changes to these settings will require a device reboot to take effect.</p>
+<div class="config-section"><h2>MQTT Device Configuration</h2><p style="color:var(--text-muted);margin-bottom:15px">Changes to these settings will require a device reboot to take effect.</p>
 <div class="config-row"><div class="config-label">MQTT Host:</div><div class="config-input"><input type="text" id="mqtt_host_input" value="%MQTT_HOST%" maxlength="63"></div></div>
 <div class="config-row"><div class="config-label">MQTT Port:</div><div class="config-input"><input type="number" id="mqtt_port_input" value="%MQTT_PORT%" min="1" max="65535"></div></div>
 <div class="config-row"><div class="config-label">MQTT Username:</div><div class="config-input"><input type="text" id="mqtt_user_input" value="%MQTT_USER%" maxlength="31"></div></div>
@@ -24,4 +27,7 @@ const char *config_system_html =
 <div id="mqtt-save-status" class="status"></div>
 <div id="reboot-message" class="reboot-message" style="display:none">Device will reboot in 3 seconds...</div>
 </div>
+<div class="config-section"><h2>System Actions</h2><p style="color:var(--text-muted);margin-bottom:15px">Reboot the ESP32 monitor device immediately.</p>
+<button class="save-button" style="background:#dc3545" onclick="triggerAction('reboot_esp32','reboot-esp32-btn','reboot-esp32-status')" id="reboot-esp32-btn">Reboot Device</button>
+<div id="reboot-esp32-status" class="status"></div>
 </div></body></html>)rawliteral";

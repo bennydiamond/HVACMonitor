@@ -12,17 +12,17 @@ public:
     // Add a new pulse count sample
     void addSample(uint16_t pulseCount);
     
-    // Get the calculated CPM
+    // Get the calculated CPM (-1 if buffer is not yet full / warming up)
     int getCPM() const;
     
-    // Get the calculated radiation dose in µSv/h
+    // Get the calculated radiation dose in µSv/h (-1.0f if buffer is not yet full / warming up)
     float getDoseRate() const;
     
     // Check if radiation level is high and log warning if needed
     // Returns true if radiation level is high
     bool checkAndLogHighRadiation();
     
-    // Check if we have enough data for calculations
+    // Check if we have enough data for calculations (requires full buffer window to prevent boot spikes)
     bool hasValidData() const;
 
 private:

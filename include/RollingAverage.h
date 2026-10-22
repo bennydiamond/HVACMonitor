@@ -6,27 +6,19 @@
 template<typename T = float>
 class RollingAverage {
 public:
-    // Time window in milliseconds (30 minutes)
-    static const unsigned long WINDOW_MS = 30 * 60 * 1000;
-
     /**
      * @brief Construct a new Rolling Average object.
      * @param num_samples The maximum number of samples to store in the history buffer.
      */
     explicit RollingAverage(size_t num_samples = 64)
         : max_samples(num_samples),
-          history(new DataPoint[num_samples]),
+          history(new T[num_samples]),
           count(0),
           head(0),
           tail(0),
-          lastValue(0)
+          lastValue(0),
+          running_sum(0.0)
     {
-        // It's good practice to check if the allocation was successful,
-        // though on ESP32 a failed 'new' will likely cause a reboot.
-        if (history == nullptr) {
-            // Handle memory allocation failure, e.g., by logging an error.
-            // On an embedded system, this is a critical failure.
-        }
     }
 
     /**
@@ -41,60 +33,61 @@ public:
     RollingAverage(const RollingAverage&) = delete;
     RollingAverage& operator=(const RollingAverage&) = delete;
 
-
     /**
      * @brief Adds a new value to the data set.
-     * It removes values older than the time window and also removes the oldest values if the sample limit is exceeded.
+     * Overwrites the oldest sample once the buffer capacity is reached.
+     * Maintains running_sum for O(1) constant-time average computation.
      * @param newValue The new value to add.
      */
     void add(T newValue) {
-        // Ensure history is valid before proceeding
         if (history == nullptr) return;
 
-        unsigned long currentTime = millis();
-        this->lastValue = newValue; // Cache the latest value
-
-        // Add the new data point
-        history[head] = {currentTime, newValue};
-        head = (head + 1) % max_samples;
-        
-        // Increase count if not full yet
-        if (count < max_samples) {
-            count++;
-        } else {
-            // Buffer is full, the oldest value is overwritten, so move tail forward
-            tail = (tail + 1) % max_samples;
+        // Reject NaN and Inf values to prevent poisoning running_sum
+        double doubleVal = static_cast<double>(newValue);
+        if (isnan(doubleVal) || isinf(doubleVal)) {
+            return;
         }
 
-        // Remove old data points that are outside the time window
-        unsigned long cutoffTime = currentTime - WINDOW_MS;
-        while (count > 0 && history[tail].timestamp < cutoffTime) {
+        this->lastValue = newValue;
+
+        // If buffer is already at max capacity, subtract the oldest value before overwriting
+        if (count >= max_samples) {
+            running_sum -= static_cast<double>(history[tail]);
             tail = (tail + 1) % max_samples;
             count--;
+        }
+
+        // Add the new sample at head
+        history[head] = newValue;
+        head = (head + 1) % max_samples;
+        running_sum += doubleVal;
+        count++;
+
+        // Clean reset when empty
+        if (count == 0) {
+            running_sum = 0.0;
+        } else if (head == 0) {
+            // Periodic drift recalibration on ring buffer cycle
+            double exact_sum = 0.0;
+            size_t pos = tail;
+            for (size_t i = 0; i < count; i++) {
+                exact_sum += static_cast<double>(history[pos]);
+                pos = (pos + 1) % max_samples;
+            }
+            running_sum = exact_sum;
         }
     }
 
     /**
-     * @brief Calculates and returns the current average of the values within the time window.
+     * @brief Calculates and returns the current average of the values in the buffer.
+     * Runs in O(1) constant time using the tracked running sum.
      * @return The calculated rolling average.
      */
-    T getAverage() {
-        // Ensure history is valid and not empty
-        if (history == nullptr || count == 0) {
+    T getAverage() const {
+        if (history == nullptr || count == 0 || isnan(running_sum)) {
             return this->lastValue; // Return the last known value to avoid division by zero.
         }
-
-        // Sum all the values currently in the history
-        // Use double for precision regardless of T type
-        double sum = 0.0;
-        size_t current_pos = tail;
-        for (size_t i = 0; i < count; i++) {
-            sum += static_cast<double>(history[current_pos].value);
-            current_pos = (current_pos + 1) % max_samples;
-        }
-
-        // Return the calculated average, cast back to T
-        return static_cast<T>(sum / count);
+        return static_cast<T>(running_sum / count);
     }
 
     /**
@@ -102,23 +95,34 @@ public:
      * @return True if the history buffer is empty, false otherwise.
      */
     bool isEmpty() const {
-        // Check if the history buffer is empty
         return count == 0;
     }
 
-private:
-    // A structure to hold a sensor value and its timestamp.
-    struct DataPoint {
-        unsigned long timestamp;
-        T value;
-    };
+    /**
+     * @brief Returns the number of valid samples currently in the buffer.
+     */
+    size_t getCount() const {
+        return count;
+    }
 
+    /**
+     * @brief Clears the history buffer and resets the running sum.
+     */
+    void clear() {
+        count = 0;
+        head = 0;
+        tail = 0;
+        running_sum = 0.0;
+    }
+
+private:
     size_t max_samples;             // The maximum number of samples for this instance
-    DataPoint* history;             // Pointer to the dynamically allocated history buffer
+    T* history;                     // Pointer to the dynamically allocated history buffer
     size_t count;                   // Current number of valid samples in the buffer
     size_t head;                    // Index where the next sample will be written
     size_t tail;                    // Index of the oldest sample in the buffer
     T lastValue;                    // Caches the most recent value for immediate access
+    double running_sum;             // Running sum of valid samples in history buffer
 };
 
 #endif // ROLLING_AVERAGE_H

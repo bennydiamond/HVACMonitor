@@ -2,6 +2,7 @@
 
 #include <ArduinoHA.h>
 #include <WiFi.h>
+#include "Logger.h"
 
 // Forward declarations to avoid circular dependencies
 class LGFX;
@@ -12,6 +13,8 @@ public:
     HomeAssistantManager();
     ~HomeAssistantManager();
     
+    static HomeAssistantManager* getInstance() { return _instance; }
+
     void init(const char* firmware_version);
     void loop();
 
@@ -22,7 +25,8 @@ public:
         float amps,
         float pm1, float pm25, float pm4, float pm10,
         float compressor_amps, float geothermal_pump_amps, bool liquid_level_sensor_state,
-        float co_ppm
+        float co_ppm,
+        float filter_pressure = 0.0f
     );
     void publish_O3_NOx_Values(
         float o3_conc_ug_per_m3, float no2_conc_ug_per_m3, 
@@ -54,9 +58,15 @@ public:
     void publishNanoResetCause(const char* cause);
     void updateScd30AutoCalState(bool state);
     void updateScd30ForceCalValue(uint16_t value);
+    bool getScd30AutoCalState() const { return _scd30AutoCalSwitch.getCurrentState(); }
+    uint16_t getScd30ForceCalValue() const { return _scd30ForceCalNumber.getCurrentState().toUInt16(); }
+    bool getBacklightState() const { return _backlight.getCurrentState(); }
+    uint8_t getBacklightBrightness() const { return _backlight.getCurrentBrightness(); }
+    void updateBacklightState(bool state, uint8_t brightness);
     void publishEsp32FreeRam(uint32_t free_ram);
     void publishEsp32Uptime(uint32_t uptime_seconds);
-    void updateInactivityTimerDelayState();
+    void updateInactivityTimerDelayState(bool force = false);
+    void updateLogLevelState(AppLogLevel level);
 
 private:
     // MQTT and Home Assistant objects
@@ -66,6 +76,7 @@ private:
 
     // Home Assistant Entities
     HASensor _pressureSensor;
+    HASensor _filterPressureSensor;
     HALight _backlight;
     HASensorNumber _wifi_rssi;
     HASensor _wifi_ssid;
@@ -161,8 +172,15 @@ private:
     unsigned long _lastLiquidLevelPublishTime;
     unsigned long _lastInactivityTimerDelayPublishTime;
 
+    float _lastPublishedFilterPressure;
+    unsigned long _lastFilterPressurePublishTime;
+
+    // Sized to fit max IPv6 URL: "http://[39-char-addr]:65535" (54 chars + null = 55 bytes, 56 aligned)
+    char _configurationUrl[56];
+
     // Private sensor publish helpers
     void publishDifferentialPressure(float pressure, unsigned long currentTime);
+    void publishFilterPressure(float filter_pressure, unsigned long currentTime);
     void publishGeiger(int cpm, unsigned long currentTime);
     void publishTemperature(float temp, unsigned long currentTime);
     void publishHumidity(float humi, unsigned long currentTime);

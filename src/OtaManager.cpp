@@ -2,6 +2,7 @@
 #include "OtaManager.h"
 #include "Logger.h"
 #include "UITask.h"
+#include "RebootManager.h"
 
 void OtaManager::init() {
     ArduinoOTA.setHostname("hvac-sensor-display");
@@ -18,7 +19,8 @@ void OtaManager::init() {
     });
 
     ArduinoOTA.onEnd([]() {
-        logger.info("OTA update finished successfully.");
+        logger.info("OTA update finished successfully. Flushing states before reboot...");
+        RebootManager::getInstance().prepareForOta("ArduinoOTA");
     });
 
     ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {

@@ -1,5 +1,6 @@
 #include "ui/tiles/ui_main_tile.h"
 #include "ui/custom_icons.h"
+#include "SensorDefines.h"
 
 UIMainTile::UIMainTile() :
 tile_obj(nullptr),
@@ -188,6 +189,12 @@ void UIMainTile::update_pressure(float p) {
 }
 
 void UIMainTile::update_co2(float co2) {
+    if (!isValidCO2(co2)) {
+        ui_set_label_text(co2_label, "-- ppm");
+        ui_set_text_color(co2_label, COLOR_MID);
+        ui_set_text_color(co2_icon, COLOR_MID);
+        return;
+    }
     ui_set_label_text_fmt(co2_label, "%.0f ppm", co2);
     lv_color_t color;
     ConfigManagerAccessor config;
@@ -199,6 +206,12 @@ void UIMainTile::update_co2(float co2) {
 }
 
 void UIMainTile::update_voc(int32_t voc) {
+    if (!isValidGasIndex(voc)) {
+        ui_set_label_text(voc_label, "VOC: --");
+        ui_set_text_color(voc_label, COLOR_MID);
+        ui_set_text_color(voc_icon, COLOR_MID);
+        return;
+    }
     ui_set_label_text_fmt(voc_label, "VOC: %d", (int)voc);
     lv_color_t color;
     ConfigManagerAccessor config;

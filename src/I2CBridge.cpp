@@ -189,22 +189,17 @@ I2CBridge::Result I2CBridge::readBytes(uint8_t addr, uint8_t len) {
         
         // Wait for response with timeout
         if (xQueueReceive(_response_queue, &result, pdMS_TO_TICKS(1000)) == pdTRUE) {
+#ifdef I2C_BRIDGE_DEBUG
             // Log the received data
             if (result.data_len > 0) {
-                String hexData;
-                for (int i = 0; i < result.data_len; i++) {
-                    if (i > 0) hexData += " ";
-                    char hex[4];
-                    sprintf(hex, "%02X", result.data[i]);
-                    hexData += hex;
+                char hexData[100];
+                size_t offset = 0;
+                for (int i = 0; i < result.data_len && offset + 4 < sizeof(hexData); i++) {
+                    offset += snprintf(hexData + offset, sizeof(hexData) - offset, (i == 0) ? "%02X" : " %02X", result.data[i]);
                 }
-#ifdef I2C_BRIDGE_DEBUG
                 logger.debugf("I2CBridge: Read response received - addr=0x%02X, status=%d, data=%s, attempt=%d", 
-                             addr, result.error_code, hexData.c_str(), attempt + 1);
-#endif
-            } 
-#ifdef I2C_BRIDGE_DEBUG
-            else {
+                             addr, result.error_code, hexData, attempt + 1);
+            } else {
                 logger.debugf("I2CBridge: Read response received - addr=0x%02X, status=%d, no data, attempt=%d", 
                              addr, result.error_code, attempt + 1);
             }
@@ -240,16 +235,14 @@ I2CBridge::Result I2CBridge::writeBytes(uint8_t addr, uint8_t* data, uint8_t len
         // Send the write request to the Nano
         send_i2c_write_request(addr, data, len);
 
-        // Log the data being sent
-        String hexData;
-        for (int i = 0; i < len; i++) {
-            if (i > 0) hexData += " ";
-            char hex[4];
-            sprintf(hex, "%02X", data[i]);
-            hexData += hex;
-        }
 #ifdef I2C_BRIDGE_DEBUG
-        logger.debugf("I2CBridge: Waiting for write response (addr=0x%02X, data=%s, attempt=%d)", addr, hexData.c_str(), attempt + 1);
+        // Log the data being sent
+        char hexData[100];
+        size_t offset = 0;
+        for (int i = 0; i < len && offset + 4 < sizeof(hexData); i++) {
+            offset += snprintf(hexData + offset, sizeof(hexData) - offset, (i == 0) ? "%02X" : " %02X", data[i]);
+        }
+        logger.debugf("I2CBridge: Waiting for write response (addr=0x%02X, data=%s, attempt=%d)", addr, hexData, attempt + 1);
 #endif
         // Wait for response with timeout
         if (xQueueReceive(_response_queue, &result, pdMS_TO_TICKS(1000)) == pdTRUE) {
@@ -280,17 +273,15 @@ I2CBridge::Result I2CBridge::writeReadBytes(uint8_t addr, uint8_t* writeData, ui
     // Make sure the queue is empty before sending a new request
     xQueueReset(_response_queue);
     
-    // Log the write data
-    String writeHexData;
-    for (int i = 0; i < writeLen; i++) {
-        if (i > 0) writeHexData += " ";
-        char hex[4];
-        sprintf(hex, "%02X", writeData[i]);
-        writeHexData += hex;
-    }
 #ifdef I2C_BRIDGE_DEBUG
+    // Log the write data
+    char writeHexData[100];
+    size_t writeOffset = 0;
+    for (int i = 0; i < writeLen && writeOffset + 4 < sizeof(writeHexData); i++) {
+        writeOffset += snprintf(writeHexData + writeOffset, sizeof(writeHexData) - writeOffset, (i == 0) ? "%02X" : " %02X", writeData[i]);
+    }
     logger.debugf("I2CBridge: Sending write-read request (addr=0x%02X, writeData=%s, readLen=%d)", 
-                 addr, writeHexData.c_str(), readLen);
+                 addr, writeHexData, readLen);
 #endif
     // Send the write-read request to the Nano
     send_i2c_write_read_request(addr, writeData, writeLen, readLen);
@@ -300,22 +291,17 @@ I2CBridge::Result I2CBridge::writeReadBytes(uint8_t addr, uint8_t* writeData, ui
     uint32_t start_time = millis();
 #endif
     if (xQueueReceive(_response_queue, &result, pdMS_TO_TICKS(1000)) == pdTRUE) {
+#ifdef I2C_BRIDGE_DEBUG
         // Log the received data
         if (result.data_len > 0) {
-            String readHexData;
-            for (int i = 0; i < result.data_len; i++) {
-                if (i > 0) readHexData += " ";
-                char hex[4];
-                sprintf(hex, "%02X", result.data[i]);
-                readHexData += hex;
+            char readHexData[100];
+            size_t readOffset = 0;
+            for (int i = 0; i < result.data_len && readOffset + 4 < sizeof(readHexData); i++) {
+                readOffset += snprintf(readHexData + readOffset, sizeof(readHexData) - readOffset, (i == 0) ? "%02X" : " %02X", result.data[i]);
             }
-#ifdef I2C_BRIDGE_DEBUG
             logger.debugf("I2CBridge: Write-read response received (%u ms round trip) - addr=0x%02X, status=%d, data=%s", 
-                         millis() - start_time, addr, result.error_code, readHexData.c_str());
-#endif
-        } 
-#ifdef I2C_BRIDGE_DEBUG
-        else if (result.error_code == I2C_ERROR_NONE) {
+                         millis() - start_time, addr, result.error_code, readHexData);
+        } else if (result.error_code == I2C_ERROR_NONE) {
             logger.debugf("I2CBridge: Write-read response received (%u ms round trip) - addr=0x%02X, status=%d, no data", 
                          millis() - start_time, addr, result.error_code);
         } else {
@@ -354,21 +340,16 @@ void I2CBridge::processReadResponse(uint8_t status, uint8_t* data, uint8_t len) 
         logger.warningf("I2CBridge: Truncated read response data from %d to %d bytes", len, result.data_len);
     }
     
+#ifdef I2C_BRIDGE_DEBUG
     // Log the data being sent to the queue
     if (result.data_len > 0) {
-        String hexData;
-        for (int i = 0; i < result.data_len; i++) {
-            if (i > 0) hexData += " ";
-            char hex[4];
-            sprintf(hex, "%02X", result.data[i]);
-            hexData += hex;
+        char hexData[100];
+        size_t offset = 0;
+        for (int i = 0; i < result.data_len && offset + 4 < sizeof(hexData); i++) {
+            offset += snprintf(hexData + offset, sizeof(hexData) - offset, (i == 0) ? "%02X" : " %02X", result.data[i]);
         }
-#ifdef I2C_BRIDGE_DEBUG
-        logger.debugf("I2CBridge: Sending to queue - status: %d, data: %s", status, hexData.c_str());
-#endif
-    }
-#ifdef I2C_BRIDGE_DEBUG
-    else {
+        logger.debugf("I2CBridge: Sending to queue - status: %d, data: %s", status, hexData);
+    } else {
         logger.debugf("I2CBridge: Sending to queue - status: %d, no data", status);
     }
 #endif

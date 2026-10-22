@@ -21,53 +21,57 @@ void GeigerCounter::addSample(uint16_t pulseCount) {
 
 int GeigerCounter::getCPM() const {
     if (!hasValidData()) {
-        return 0;
+        return -1;
     }
     
-    // Calculate total pulses and time span
+    // Buffer is full (WINDOW_SIZE samples, spanning ~60s)
     uint32_t totalPulses = 0;
-    unsigned long startTime, endTime;
-    
-    if (bufferFull) {
-        // Buffer is full, use all samples
-        for (int i = 0; i < WINDOW_SIZE; i++) {
-            totalPulses += samples[i].pulseCount;
-        }
-        // Find oldest and newest timestamps
-        int oldestIdx = sampleIndex;
-        int newestIdx = (sampleIndex + WINDOW_SIZE - 1) % WINDOW_SIZE;
-        startTime = samples[oldestIdx].timestamp;
-        endTime = samples[newestIdx].timestamp;
-    } else {
-        // Buffer is partially filled
-        for (int i = 0; i < sampleIndex; i++) {
-            totalPulses += samples[i].pulseCount;
-        }
-        startTime = samples[0].timestamp;
-        endTime = samples[sampleIndex - 1].timestamp;
+    for (int i = 0; i < WINDOW_SIZE; i++) {
+        totalPulses += samples[i].pulseCount;
     }
+
+    // Find oldest and newest timestamps in circular buffer
+    int oldestIdx = sampleIndex; // sampleIndex is next write index, which holds oldest sample
+    int newestIdx = (sampleIndex + WINDOW_SIZE - 1) % WINDOW_SIZE;
+    unsigned long startTime = samples[oldestIdx].timestamp;
+    unsigned long endTime = samples[newestIdx].timestamp;
     
-    unsigned long timeSpanMs = endTime - startTime;
-    if (timeSpanMs == 0) {
+    unsigned long intervalSpanMs = endTime - startTime;
+    if (intervalSpanMs == 0) {
         return 0; // Avoid division by zero
     }
     
-    // Calculate CPM: (total pulses / time elapsed in ms) * 60,000 ms/min
-    float cpm = (float)totalPulses * 60000.0f / timeSpanMs;
+    // There are (WINDOW_SIZE - 1) intervals between oldest and newest timestamps.
+    // Since each sample represents pulses collected over its respective interval,
+    // the total time represented by all WINDOW_SIZE samples includes the oldest sample's interval:
+    // totalTimeSpanMs = intervalSpanMs * WINDOW_SIZE / (WINDOW_SIZE - 1)
+    float totalTimeSpanMs = (float)intervalSpanMs * (float)WINDOW_SIZE / (float)(WINDOW_SIZE - 1);
     
-    return (int)cpm;
+    // Calculate CPM: (total pulses / time elapsed in ms) * 60,000 ms/min
+    float cpm = (float)totalPulses * 60000.0f / totalTimeSpanMs;
+    
+    return (int)(cpm + 0.5f);
 }
 
 float GeigerCounter::getDoseRate() const {
+    if (!hasValidData()) {
+        return -1.0f;
+    }
     int cpm = getCPM();
+    if (cpm < 0) {
+        return -1.0f;
+    }
     return cpm * cpmToUsvFactor;
 }
 
 bool GeigerCounter::hasValidData() const {
-    return bufferFull || (sampleIndex > 0);
+    return bufferFull;
 }
 
 bool GeigerCounter::checkAndLogHighRadiation() {
+    if (!hasValidData()) {
+        return false;
+    }
     int cpm = getCPM();
     if (cpm > 3500) {
         logger.warningf("ALERT: Very high radiation level detected: %d CPM (>20 uSv/h)", cpm);

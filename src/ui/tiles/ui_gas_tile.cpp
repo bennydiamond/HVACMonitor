@@ -1,5 +1,6 @@
 #include "ui/tiles/ui_gas_tile.h"
 #include "ui/custom_icons.h"
+#include "SensorDefines.h"
 
 const int SCROLL_SPEED_MS_PX_SEC = 5;
 
@@ -154,6 +155,12 @@ void UIGasTile::update_o3(float o3) {
 }
 
 void UIGasTile::update_nox(float nox) {
+    if (!isValidGasIndex((int32_t)nox)) {
+        ui_set_label_text(nox_label, "NOx: --");
+        ui_set_text_color(nox_label, COLOR_MID);
+        ui_set_text_color(nox_icon, COLOR_MID);
+        return;
+    }
     ui_set_label_text_fmt(nox_label, "NOx: %.0f", nox);
     lv_color_t color;
     ConfigManagerAccessor config;
