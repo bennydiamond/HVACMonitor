@@ -215,7 +215,21 @@ void UITask::run() {
         uiUpdater = ui;
         uiManager->init(tft, touch);
         uiManager->create_widgets();
-        uiUpdater->set_initial_debug_info(HVACMONITOR_FIRMWARE_VERSION, get_reset_reason_string());
+        char ver_buf[64];
+        FlashMode_t fMode = ESP.getFlashChipMode();
+        const char *fModeStr = (fMode == FM_QIO)    ? "QIO"
+                               : (fMode == FM_QOUT) ? "QOUT"
+                               : (fMode == FM_DIO)  ? "DIO"
+                               : (fMode == FM_DOUT) ? "DOUT"
+                                                    : "?";
+        snprintf(ver_buf, sizeof(ver_buf), "%s (%luM/%luM %s)",
+                 HVACMONITOR_FIRMWARE_VERSION,
+                 (unsigned long)getCpuFrequencyMhz(),
+                 (unsigned long)(ESP.getFlashChipSpeed() / 1000000),
+                 fModeStr);
+        uiUpdater->set_initial_debug_info(ver_buf, get_reset_reason_string());
+
+
         
         uiIsInit = true;
         logger.info("UITask initialized.");

@@ -174,6 +174,18 @@ void setup() {
   const char *reset_reason = get_reset_reason_string();
   logger.infof("Firmware Version: %s", HVACMONITOR_FIRMWARE_VERSION);
   logger.infof("Reset Reason: %s", reset_reason);
+  FlashMode_t fMode = ESP.getFlashChipMode();
+  const char *fModeStr = (fMode == FM_QIO)    ? "QIO"
+                         : (fMode == FM_QOUT) ? "QOUT"
+                         : (fMode == FM_DIO)  ? "DIO"
+                         : (fMode == FM_DOUT) ? "DOUT"
+                                              : "UNKNOWN";
+  logger.infof("Hardware: CPU %lu MHz | Flash %lu MHz [%s]",
+               (unsigned long)getCpuFrequencyMhz(),
+               (unsigned long)(ESP.getFlashChipSpeed() / 1000000),
+               fModeStr);
+
+
 
   filterPressureTracker.begin();
   RebootManager::init(filterPressureTracker);

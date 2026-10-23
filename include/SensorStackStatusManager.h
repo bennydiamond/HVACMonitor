@@ -65,7 +65,7 @@ private:
     unsigned long _last_packet_time;
     unsigned long _nano_boot_millis;
     uint16_t _free_ram;
-    char _version[16];
+    char _version[12];
     uint8_t _reset_cause_code;
     bool _first_health_packet_received;
 

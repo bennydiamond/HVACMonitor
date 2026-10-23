@@ -32,21 +32,23 @@ void CST820::begin(void)
 
 bool CST820::getTouch(uint16_t *x, uint16_t *y, uint8_t *gesture)
 {
-    uint8_t fingerDetected = i2c_read(0x02);
+    uint8_t data[6];
+    if (i2c_read_continuous(0x01, data, 6) != 0) {
+        return false;
+    }
 
+    uint8_t fingerDetected = data[1]; // Register 0x02: Finger count
     if (fingerDetected == 0) {
         return false;
     }
 
-    *gesture = i2c_read(0x01);
-    
-    uint8_t data[4];
-    i2c_read_continuous(0x03, data, 4);
-    *x = ((data[0] & 0x0F) << 8) | data[1];
-    *y = ((data[2] & 0x0F) << 8) | data[3];
+    *gesture = data[0]; // Register 0x01: Gesture ID
+    *x = ((data[2] & 0x0F) << 8) | data[3]; // Registers 0x03-0x04: X coord
+    *y = ((data[4] & 0x0F) << 8) | data[5]; // Registers 0x05-0x06: Y coord
 
     return true;
 }
+
 
 uint8_t CST820::i2c_read(uint8_t addr)
 {

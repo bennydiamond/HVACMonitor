@@ -5,3 +5,7 @@
 .vscode/ipch
 firmware.map
 compile_commands.json
+sdkconfig.*
+!sdkconfig.defaults
+dependencies.lock
+managed_components/

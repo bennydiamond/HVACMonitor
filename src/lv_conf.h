@@ -17,6 +17,10 @@
 #ifndef LV_CONF_H
 #define LV_CONF_H
 
+#if defined(__GNUC__) && !defined(__cplusplus)
+    #pragma GCC diagnostic ignored "-Wunused-variable"
+#endif
+
 #include <stdint.h>
 
 /*====================

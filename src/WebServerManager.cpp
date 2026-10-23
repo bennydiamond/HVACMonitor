@@ -172,6 +172,19 @@ void WebServerManager::handleRoot() {
       snprintf(buf, len, "%s", _firmware_version);
       return true;
     }
+    if (strcmp(key, "FLASH_INFO") == 0) {
+      FlashMode_t fMode = ESP.getFlashChipMode();
+      const char *fModeStr = (fMode == FM_QIO)    ? "QIO"
+                             : (fMode == FM_QOUT) ? "QOUT"
+                             : (fMode == FM_DIO)  ? "DIO"
+                             : (fMode == FM_DOUT) ? "DOUT"
+                                                  : "UNKNOWN";
+      snprintf(buf, len, "%lu MHz / %lu MHz %s",
+               (unsigned long)getCpuFrequencyMhz(),
+               (unsigned long)(ESP.getFlashChipSpeed() / 1000000),
+               fModeStr);
+      return true;
+    }
     return false;
   });
   logger.debug("Served live dashboard web page.");
@@ -282,12 +295,19 @@ void WebServerManager::handleApiStatus() {
   server.sendContent(chunk);
 
   // Section: diag
+  FlashMode_t fMode = ESP.getFlashChipMode();
+  const char *fModeStr = (fMode == FM_QIO)    ? "QIO"
+                         : (fMode == FM_QOUT) ? "QOUT"
+                         : (fMode == FM_DIO)  ? "DIO"
+                         : (fMode == FM_DOUT) ? "DOUT"
+                                              : "UNKNOWN";
   snprintf(chunk, sizeof(chunk),
            "\"diag\":{\"heap\":%lu,\"min_heap\":%lu,\"max_alloc\":%lu,\"uptime\":%lu,"
-           "\"reset\":\"%s\",\"ver\":\"%s\"},",
+           "\"reset\":\"%s\",\"ver\":\"%s\",\"cpu\":%lu,\"flash_spd\":%lu,\"flash_mode\":\"%s\"},",
            (unsigned long)data.esp32_free_heap, (unsigned long)data.esp32_min_free_heap,
            (unsigned long)data.esp32_max_alloc_heap, (unsigned long)data.esp32_uptime_seconds,
-           data.esp32_reset_reason, data.firmware_version);
+           data.esp32_reset_reason, data.firmware_version,
+           (unsigned long)getCpuFrequencyMhz(), (unsigned long)(ESP.getFlashChipSpeed() / 1000000), fModeStr);
   server.sendContent(chunk);
 
   // Section: th
@@ -832,7 +852,7 @@ void WebServerManager::handleConfigSystem() {
     if (strcmp(key, "DISPLAY_BRIGHTNESS") == 0) { snprintf(buf, len, "%u", currentBrightness); return true; }
     if (strcmp(key, "BACKLIGHT_ON_SEL") == 0) { if (currentBrightness > 0) snprintf(buf, len, " selected"); return true; }
     if (strcmp(key, "BACKLIGHT_OFF_SEL") == 0) { if (currentBrightness == 0) snprintf(buf, len, " selected"); return true; }
-    if (strcmp(key, "INACTIVITY_TIMER_DELAY") == 0) { snprintf(buf, len, "%u", config->getInactivityTimerDelay()); return true; }
+    if (strcmp(key, "INACTIVITY_TIMER_DELAY") == 0) { snprintf(buf, len, "%u", (unsigned)config->getInactivityTimerDelay()); return true; }
     if (strcmp(key, "WIFI_SSID") == 0) { snprintf(buf, len, "%s", config->getWifiSsid()); return true; }
     if (strcmp(key, "WIFI_PASSWORD") == 0) { snprintf(buf, len, "%s", config->getWifiPassword()); return true; }
     if (strcmp(key, "MQTT_HOST") == 0) { snprintf(buf, len, "%s", config->getMqttHost()); return true; }

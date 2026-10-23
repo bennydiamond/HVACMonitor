@@ -200,8 +200,10 @@ const char *dashboard_page_html =
 <div><span>ESP32 Controller Uptime:</span> <strong id="val_esp_uptime">--</strong></div>
 <div><span>Firmware Version:</span> <strong id="val_firmware_ver">%FIRMWARE_VERSION%</strong></div>
 <div><span>Architecture:</span> <strong>ESP32 Xtensa Dual-Core</strong></div>
+<div><span>CPU / Flash Bus:</span> <strong id="val_flash_info">%FLASH_INFO%</strong></div>
 </div>
 </div>
+
 
 </div>
 </div>

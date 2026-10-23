@@ -364,8 +364,8 @@ void SensorStackStatusManager::populateDashboardData(LiveDashboardData& data) co
     data.seconds_since_packet = (_last_packet_time > 0) ? (millis() - _last_packet_time) / 1000 : 0;
     data.nano_uptime_seconds = (_connected && _nano_boot_millis > 0) ? (millis() - _nano_boot_millis) / 1000 : 0;
     data.nano_free_ram = _free_ram;
-    strncpy(data.nano_version, _version, sizeof(data.nano_version) - 1);
-    strncpy(data.nano_reset_cause, getResetCauseStr(), sizeof(data.nano_reset_cause) - 1);
+    snprintf(data.nano_version, sizeof(data.nano_version), "%s", _version);
+    snprintf(data.nano_reset_cause, sizeof(data.nano_reset_cause), "%s", getResetCauseStr());
 }
 
 const SPS30DeviceInfo& get_sps30_device_info() {
