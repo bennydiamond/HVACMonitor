@@ -1,4 +1,5 @@
 #include "SdUpdateManager.h"
+#include "BootloopGuard.h"
 #include <SPI.h>
 #include <SD.h>
 #include <Update.h>
@@ -391,6 +392,9 @@ bool SdUpdateManager::checkForUpdate() {
     if (!fileCleared) {
         return false;
     }
+
+    // Reset bootloop guard trial flags and counter on fresh SD firmware flash
+    BootloopGuard::onSdUpdate();
 
     // Give hardware bus a brief moment to settle before restarting
     delay(500);

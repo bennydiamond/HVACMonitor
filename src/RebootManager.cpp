@@ -1,6 +1,7 @@
 #include "RebootManager.h"
 #include "FilterPressureTracker.h"
 #include "Logger.h"
+#include "BootloopGuard.h"
 
 RebootManager* RebootManager::_instance = nullptr;
 
@@ -28,6 +29,9 @@ void RebootManager::requestReboot(const char* reason, uint32_t delayMs) {
 
     // Ensure serial logs are flushed
     Serial.flush();
+
+    // Clear RTC crash count so intentional reboots do not trigger bootloop guard
+    BootloopGuard::onGracefulShutdown();
 
     if (delayMs > 0) {
         delay(delayMs);

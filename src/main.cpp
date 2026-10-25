@@ -16,6 +16,7 @@
 #include "RebootManager.h"
 #include "ResetUtils.h"
 #include "RollingAverage.h"
+#include "BootloopGuard.h"
 #include "SdUpdateManager.h"
 #include "SensorDefines.h"
 #include "SensorTask.h"
@@ -32,6 +33,8 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_system.h>
+#include <esp_ota_ops.h>
+#include <esp_bootloader_desc.h>
 #include <lvgl.h>
 #include <math.h>
 #ifdef ENABLE_TASK_WATCHDOG
@@ -156,6 +159,13 @@ void setup_wifi() {
 void setup() {
   SdUpdateManager::checkForUpdate();
 
+  BootloopGuard::begin();
+
+#ifdef ENABLE_TASK_WATCHDOG
+  WatchdogManager::init(WatchdogManager::_defaultTimeout, false);
+  WatchdogManager::addCurrentTask();
+#endif
+
   SerialMutex::getInstance().init();
   MainTaskEventNotifier::getInstance().setMainTaskHandle(xTaskGetCurrentTaskHandle());
   vTaskPrioritySet(NULL, TASK_PRIORITY_MAIN);
@@ -167,9 +177,6 @@ void setup() {
     logger.init(haManager.getMqtt());
     logger.setLogLevel(config->getLogLevel());
   }
-#ifdef ENABLE_TASK_WATCHDOG
-  WatchdogManager::init(WatchdogManager::_defaultTimeout, false);
-#endif
 
   const char *reset_reason = get_reset_reason_string();
   logger.infof("Firmware Version: %s", HVACMONITOR_FIRMWARE_VERSION);
@@ -184,6 +191,13 @@ void setup() {
                (unsigned long)getCpuFrequencyMhz(),
                (unsigned long)(ESP.getFlashChipSpeed() / 1000000),
                fModeStr);
+
+  esp_bootloader_desc_t boot_desc;
+  if (esp_ota_get_bootloader_description(nullptr, &boot_desc) == ESP_OK) {
+    logger.infof("Bootloader: IDF %s | Built: %s", boot_desc.idf_ver, boot_desc.date_time);
+  } else {
+    logger.warning("Bootloader: Legacy (No esp_bootloader_desc found)");
+  }
 
 
 
@@ -216,6 +230,8 @@ void loop() {
 #ifdef ENABLE_TASK_WATCHDOG
   WatchdogManager::reset();
 #endif
+
+  BootloopGuard::handle();
 
   static bool previous_mqtt_connect_status = false;
 
@@ -395,6 +411,9 @@ void loop() {
   } else {
     vTaskDelay(pdMS_TO_TICKS(10));
   }
+
+  // Cancel ESP-IDF bootloader rollback after completing main loop pass
+  BootloopGuard::cancelBootloaderRollback();
 }
 
 void get_live_dashboard_data(LiveDashboardData &data) {

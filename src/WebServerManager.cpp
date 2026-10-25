@@ -3,9 +3,12 @@
 #include "HomeAssistantManager.h"
 #include "Logger.h"
 #include "RebootManager.h"
+#include "BootloopGuard.h"
 #include <Update.h>
 #include <WiFi.h>
 #include <esp_task_wdt.h>
+#include <esp_image_format.h>
+#include <esp_flash.h>
 
 #include "webserver/WebServerAssets.h"
 #include "webserver/WebServerDashboard.h"
@@ -20,8 +23,17 @@
 #include "UITask.h"
 #include "MainTaskEvents.h"
 
+// Forward declaration from ESP-IDF libspi_flash.a (spi_flash_os_func_app.c)
+extern "C" esp_err_t esp_flash_set_dangerous_write_protection(esp_flash_t *chip, const bool protect);
+
 WebServer server(80);
 char WebServerManager::_firmware_version[16] = {0};
+
+static bool s_is_bootloader_update = false;
+static uint8_t *s_bootloader_buf = nullptr;
+static size_t s_bootloader_received = 0;
+static bool s_bootloader_failed = false;
+static String s_upload_error_msg = "";
 
 template <typename F>
 static void streamTemplate(const char *html_template, F resolver) {
@@ -114,14 +126,16 @@ void WebServerManager::init(const char *firmware_version) {
 
   // Static assets (no-cache ensures browsers always check for latest asset versions)
   server.on("/style.css", HTTP_GET, []() {
+    server.sendHeader("Content-Encoding", "gzip");
     server.sendHeader("Cache-Control", "no-cache");
     server.sendHeader("ETag", _firmware_version);
-    server.send_P(200, "text/css", style_css);
+    server.send_P(200, "text/css", (const char *)style_css_gz, style_css_gz_len);
   });
   server.on("/app.js", HTTP_GET, []() {
+    server.sendHeader("Content-Encoding", "gzip");
     server.sendHeader("Cache-Control", "no-cache");
     server.sendHeader("ETag", _firmware_version);
-    server.send_P(200, "application/javascript", app_js);
+    server.send_P(200, "application/javascript", (const char *)app_js_gz, app_js_gz_len);
   });
   server.on("/favicon.ico", HTTP_GET, []() { server.send(204); });
 
@@ -142,8 +156,15 @@ void WebServerManager::init(const char *firmware_version) {
       "/upload", HTTP_POST,
       []() {
         server.sendHeader("Connection", "close");
-        server.send(200, "text/plain", "Update complete! Rebooting...");
-        RebootManager::getInstance().requestReboot("Web OTA update complete", 500);
+        if (s_is_bootloader_update ? s_bootloader_failed : Update.hasError()) {
+          String errMsg = s_upload_error_msg.length() > 0 ? s_upload_error_msg : "Flash update failed";
+          server.send(500, "text/plain", errMsg);
+        } else {
+          const char* targetName = s_is_bootloader_update ? "Bootloader" : "Firmware";
+          String successMsg = String(targetName) + " updated successfully! Rebooting...";
+          server.send(200, "text/plain", successMsg);
+          RebootManager::getInstance().requestReboot("Web OTA update complete", 500);
+        }
       },
       handleUpload);
 
@@ -728,19 +749,171 @@ void log_update_error() {
 void WebServerManager::handleUpload() {
   HTTPUpload &upload = server.upload();
   if (upload.status == UPLOAD_FILE_START) {
-    logger.infof("Web OTA Update Started: %s", upload.filename.c_str());
-    if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
-      log_update_error();
+    s_upload_error_msg = "";
+    // Check if target is explicitly set to bootloader via query string (?target=bootloader)
+    // or if the filename starts with 'bootloader'
+    String target = server.hasArg("target") ? server.arg("target") : "";
+    String lowerName = upload.filename;
+    lowerName.toLowerCase();
+    s_is_bootloader_update = (target.equalsIgnoreCase("bootloader") || lowerName.startsWith("bootloader"));
+
+    if (s_is_bootloader_update) {
+      logger.infof("[Web OTA] Bootloader Update Started: %s", upload.filename.c_str());
+      s_bootloader_received = 0;
+      s_bootloader_failed = false;
+      if (!s_bootloader_buf) {
+        s_bootloader_buf = (uint8_t *)malloc(0x7000); // Max size between 0x1000 and 0x8000
+      }
+      if (!s_bootloader_buf) {
+        s_bootloader_failed = true;
+        s_upload_error_msg = "Out of memory allocating bootloader buffer";
+        logger.error("[Web OTA] Out of memory allocating bootloader staging buffer");
+      }
+    } else {
+      logger.infof("[Web OTA] App Firmware Update Started: %s", upload.filename.c_str());
+      if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+        log_update_error();
+        s_upload_error_msg = String("Update.begin failed, error: ") + Update.getError();
+      }
     }
   } else if (upload.status == UPLOAD_FILE_WRITE) {
-    if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
-      log_update_error();
+    if (s_is_bootloader_update) {
+      if (!s_bootloader_failed) {
+        if (s_bootloader_received + upload.currentSize > 0x7000) {
+          s_bootloader_failed = true;
+          s_upload_error_msg = "Bootloader binary exceeds partition table boundary (28KB max)";
+          logger.error("[Web OTA] Bootloader binary exceeds 0x7000 (28KB) limit!");
+        } else {
+          memcpy(s_bootloader_buf + s_bootloader_received, upload.buf, upload.currentSize);
+          s_bootloader_received += upload.currentSize;
+        }
+      }
+    } else {
+      static bool s_app_header_checked = false;
+      if (Update.progress() == 0) {
+        s_app_header_checked = false;
+      }
+      if (!s_app_header_checked && upload.currentSize >= 0x24) {
+        s_app_header_checked = true;
+        uint32_t word_at_0x20 = 0;
+        memcpy(&word_at_0x20, upload.buf + 0x20, sizeof(word_at_0x20));
+        if (word_at_0x20 != ESP_APP_DESC_MAGIC_WORD) {
+          Update.abort();
+          s_upload_error_msg = "Validation rejected: file is missing Application Descriptor. Did you upload a bootloader to the firmware target?";
+          logger.error("[Web OTA] Firmware validation rejected: missing 0xABCD5432 app descriptor!");
+        }
+      }
+      if (!Update.hasError()) {
+        if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+          log_update_error();
+          s_upload_error_msg = String("Update.write failed, error: ") + Update.getError();
+        }
+      }
     }
   } else if (upload.status == UPLOAD_FILE_END) {
-    if (Update.end(true)) {
-      logger.infof("Web OTA Update Success: %u bytes", upload.totalSize);
+    if (s_is_bootloader_update) {
+      if (s_bootloader_failed) {
+        logger.errorf("[Web OTA] Bootloader update failed: %s", s_upload_error_msg.c_str());
+        if (s_bootloader_buf) {
+          free(s_bootloader_buf);
+          s_bootloader_buf = nullptr;
+        }
+      } else {
+        logger.infof("[Web OTA] Bootloader upload finished (%u bytes). Verifying...", s_bootloader_received);
+        if (s_bootloader_received < 4096) {
+          s_bootloader_failed = true;
+          s_upload_error_msg = "Bootloader image is too small (< 4KB)";
+          logger.error("[Web OTA] Bootloader binary is too small (< 4KB)");
+        } else {
+          // Enforce 4-point binary signature validation:
+          esp_image_header_t *hdr = (esp_image_header_t *)s_bootloader_buf;
+          
+          // 1. ESP32 Magic byte check (0xE9)
+          bool has_magic = (hdr->magic == ESP_IMAGE_HEADER_MAGIC);
+          
+          // 2. Chip architecture ID check (must match ESP32 target)
+          bool is_esp32_chip = (hdr->chip_id == ESP_CHIP_ID_ESP32);
+          
+          // 3. Entry point address range: bootloader entry points to IRAM (0x4007xxxx - 0x40085xxx)
+          bool entry_in_bl_range = (hdr->entry_addr >= 0x40078000 && hdr->entry_addr <= 0x40085FFF);
+          
+          // 4. Must NOT contain the Application Descriptor magic word (0xABCD5432) at offset 0x20
+          uint32_t word_at_0x20 = 0;
+          if (s_bootloader_received >= 0x24) {
+            memcpy(&word_at_0x20, s_bootloader_buf + 0x20, sizeof(word_at_0x20));
+          }
+          bool has_app_desc = (word_at_0x20 == ESP_APP_DESC_MAGIC_WORD);
+
+          if (!has_magic) {
+            s_bootloader_failed = true;
+            s_upload_error_msg = "Invalid binary: missing ESP32 image magic byte (0xE9)";
+            logger.errorf("[Web OTA] Bootloader validation failed: bad magic byte 0x%02X", hdr->magic);
+          } else if (!is_esp32_chip) {
+            s_bootloader_failed = true;
+            s_upload_error_msg = "Invalid binary: chip ID does not match ESP32";
+            logger.errorf("[Web OTA] Bootloader validation failed: chip_id 0x%04X != ESP32", hdr->chip_id);
+          } else if (has_app_desc) {
+            s_bootloader_failed = true;
+            s_upload_error_msg = "Validation rejected: file is an Application Firmware binary, NOT a bootloader!";
+            logger.error("[Web OTA] Bootloader validation rejected: detected Application Descriptor (0xABCD5432)!");
+          } else if (!entry_in_bl_range) {
+            s_bootloader_failed = true;
+            s_upload_error_msg = "Validation rejected: entry address outside valid bootloader IRAM range";
+            logger.errorf("[Web OTA] Bootloader validation failed: entry_addr 0x%08X out of range", hdr->entry_addr);
+          } else {
+            // All 4 detection points passed! Flash bootloader to offset 0x1000
+            // Align erase size up to 4KB sector boundary
+            size_t erase_len = ((s_bootloader_received + 4095) / 4096) * 4096;
+            logger.infof("[Web OTA] Erasing flash at 0x1000 (%u bytes)...", erase_len);
+            
+            // Temporarily disable dangerous write protection for bootloader region (0x1000)
+            esp_flash_set_dangerous_write_protection(esp_flash_default_chip, false);
+            esp_err_t err = esp_flash_erase_region(NULL, 0x1000, erase_len);
+            if (err != ESP_OK) {
+              esp_flash_set_dangerous_write_protection(esp_flash_default_chip, true);
+              s_bootloader_failed = true;
+              s_upload_error_msg = String("Flash erase failed: ") + esp_err_to_name(err);
+              logger.errorf("[Web OTA] esp_flash_erase_region failed: 0x%x (%s)", err, esp_err_to_name(err));
+            } else {
+              logger.infof("[Web OTA] Writing bootloader to flash at 0x1000 (%u bytes)...", s_bootloader_received);
+              err = esp_flash_write(NULL, s_bootloader_buf, 0x1000, s_bootloader_received);
+              esp_flash_set_dangerous_write_protection(esp_flash_default_chip, true);
+              if (err != ESP_OK) {
+                s_bootloader_failed = true;
+                s_upload_error_msg = String("Flash write failed: ") + esp_err_to_name(err);
+                logger.errorf("[Web OTA] esp_flash_write failed: 0x%x (%s)", err, esp_err_to_name(err));
+              } else {
+                // Verify the written bootloader in flash
+                esp_image_metadata_t meta = {};
+                const esp_partition_pos_t part_pos = {
+                    .offset = 0x1000,
+                    .size = 0x7000,
+                };
+                err = esp_image_verify(ESP_IMAGE_VERIFY_SILENT, &part_pos, &meta);
+                if (err != ESP_OK) {
+                  s_bootloader_failed = true;
+                  s_upload_error_msg = String("Flash image verification failed: ") + esp_err_to_name(err);
+                  logger.errorf("[Web OTA] Flash verification failed for bootloader: 0x%x", err);
+                } else {
+                  logger.info("[Web OTA] Bootloader passed all 4 checks, successfully flashed and verified at 0x1000!");
+                }
+              }
+            }
+          }
+        }
+        if (s_bootloader_buf) {
+          free(s_bootloader_buf);
+          s_bootloader_buf = nullptr;
+        }
+      }
     } else {
-      log_update_error();
+      if (Update.end(true)) {
+        logger.infof("Web OTA Update Success: %u bytes", upload.totalSize);
+        BootloopGuard::markOtaTrialPending();
+      } else {
+        log_update_error();
+        s_upload_error_msg = String("Update.end failed, error: ") + Update.getError();
+      }
     }
   }
 }
