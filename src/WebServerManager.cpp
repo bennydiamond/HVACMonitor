@@ -315,7 +315,7 @@ void WebServerManager::handleApiStatus() {
   snprintf(chunk, sizeof(chunk),
            "\"sys\":{\"ssid\":\"%s\",\"ip\":\"%s\",\"rssi\":%d,\"mac\":\"%s\",\"wc\":%s,"
            "\"mh\":\"%s\",\"mp\":%d,\"mc\":%s,\"nv\":\"%s\",\"dsp\":%lu,\"nu\":%lu,"
-           "\"sc\":%s,\"nrc\":\"%s\",\"nr\":%u,\"nfw\":%u},",
+           "\"sc\":%s,\"nrc\":\"%s\",\"nr\":%u,\"nfw\":%u,\"nsf\":%u},",
            data.wifi_ssid, data.wifi_ip, (int)data.wifi_rssi, data.wifi_mac,
            data.wifi_connected ? "true" : "false",
            data.mqtt_host, data.mqtt_port, data.mqtt_connected ? "true" : "false",
@@ -323,7 +323,8 @@ void WebServerManager::handleApiStatus() {
            (unsigned long)data.nano_uptime_seconds,
            data.sensor_module_connected ? "true" : "false",
            data.nano_reset_cause, (unsigned int)data.nano_free_ram,
-           (unsigned int)data.sensorstack_firmware_state);
+           (unsigned int)data.sensorstack_firmware_state,
+           (unsigned int)data.sensorstack_sensor_faults);
   server.sendContent(chunk);
 
   // Section: diag

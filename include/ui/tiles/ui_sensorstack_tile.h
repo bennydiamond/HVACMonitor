@@ -13,6 +13,7 @@ public:
     void update_sensorstack_ram(uint16_t ram);
     void update_sensor_status(bool connected);
     void update_firmware_state(int state); // SensorStackFirmwareState as int
+    void update_sensor_faults(int mask);   // SENSOR_FAULT_* bits
     void update_fw_version(const char* fw);
     void set_visible(bool visible);
 private:
@@ -20,6 +21,7 @@ private:
 
     bool connected;
     int firmware_state;
+    int sensor_faults;
     lv_obj_t* tile_obj;
     lv_obj_t* version_label;
     lv_obj_t* uptime_label;

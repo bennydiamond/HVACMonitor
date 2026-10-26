@@ -54,6 +54,7 @@ class IUIUpdater;
     X(UI_NETWORK_RSSI) \
     X(UI_NETWORK_HA_CONN) \
     X(UI_SENSORSTACK_FIRMWARE_STATE) \
+    X(UI_SENSORSTACK_SENSOR_FAULTS) \
     X(UI_SHOW_OTA_POPUP)
 
 // X-macro for string message types
@@ -146,6 +147,7 @@ public:
     void update_network_rssi(int8_t rssi);
     void update_network_ha_conn(bool ha_conn);
     void update_sensorstack_firmware_state(int state); // SensorStackFirmwareState as int
+    void update_sensorstack_sensor_faults(int mask);   // SENSOR_FAULT_* bits
 
     void queue_ota_popup();
 

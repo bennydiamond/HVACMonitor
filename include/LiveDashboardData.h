@@ -45,6 +45,7 @@ struct LiveDashboardData {
   // Sensor Hub (Nano Co-processor)
   bool sensor_module_connected = false;
   uint8_t sensorstack_firmware_state = 0; // SensorStackFirmwareState: 0 OK, 1 updating, 2 faulty
+  uint8_t sensorstack_sensor_faults = 0;  // SENSOR_FAULT_* bits (SensorDefines.h)
   uint32_t seconds_since_packet = 0;
   uint32_t nano_uptime_seconds = 0;
   uint16_t nano_free_ram = 0;

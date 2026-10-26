@@ -33,6 +33,9 @@ public:
     // Processes parsed sensor telemetry
     void processPacket(const NanoSensorPacket& pkt);
 
+    // SENSOR_FAULT_* bits reported by the SensorStack: values of those sensors are ignored
+    void setSensorFaultMask(uint8_t mask);
+
     // Populates sensor telemetry into LiveDashboardData
     void populateDashboardData(LiveDashboardData& data) const;
 
@@ -63,6 +66,7 @@ private:
     SensorTask* _sensorTask;
 
     unsigned long _last_received_timestamp;
+    uint8_t _sensor_fault_mask;
 
     // Algorithms
     VOCGasIndexAlgorithm _voc_algorithm;

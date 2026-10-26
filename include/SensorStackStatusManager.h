@@ -35,6 +35,7 @@ public:
     void setScd30AutoCalState(bool auto_cal);
     void setScd30ForceCalValue(uint16_t force_cal);
     void setFirmwareState(SensorStackFirmwareState state);
+    void setSensorFaultMask(uint8_t mask);
 
     // Payload parsing methods
     bool processHealthPayload(char* payload, int* out_first_time_flag = nullptr);
@@ -48,6 +49,8 @@ public:
     // Queries
     bool isConnected() const { return _connected; }
     SensorStackFirmwareState getFirmwareState() const { return _firmware_state; }
+    // SENSOR_FAULT_* bits (SensorDefines.h): sensors the SensorStack could not initialize
+    uint8_t getSensorFaultMask() const { return _sensor_fault_mask; }
     unsigned long getLastPacketTime() const { return _last_packet_time; }
     unsigned long getNanoBootMillis() const { return _nano_boot_millis; }
     uint16_t getFreeRam() const { return _free_ram; }
@@ -78,6 +81,7 @@ private:
     uint8_t _reset_cause_code;
     bool _first_health_packet_received;
     SensorStackFirmwareState _firmware_state;
+    uint8_t _sensor_fault_mask;
 
     SPS30DeviceInfo _sps30_device_info;
     SGP41TestResult _sgp41_test_result_data;

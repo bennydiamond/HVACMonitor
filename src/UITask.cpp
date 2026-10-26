@@ -102,6 +102,8 @@ const UITask::UIUpdateFunc UITask::updateTable[UI_MSG_COUNT] = {
     [](IUIUpdater* u, const UIMessage& m) { u->update_network_ha_conn(m.value.b); },
     // UI_SENSORSTACK_FIRMWARE_STATE
     [](IUIUpdater* u, const UIMessage& m) { u->update_sensorstack_firmware_state(m.value.i); },
+    // UI_SENSORSTACK_SENSOR_FAULTS
+    [](IUIUpdater* u, const UIMessage& m) { u->update_sensorstack_sensor_faults(m.value.i); },
     // UI_SHOW_OTA_POPUP
     [](IUIUpdater* u, const UIMessage& m) { UITask::getInstance().show_ota_popup(); },
 };
@@ -424,6 +426,9 @@ void UITask::update_network_ha_conn(bool ha_conn) {
 }
 void UITask::update_sensorstack_firmware_state(int state) {
     queueSendOrWarn(UIMessage{UI_SENSORSTACK_FIRMWARE_STATE, state});
+}
+void UITask::update_sensorstack_sensor_faults(int mask) {
+    queueSendOrWarn(UIMessage{UI_SENSORSTACK_SENSOR_FAULTS, mask});
 }
 void UITask::update_scd30_autocal(bool enabled) {
     queueSendOrWarn(UIMessage{UI_SCD30_AUTOCAL, enabled});

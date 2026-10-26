@@ -24,7 +24,7 @@
 // ======================================================================
 
 // --- Firmware & Protocol ---
-const char NANO_FIRMWARE_VERSION[] PROGMEM = "1.4.3";
+const char NANO_FIRMWARE_VERSION[] PROGMEM = "1.4.4";
 #define CMD_GET_SENSORS 'S' // Request sensor data
 #define RSP_SENSORS 's'     // Response with sensor data
 #define CMD_GET_VERSION 'V'
@@ -94,7 +94,7 @@ const char E_SGP41_MEASUREMENT_ERROR_1[] PROGMEM =
 const char FMT_DATA_PACKET[] PROGMEM =
     "%c%lu,%u,%u,%ld,%ld,%ld,%u,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%u,%u";
 const char FMT_GET_VERSION[] PROGMEM = "%c%s";
-const char FMT_GET_HEALTH[] PROGMEM = "%c%d,%d,%d";
+const char FMT_GET_HEALTH[] PROGMEM = "%c%d,%d,%d,%d";
 const char FMT_SPS30_FW[] PROGMEM = "%d,%u,%u,";
 const char FMT_SPS30_INTERVAL[] PROGMEM = "%d,%lu,";
 const char FMT_SPS30_INTERVAL_DAYS[] PROGMEM = "%d,%u,";
@@ -126,6 +126,10 @@ const char FMT_I2C_WRITE[] PROGMEM = "%c%02X";
 // --- Timing Constants ---
 const unsigned long COMMAND_TIMEOUT_MS = 100;
 const unsigned long SCD30_INVALIDATE_TIMEOUT_MS = 60000;
+// SPS30 may not answer right after power-up: probe a few times before
+// flagging it as faulty
+const uint8_t SPS30_PROBE_ATTEMPTS = 5;
+const unsigned long SPS30_PROBE_RETRY_DELAY_MS = 500;
 
 // --- Sensor Calculation Constants ---
 #define SHUNT_RESISTOR 150.0f
@@ -172,6 +176,7 @@ unsigned long last_scd30_update = 0;
 SensirionI2cScd30 scd30_sensor;
 SensirionI2CSgp41 sgp41_sensor;
 uint8_t conditioning_s = 10;
+uint8_t sensor_fault_mask = 0; // SENSOR_FAULT_* bits, set in setup()
 char tx_command_buffer[MAX_RESPONSE_LEN];
 
 // --- Round-robin ADC reading variables ---
@@ -239,15 +244,6 @@ uint8_t calculate_checksum(const char *data_str) {
     }
   }
   return crc;
-}
-
-void blink_error_code(uint8_t blinks) {
-  for (uint8_t i = 0; i < blinks; ++i) {
-    digitalWrite(DEBUG_LED_PIN, HIGH);
-    delay(250);
-    digitalWrite(DEBUG_LED_PIN, LOW);
-    delay(250);
-  }
 }
 
 // ======================================================================
@@ -386,30 +382,31 @@ void setup() {
   sensirion_i2c_init();
   Wire.setWireTimeout(I2C_TIMEOUT_US, true); // reset on timeout
   Wire.setClock(I2C_NORMAL_SPEED);
-  while (sps30_probe() != 0) {
-    blink_error_code(3);
-    delay(1500);
-    // Check I2C bus before retrying
-    checkAndRecoverI2C();
-  }
 
-  if (sps30_start_measurement() < 0) {
-    while (1) {
-      blink_error_code(4);
-      delay(1500);
+  // A sensor that fails to initialize is flagged and skipped, never waited on:
+  // setup() must always reach loop() so the ESP32 link (and OTA) keeps working.
+  bool sps30_ok = false;
+  for (uint8_t attempt = 0; attempt < SPS30_PROBE_ATTEMPTS && !sps30_ok;
+       attempt++) {
+    if (attempt > 0) {
+      delay(SPS30_PROBE_RETRY_DELAY_MS);
+      checkAndRecoverI2C();
     }
+    sps30_ok = (sps30_probe() == 0);
   }
+  if (!sps30_ok || sps30_start_measurement() < 0)
+    sensor_fault_mask |= SENSOR_FAULT_SPS30;
 
   scd30_sensor.begin(Wire, SCD30_I2C_ADDR_61);
-  if (scd30_sensor.startPeriodicMeasurement(0)) {
-    while (1) {
-      blink_error_code(5);
-      delay(1500);
-    }
-  }
+  if (scd30_sensor.startPeriodicMeasurement(0))
+    sensor_fault_mask |= SENSOR_FAULT_SCD30;
 
   Wire.setClock(I2C_FAST_SPEED);
   sgp41_sensor.begin(Wire);
+  // begin() does not talk to the sensor: read its serial number to check it
+  uint16_t sgp41_serial[3];
+  if (sgp41_sensor.getSerialNumber(sgp41_serial))
+    sensor_fault_mask |= SENSOR_FAULT_SGP41;
   Wire.setClock(I2C_NORMAL_SPEED);
 
   pinMode(LIQUID_LEVEL_SENSOR_PIN, INPUT_PULLUP);
@@ -513,29 +510,34 @@ unsigned long read_all_sensors() {
   }
 
   Wire.setClock(I2C_NORMAL_SPEED);
-  int16_t ret_sps_read = sps30_read_data_ready(&temp_uval);
-  if (ret_sps_read != 0) {
-    send_error_response(E_SPS30_DATA_READY_ERROR_1);
-  }
-  if (ret_sps_read == 0 && temp_uval) {
-    int16_t ret_sps_measurement = sps30_read_measurement(&current_sps_data);
-    if (ret_sps_measurement != 0) {
-      send_error_response(E_SPS30_MEASUREMENT_ERROR_1);
+  // Sensors flagged faulty at boot are skipped: the ESP32 ignores their values
+  if (!(sensor_fault_mask & SENSOR_FAULT_SPS30)) {
+    int16_t ret_sps_read = sps30_read_data_ready(&temp_uval);
+    if (ret_sps_read != 0) {
+      send_error_response(E_SPS30_DATA_READY_ERROR_1);
+    }
+    if (ret_sps_read == 0 && temp_uval) {
+      int16_t ret_sps_measurement = sps30_read_measurement(&current_sps_data);
+      if (ret_sps_measurement != 0) {
+        send_error_response(E_SPS30_MEASUREMENT_ERROR_1);
+      }
     }
   }
 
-  temp_val = scd30_sensor.getDataReady(temp_uval);
-  if (temp_val != 0) {
-    send_error_response(E_SCD30_DATA_READY_ERROR_1);
-  }
-  if (temp_val == 0 && temp_uval) {
-    temp_val = scd30_sensor.readMeasurementData(current_co2, current_temp_c,
-                                                current_humi);
+  if (!(sensor_fault_mask & SENSOR_FAULT_SCD30)) {
+    temp_val = scd30_sensor.getDataReady(temp_uval);
     if (temp_val != 0) {
-      send_error_response(E_SCD30_MEASUREMENT_ERROR_1);
+      send_error_response(E_SCD30_DATA_READY_ERROR_1);
     }
-    if (temp_val == 0) {
-      last_scd30_update = millis();
+    if (temp_val == 0 && temp_uval) {
+      temp_val = scd30_sensor.readMeasurementData(current_co2, current_temp_c,
+                                                  current_humi);
+      if (temp_val != 0) {
+        send_error_response(E_SCD30_MEASUREMENT_ERROR_1);
+      }
+      if (temp_val == 0) {
+        last_scd30_update = millis();
+      }
     }
   }
 
@@ -559,6 +561,13 @@ unsigned long read_all_sensors() {
   if (scd30_has_data && current_temp_c >= SCD30_TEMP_MIN_VALID_C &&
       current_temp_c <= SCD30_TEMP_MAX_VALID_C) {
     temp = static_cast<uint16_t>((current_temp_c + 45.0f) * 65535.0f / 175.0f);
+  }
+
+  if (sensor_fault_mask & SENSOR_FAULT_SGP41) {
+    current_voc_raw = 0;
+    current_nox_raw = 0;
+    checkAndReportI2cTimeout();
+    return millis();
   }
 
   if (conditioning_s > 0) {
@@ -720,7 +729,7 @@ void process_command(const char *buffer) {
   case CMD_GET_HEALTH:
     snprintf_P(tx_command_buffer, sizeof(tx_command_buffer), FMT_GET_HEALTH,
                RSP_HEALTH, first_health_status_sent ? 0 : 1, freeRam(),
-               last_reset_cause);
+               last_reset_cause, sensor_fault_mask);
     checksum = calculate_checksum(tx_command_buffer);
     Serial.print('<');
     Serial.print(tx_command_buffer);

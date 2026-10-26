@@ -1,5 +1,6 @@
 #include "ui/tiles/ui_sensorstack_tile.h"
 #include "ui/custom_icons.h"
+#include "SensorDefines.h"
 
 extern const lv_font_t custom_font_30;
 const int SCROLL_SPEED_MS_PX_SS = 5;
@@ -7,6 +8,7 @@ const int SCROLL_SPEED_MS_PX_SS = 5;
 UISensorStackTile::UISensorStackTile() :
 connected(false),
 firmware_state(0),
+sensor_faults(0),
 tile_obj(nullptr),
 version_label(nullptr),
 uptime_label(nullptr),
@@ -120,10 +122,17 @@ void UISensorStackTile::update_firmware_state(int state) {
     refresh_status();
 }
 
+void UISensorStackTile::update_sensor_faults(int mask) {
+    sensor_faults = mask;
+    refresh_status();
+}
+
 void UISensorStackTile::refresh_status() {
-    // Firmware state (1 updating, 2 firmware issue) takes precedence over the link state
+    // Firmware state (1 updating, 2 firmware issue) takes precedence over sensor faults,
+    // which take precedence over the link state
     const char* icon;
     const char* text;
+    char fault_text[32];
     lv_color_t color;
     if (firmware_state == 2) {
         icon = ICON_ALERT;
@@ -133,6 +142,14 @@ void UISensorStackTile::refresh_status() {
         icon = ICON_UPDATE;
         text = "Updating FW";
         color = COLOR_HA_BLUE;
+    } else if (connected && sensor_faults) {
+        snprintf(fault_text, sizeof(fault_text), "Defective:%s%s%s",
+                 (sensor_faults & SENSOR_FAULT_SPS30) ? " SPS30" : "",
+                 (sensor_faults & SENSOR_FAULT_SCD30) ? " SCD30" : "",
+                 (sensor_faults & SENSOR_FAULT_SGP41) ? " SGP41" : "");
+        icon = ICON_ALERT;
+        text = fault_text;
+        color = COLOR_MID;
     } else {
         icon = connected ? ICON_LAN_CONNECT : ICON_LAN_DISCONNECT;
         text = connected ? "Connected" : "Disconnected";

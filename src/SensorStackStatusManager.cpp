@@ -4,6 +4,7 @@
 #include "Logger.h"
 #include "UITask.h"
 #include "HomeAssistantManager.h"
+#include "SensorDefines.h"
 
 static SensorStackStatusManager* s_status_instance = nullptr;
 
@@ -17,6 +18,7 @@ SensorStackStatusManager::SensorStackStatusManager()
       _reset_cause_code(0),
       _first_health_packet_received(false),
       _firmware_state(SensorStackFirmwareState::Ok),
+      _sensor_fault_mask(0),
       _sps30_device_info{},
       _sgp41_test_result_data{} {
     _version[0] = '\0';
@@ -54,6 +56,30 @@ void SensorStackStatusManager::onPacketReceived() {
     if (_firmware_state == SensorStackFirmwareState::Faulty) {
         setFirmwareState(SensorStackFirmwareState::Ok);
     }
+}
+
+void SensorStackStatusManager::setSensorFaultMask(uint8_t mask) {
+    uint8_t changed = mask ^ _sensor_fault_mask;
+    if (!changed) {
+        return;
+    }
+    _sensor_fault_mask = mask;
+
+    static const struct { uint8_t bit; const char* name; const char* readings; } sensors[] = {
+        { SENSOR_FAULT_SPS30, "SPS30", "particulate matter" },
+        { SENSOR_FAULT_SCD30, "SCD30", "CO2, temperature and humidity" },
+        { SENSOR_FAULT_SGP41, "SGP41", "VOC and NOx" },
+    };
+    for (const auto& s : sensors) {
+        if (!(changed & s.bit)) continue;
+        if (mask & s.bit) {
+            logger.errorf("SensorStack: %s failed to initialize (defective or missing); %s readings are ignored.",
+                          s.name, s.readings);
+        } else {
+            logger.infof("SensorStack: %s initialized again; %s readings resumed.", s.name, s.readings);
+        }
+    }
+    if (_ui) _ui->update_sensorstack_sensor_faults(mask);
 }
 
 void SensorStackStatusManager::setFirmwareState(SensorStackFirmwareState state) {
@@ -190,7 +216,12 @@ bool SensorStackStatusManager::processHealthPayload(char* payload, int* out_firs
     uint8_t nano_reset_cause = 0;
     if (token) nano_reset_cause = atoi(token);
 
+    // Sensor fault mask (absent from SensorStack firmware before 1.4.4)
+    token = strtok(NULL, ",");
+    uint8_t sensor_fault_mask = token ? atoi(token) : 0;
+
     setHealth(first_time_flag, nano_free_ram, nano_reset_cause);
+    setSensorFaultMask(sensor_fault_mask);
     if (out_first_time_flag) {
         *out_first_time_flag = first_time_flag;
     }
@@ -388,6 +419,7 @@ void SensorStackStatusManager::updateDiagnostics() {
 void SensorStackStatusManager::populateDashboardData(LiveDashboardData& data) const {
     data.sensor_module_connected = _connected;
     data.sensorstack_firmware_state = static_cast<uint8_t>(_firmware_state);
+    data.sensorstack_sensor_faults = _sensor_fault_mask;
     data.seconds_since_packet = (_last_packet_time > 0) ? (millis() - _last_packet_time) / 1000 : 0;
     data.nano_uptime_seconds = (_connected && _nano_boot_millis > 0) ? (millis() - _nano_boot_millis) / 1000 : 0;
     data.nano_free_ram = _free_ram;

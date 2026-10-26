@@ -661,6 +661,7 @@ void HomeAssistantManager::publishGeiger(int cpm, unsigned long currentTime) {
 }
 
 void HomeAssistantManager::publishTemperature(float temp, unsigned long currentTime) {
+    if (isnan(temp)) return; // No valid reading (e.g. SCD30 fault)
     char data_str[16];
     bool is_first = (_lastTempPublishTime == 0);
     bool temp_fast = (currentTime - _lastTempPublishTime >= FAST_INTERVAL_5S_MS && fabs(temp - _lastPublishedTemp) >= TEMP_FAST_DELTA_DEG_C);
@@ -674,6 +675,7 @@ void HomeAssistantManager::publishTemperature(float temp, unsigned long currentT
 }
 
 void HomeAssistantManager::publishHumidity(float humi, unsigned long currentTime) {
+    if (isnan(humi)) return; // No valid reading (e.g. SCD30 fault)
     char data_str[16];
     bool is_first = (_lastHumiPublishTime == 0);
     bool humi_fast = (currentTime - _lastHumiPublishTime >= FAST_INTERVAL_5S_MS && fabs(humi - _lastPublishedHumi) >= HUMI_FAST_DELTA_PCT);
@@ -755,6 +757,7 @@ void HomeAssistantManager::publishNOx(int32_t nox_index, unsigned long currentTi
 }
 
 void HomeAssistantManager::publishPM(float pm1, float pm25, float pm4, float pm10, unsigned long currentTime) {
+    if (isnan(pm25)) return; // No valid reading (e.g. SPS30 fault)
     char data_str[16];
     bool is_first = (_lastPmPublishTime == 0);
     bool pm_fast = (currentTime - _lastPmPublishTime >= FAST_INTERVAL_10S_MS && fabs(pm25 - _lastPublishedPm2_5) >= PM_FAST_DELTA);

@@ -59,6 +59,7 @@ class UI : public IUIManager, public IUIUpdater {
     void update_network_rssi(int8_t) override;
     void update_network_ha_conn(bool) override;
     void update_sensorstack_firmware_state(int state) override;
+    void update_sensorstack_sensor_faults(int mask) override;
     void update_last_packet_time(uint32_t) override;
     void update_ssid(const char* ssid) override;
     void update_ip(const char* ip) override;
@@ -102,6 +103,7 @@ private:
     // Last SensorStack link and firmware state, combined into the status bar icon
     bool sensor_connected = false;
     int sensorstack_firmware_state = 0;
+    int sensorstack_sensor_faults = 0;
     // SensorStack firmware popup (on lv_layer_top, above the tileview and status bar)
     lv_obj_t* firmware_popup = nullptr;
     lv_obj_t* firmware_popup_icon = nullptr;

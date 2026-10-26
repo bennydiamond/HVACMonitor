@@ -319,6 +319,9 @@ void NanoUartBridge::processPacket(char* packet) {
     case RSP_HEALTH: {
         int first_time_flag = -1;
         if (_statusManager && _statusManager->processHealthPayload(payload, &first_time_flag)) {
+            if (_dataProcessor) {
+                _dataProcessor->setSensorFaultMask(_statusManager->getSensorFaultMask());
+            }
             if (first_time_flag == 0) {
                 sendCommand(CMD_ACK_HEALTH);
                 _init_sequence_active = true;

@@ -385,8 +385,18 @@ void UI::refresh_sensor_icon(void) {
   lv_obj_set_style_opa(sensor_icon_label, LV_OPA_COVER, 0);
   ui_set_label_text(sensor_icon_label,
                     sensor_connected ? ICON_LAN_CONNECT : ICON_LAN_DISCONNECT);
-  ui_set_text_color(sensor_icon_label,
-                    sensor_connected ? COLOR_GREEN : COLOR_DISCONNECTED);
+  // Linked but with a defective sensor: orange instead of green
+  lv_color_t color = !sensor_connected            ? COLOR_DISCONNECTED
+                     : sensorstack_sensor_faults ? COLOR_MID
+                                                 : COLOR_GREEN;
+  ui_set_text_color(sensor_icon_label, color);
+}
+
+void UI::update_sensorstack_sensor_faults(int mask) {
+  sensorstack_sensor_faults = mask;
+  refresh_sensor_icon();
+  if (tileManager)
+    tileManager->update_sensorstack_sensor_faults(mask);
 }
 
 void UI::create_firmware_popup(void) {

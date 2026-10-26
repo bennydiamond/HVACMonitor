@@ -28,6 +28,7 @@ SensorDataProcessor::SensorDataProcessor()
       _filterTracker(nullptr),
       _sensorTask(nullptr),
       _last_received_timestamp(0),
+      _sensor_fault_mask(0),
       _co2_avg(100),
       _co_avg(20),
       _voc_avg(100),
@@ -54,6 +55,35 @@ void SensorDataProcessor::begin(UITask* ui,
     _ha = ha;
     _filterTracker = filterTracker;
     _sensorTask = sensorTask;
+}
+
+void SensorDataProcessor::setSensorFaultMask(uint8_t mask) {
+    uint8_t new_faults = mask & ~_sensor_fault_mask;
+    _sensor_fault_mask = mask;
+    if (!new_faults) {
+        return;
+    }
+
+    // Drop what was collected before the fault, so nothing stale is shown or published
+    if (new_faults & SENSOR_FAULT_SPS30) {
+        _pm1_avg.clear();
+        _pm25_avg.clear();
+        _pm4_avg.clear();
+        _pm10_avg.clear();
+    }
+    if (new_faults & SENSOR_FAULT_SCD30) {
+        _co2_avg.clear();
+        _live_temp_c = NAN;
+        _live_humi_pct = NAN;
+    }
+    if (new_faults & SENSOR_FAULT_SGP41) {
+        _voc_avg.clear();
+        _nox_avg.clear();
+    }
+    // The next packets refill every reading except those of the faulty sensors
+    if (_ui) {
+        _ui->clearSensorReadings();
+    }
 }
 
 void SensorDataProcessor::processPayload(char* payload) {
@@ -107,32 +137,41 @@ void SensorDataProcessor::processPacket(const NanoSensorPacket& pkt) {
         co_ppm = static_cast<uint16_t>(pkt.getCoAdcRaw() * PPM_PER_ADC_UNIT);
     }
 
+    // Sensors the SensorStack could not initialize: their values are placeholders, ignore them
+    const bool sps30_ok = !(_sensor_fault_mask & SENSOR_FAULT_SPS30);
+    const bool scd30_ok = !(_sensor_fault_mask & SENSOR_FAULT_SCD30);
+    const bool sgp41_ok = !(_sensor_fault_mask & SENSOR_FAULT_SGP41);
+    const float temp_c = scd30_ok ? pkt.getTemperatureC() : NAN;
+    const float humi_pct = scd30_ok ? pkt.getHumidityPct() : NAN;
+
     // 5. Gas Index Algorithms
     int32_t voc_index = 0;
     int32_t nox_index = 0;
-    if (isValidVocRaw(pkt.getVocRaw())) {
+    if (sgp41_ok && isValidVocRaw(pkt.getVocRaw())) {
         voc_index = _voc_algorithm.process(pkt.getVocRaw());
         if (isValidGasIndex(voc_index)) {
             _voc_avg.add(voc_index);
         }
     }
-    if (isValidNoxRaw(pkt.getNoxRaw())) {
+    if (sgp41_ok && isValidNoxRaw(pkt.getNoxRaw())) {
         nox_index = _nox_algorithm.process(pkt.getNoxRaw());
         if (isValidGasIndex(nox_index)) {
             _nox_avg.add(nox_index);
         }
     }
-    if (isValidCO2(pkt.getCo2Ppm())) {
+    if (scd30_ok && isValidCO2(pkt.getCo2Ppm())) {
         _co2_avg.add(pkt.getCo2Ppm());
     }
 
     // 6. Update Rolling Averages
     _co_avg.add(co_ppm);
     _diff_pressure_avg.add(diff_pressure_pa);
-    _pm1_avg.add(pkt.getPm1());
-    _pm25_avg.add(pkt.getPm25());
-    _pm4_avg.add(pkt.getPm4());
-    _pm10_avg.add(pkt.getPm10());
+    if (sps30_ok) {
+        _pm1_avg.add(pkt.getPm1());
+        _pm25_avg.add(pkt.getPm25());
+        _pm4_avg.add(pkt.getPm4());
+        _pm10_avg.add(pkt.getPm10());
+    }
     _compressor_amps_avg.add(pkt.getCompressorAmps());
     _geothermal_pump_amps_avg.add(pkt.getPumpAmps());
 
@@ -176,14 +215,21 @@ void SensorDataProcessor::processPacket(const NanoSensorPacket& pkt) {
             _ui->update_geiger_reading(c, usv_h);
         }
 
-        _ui->update_temp_humi(pkt.getTemperatureC(), pkt.getHumidityPct());
+        // Readings of faulty sensors are left blank (cleared when the fault was reported)
+        if (scd30_ok) {
+            _ui->update_temp_humi(temp_c, humi_pct);
+            _ui->update_co2(_co2_avg.getAverage());
+        }
         _ui->update_fan_current(pkt.getFanAmps(), fan_status);
         _ui->update_compressor_amps(_compressor_amps_avg.getAverage());
         _ui->update_pump_amps(_geothermal_pump_amps_avg.getAverage());
-        _ui->update_co2(_co2_avg.getAverage());
-        _ui->update_voc(_voc_avg.getAverage());
-        _ui->update_nox(_nox_avg.getAverage());
-        _ui->update_pm_values(_pm1_avg.getAverage(), _pm25_avg.getAverage(), _pm4_avg.getAverage(), _pm10_avg.getAverage());
+        if (sgp41_ok) {
+            _ui->update_voc(_voc_avg.getAverage());
+            _ui->update_nox(_nox_avg.getAverage());
+        }
+        if (sps30_ok) {
+            _ui->update_pm_values(_pm1_avg.getAverage(), _pm25_avg.getAverage(), _pm4_avg.getAverage(), _pm10_avg.getAverage());
+        }
         _ui->update_co(_co_avg.getAverage());
         _ui->update_water_sensor(pkt.isWaterDetected());
     }
@@ -192,22 +238,25 @@ void SensorDataProcessor::processPacket(const NanoSensorPacket& pkt) {
     if (_ha) {
         _ha->publishHighPressureStatus(is_pressure_high);
         _ha->publishFanStatus(fan_status != FAN_STATUS_OFF);
+        // Invalid values (NaN, or a gas index of 0) are not published
         _ha->publishSensorData(
-            _diff_pressure_avg.getAverage(), c, pkt.getTemperatureC(), pkt.getHumidityPct(),
-            _co2_avg.getAverage(), _voc_avg.getAverage(), _nox_avg.getAverage(), pkt.getFanAmps(),
-            _pm1_avg.getAverage(), _pm25_avg.getAverage(), _pm4_avg.getAverage(), _pm10_avg.getAverage(),
+            _diff_pressure_avg.getAverage(), c, temp_c, humi_pct,
+            scd30_ok ? _co2_avg.getAverage() : NAN,
+            sgp41_ok ? _voc_avg.getAverage() : 0, sgp41_ok ? _nox_avg.getAverage() : 0, pkt.getFanAmps(),
+            sps30_ok ? _pm1_avg.getAverage() : NAN, sps30_ok ? _pm25_avg.getAverage() : NAN,
+            sps30_ok ? _pm4_avg.getAverage() : NAN, sps30_ok ? _pm10_avg.getAverage() : NAN,
             _compressor_amps_avg.getAverage(), _geothermal_pump_amps_avg.getAverage(),
             pkt.isWaterDetected(), _co_avg.getAverage(), filter_pressure);
     }
 
     // 10. Pass ambient conditions to ESP32 local sensor task for compensation
-    if (_sensorTask) {
-        _sensorTask->setEnvironmentalData(pkt.getTemperatureC(), pkt.getHumidityPct());
+    if (_sensorTask && scd30_ok) {
+        _sensorTask->setEnvironmentalData(temp_c, humi_pct);
     }
 
     // Cache live values
-    _live_temp_c = pkt.getTemperatureC();
-    _live_humi_pct = pkt.getHumidityPct();
+    _live_temp_c = temp_c;
+    _live_humi_pct = humi_pct;
     _live_fan_amps = pkt.getFanAmps();
     _live_fan_status = fan_status;
     _live_is_pressure_high = is_pressure_high;
@@ -215,8 +264,8 @@ void SensorDataProcessor::processPacket(const NanoSensorPacket& pkt) {
 }
 
 void SensorDataProcessor::populateDashboardData(LiveDashboardData& data) const {
-    data.temperature_c = (_last_received_timestamp == 0) ? -999.0f : _live_temp_c;
-    data.humidity_pct = (_last_received_timestamp == 0) ? -1.0f : _live_humi_pct;
+    data.temperature_c = (_last_received_timestamp == 0 || isnan(_live_temp_c)) ? -999.0f : _live_temp_c;
+    data.humidity_pct = (_last_received_timestamp == 0 || isnan(_live_humi_pct)) ? -1.0f : _live_humi_pct;
     data.co2_ppm = _co2_avg.isEmpty() ? -1.0f : _co2_avg.getAverage();
     data.voc_index = _voc_avg.isEmpty() ? 0 : _voc_avg.getAverage();
     data.nox_index = _nox_avg.isEmpty() ? 0 : _nox_avg.getAverage();

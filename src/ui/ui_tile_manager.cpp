@@ -99,6 +99,7 @@ void UITileManager::update_network_rssi(int8_t v) { if (network_tile) network_ti
 void UITileManager::update_network_ha_conn(bool v) { if (network_tile) network_tile->update_network_ha_conn(v); }
 void UITileManager::update_sensor_status(bool v) { if (runtime_tile) runtime_tile->update_sensor_status(v); if (sensorstack_tile) sensorstack_tile->update_sensor_status(v); }
 void UITileManager::update_sensorstack_firmware_state(int state) { if (sensorstack_tile) sensorstack_tile->update_firmware_state(state); }
+void UITileManager::update_sensorstack_sensor_faults(int mask) { if (sensorstack_tile) sensorstack_tile->update_sensor_faults(mask); }
 void UITileManager::update_last_packet_time(uint32_t v) { if (runtime_tile) runtime_tile->update_last_packet_time(v); }
 void UITileManager::update_ssid(const char* ssid) { if (network_tile) network_tile->update_ssid(ssid); }
 void UITileManager::update_ip(const char* ip) { if (network_tile) network_tile->update_ip(ip); }
