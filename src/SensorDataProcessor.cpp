@@ -72,7 +72,10 @@ void SensorDataProcessor::processPacket(const NanoSensorPacket& pkt) {
     float diff_pressure_pa = (current_ma > 4.0f) ? (current_ma - 4.0f) * (300.0f / 16.0f) : 0.0f;
 
     // 2. Timestamp Duplicate & Interval Checking
-    bool is_first_sensor_packet = (_last_received_timestamp == 0);
+    // The timestamp is the SensorStack's millis(): it restarts near 0 when the stack reboots
+    // (or wraps after ~49 days), so a timestamp going backwards starts a new series like boot does.
+    bool is_first_sensor_packet = (_last_received_timestamp == 0) ||
+                                  (pkt.getTimestamp() < _last_received_timestamp);
     unsigned long timestamp_diff = 0;
     if (!is_first_sensor_packet) {
         timestamp_diff = pkt.getTimestamp() - _last_received_timestamp;
