@@ -49,7 +49,7 @@ public:
     // Queries
     bool isConnected() const { return _connected; }
     SensorStackFirmwareState getFirmwareState() const { return _firmware_state; }
-    // SENSOR_FAULT_* bits (SensorDefines.h): sensors the SensorStack could not initialize
+    // SENSOR_FAULT_* bits (SensorDefines.h): SensorStack sensors not responding
     uint8_t getSensorFaultMask() const { return _sensor_fault_mask; }
     unsigned long getLastPacketTime() const { return _last_packet_time; }
     unsigned long getNanoBootMillis() const { return _nano_boot_millis; }

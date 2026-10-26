@@ -52,7 +52,8 @@ constexpr float SCD30_HUMI_MAX_VALID_PCT = 100.0f;
 // SensorStack Sensor Faults
 // ==============================================================================
 // Bits of the fault mask the SensorStack reports in its health response. A sensor that
-// failed to initialize is skipped by the SensorStack, and its values must be ignored.
+// failed to initialize, or stopped answering while running, is skipped by the SensorStack
+// (and retried periodically), and its values must be ignored.
 constexpr uint8_t SENSOR_FAULT_SPS30 = 1 << 0;
 constexpr uint8_t SENSOR_FAULT_SCD30 = 1 << 1;
 constexpr uint8_t SENSOR_FAULT_SGP41 = 1 << 2;

@@ -73,10 +73,10 @@ void SensorStackStatusManager::setSensorFaultMask(uint8_t mask) {
     for (const auto& s : sensors) {
         if (!(changed & s.bit)) continue;
         if (mask & s.bit) {
-            logger.errorf("SensorStack: %s failed to initialize (defective or missing); %s readings are ignored.",
+            logger.errorf("SensorStack: %s is not responding (defective or missing); %s readings are ignored.",
                           s.name, s.readings);
         } else {
-            logger.infof("SensorStack: %s initialized again; %s readings resumed.", s.name, s.readings);
+            logger.infof("SensorStack: %s is responding again; %s readings resumed.", s.name, s.readings);
         }
     }
     if (_ui) _ui->update_sensorstack_sensor_faults(mask);

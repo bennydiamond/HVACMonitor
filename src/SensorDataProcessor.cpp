@@ -137,7 +137,7 @@ void SensorDataProcessor::processPacket(const NanoSensorPacket& pkt) {
         co_ppm = static_cast<uint16_t>(pkt.getCoAdcRaw() * PPM_PER_ADC_UNIT);
     }
 
-    // Sensors the SensorStack could not initialize: their values are placeholders, ignore them
+    // Sensors the SensorStack flagged as not responding: their values are placeholders, ignore them
     const bool sps30_ok = !(_sensor_fault_mask & SENSOR_FAULT_SPS30);
     const bool scd30_ok = !(_sensor_fault_mask & SENSOR_FAULT_SCD30);
     const bool sgp41_ok = !(_sensor_fault_mask & SENSOR_FAULT_SGP41);

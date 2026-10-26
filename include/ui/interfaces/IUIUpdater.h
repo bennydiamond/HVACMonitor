@@ -48,7 +48,7 @@ public:
     virtual void update_network_ha_conn(bool ha_conn) = 0;
     // 0 OK (hide popup), 1 update in progress, 2 firmware issue (see SensorStackFirmwareState)
     virtual void update_sensorstack_firmware_state(int state) = 0;
-    // SENSOR_FAULT_* bits: SensorStack sensors that failed to initialize
+    // SENSOR_FAULT_* bits: SensorStack sensors not responding
     virtual void update_sensorstack_sensor_faults(int mask) = 0;
     virtual void update_last_packet_time(uint32_t seconds_since_packet) = 0;
     virtual void update_ssid(const char* ssid) = 0;

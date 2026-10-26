@@ -24,7 +24,7 @@
 // ======================================================================
 
 // --- Firmware & Protocol ---
-const char NANO_FIRMWARE_VERSION[] PROGMEM = "1.4.5";
+const char NANO_FIRMWARE_VERSION[] PROGMEM = "1.4.6";
 #define CMD_GET_SENSORS 'S' // Request sensor data
 #define RSP_SENSORS 's'     // Response with sensor data
 #define CMD_GET_VERSION 'V'
@@ -132,6 +132,9 @@ const uint8_t SPS30_PROBE_ATTEMPTS = 5;
 const unsigned long SPS30_PROBE_RETRY_DELAY_MS = 500;
 // How often sensors flagged faulty are initialized again (e.g. reconnected)
 const unsigned long SENSOR_RETRY_INTERVAL_MS = 10000;
+// Failed reads in a row (one per sensor query, ~2 s apart) before a running
+// sensor is flagged faulty
+const uint8_t SENSOR_MAX_CONSECUTIVE_ERRORS = 3;
 
 // --- Sensor Calculation Constants ---
 #define SHUNT_RESISTOR 150.0f
@@ -179,7 +182,11 @@ SensirionI2cScd30 scd30_sensor;
 SensirionI2CSgp41 sgp41_sensor;
 const uint8_t SGP41_CONDITIONING_STEPS = 10;
 uint8_t conditioning_s = SGP41_CONDITIONING_STEPS;
-uint8_t sensor_fault_mask = 0; // SENSOR_FAULT_* bits, set in setup()
+uint8_t sensor_fault_mask = 0; // SENSOR_FAULT_* bits
+// Consecutive failed reads per sensor (see track_sensor_read())
+uint8_t sps30_error_count = 0;
+uint8_t scd30_error_count = 0;
+uint8_t sgp41_error_count = 0;
 char tx_command_buffer[MAX_RESPONSE_LEN];
 
 // --- Round-robin ADC reading variables ---
@@ -391,6 +398,18 @@ bool init_sgp41() {
   return ok;
 }
 
+// Counts the result of a sensor read in read_all_sensors(): after too many
+// failures in a row (sensor pulled or broken while running), the sensor is
+// flagged faulty like at boot, then skipped and retried from loop().
+void track_sensor_read(uint8_t fault_bit, uint8_t &error_count, bool ok) {
+  if (ok) {
+    error_count = 0;
+  } else if (++error_count >= SENSOR_MAX_CONSECUTIVE_ERRORS) {
+    error_count = 0;
+    sensor_fault_mask |= fault_bit;
+  }
+}
+
 // One quick attempt per faulty sensor: an absent sensor NACKs right away
 void retry_faulty_sensors() {
   if ((sensor_fault_mask & SENSOR_FAULT_SPS30) && init_sps30(1))
@@ -550,9 +569,10 @@ unsigned long read_all_sensors() {
   }
 
   Wire.setClock(I2C_NORMAL_SPEED);
-  // Sensors flagged faulty at boot are skipped: the ESP32 ignores their values
+  // Faulty sensors are skipped: the ESP32 ignores their values
   if (!(sensor_fault_mask & SENSOR_FAULT_SPS30)) {
     int16_t ret_sps_read = sps30_read_data_ready(&temp_uval);
+    bool sps30_ok = (ret_sps_read == 0);
     if (ret_sps_read != 0) {
       send_error_response(E_SPS30_DATA_READY_ERROR_1);
     }
@@ -560,12 +580,15 @@ unsigned long read_all_sensors() {
       int16_t ret_sps_measurement = sps30_read_measurement(&current_sps_data);
       if (ret_sps_measurement != 0) {
         send_error_response(E_SPS30_MEASUREMENT_ERROR_1);
+        sps30_ok = false;
       }
     }
+    track_sensor_read(SENSOR_FAULT_SPS30, sps30_error_count, sps30_ok);
   }
 
   if (!(sensor_fault_mask & SENSOR_FAULT_SCD30)) {
     temp_val = scd30_sensor.getDataReady(temp_uval);
+    bool scd30_ok = (temp_val == 0);
     if (temp_val != 0) {
       send_error_response(E_SCD30_DATA_READY_ERROR_1);
     }
@@ -574,11 +597,13 @@ unsigned long read_all_sensors() {
                                                   current_humi);
       if (temp_val != 0) {
         send_error_response(E_SCD30_MEASUREMENT_ERROR_1);
+        scd30_ok = false;
       }
       if (temp_val == 0) {
         last_scd30_update = millis();
       }
     }
+    track_sensor_read(SENSOR_FAULT_SCD30, scd30_error_count, scd30_ok);
   }
 
   if (millis() - last_scd30_update > SCD30_INVALIDATE_TIMEOUT_MS) {
@@ -626,6 +651,7 @@ unsigned long read_all_sensors() {
     }
   }
   Wire.setClock(I2C_NORMAL_SPEED);
+  track_sensor_read(SENSOR_FAULT_SGP41, sgp41_error_count, temp_uval == 0);
 
   if (temp_uval != 0 || conditioning_s > 0 ||
       (!scd30_has_data && !scd30_warmup_expired)) {
