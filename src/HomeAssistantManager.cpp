@@ -602,18 +602,13 @@ void HomeAssistantManager::onMqttConnected() {
     // Set initial state for configurable entities
     ConfigManagerAccessor config;
     _instance->_inactivityTimerDelay.setState(config->getInactivityTimerDelay());
-#ifdef ENABLE_TASK_WATCHDOG
-    WatchdogManager::setTimeout(20); // Required because ArduinoHA takes a long time to send entity config
-#endif
+    // The watchdog timeout covering the initial publishing is managed by the main loop
 }
 
 void HomeAssistantManager::onMqttDisconnected() {
     if (!_instance) return;
     logger.warning("MQTT disconnected.");
     UITask::getInstance().update_network_ha_conn(false);
-#ifdef ENABLE_TASK_WATCHDOG
-    WatchdogManager::restoreDefaultTimeout();
-#endif
 }
 
 void HomeAssistantManager::publishDifferentialPressure(float pressure, unsigned long currentTime) {

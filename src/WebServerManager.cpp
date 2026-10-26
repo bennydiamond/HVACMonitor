@@ -759,6 +759,11 @@ void log_update_error() {
 }
 
 void WebServerManager::handleUpload() {
+  // WebServer receives a whole upload inside one handleClient() call (tens of seconds
+  // for a firmware image): feed the watchdog on every chunk
+#ifdef ENABLE_TASK_WATCHDOG
+  esp_task_wdt_reset();
+#endif
   HTTPUpload &upload = server.upload();
   if (upload.status == UPLOAD_FILE_START) {
     s_upload_error_msg = "";

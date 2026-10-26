@@ -4,6 +4,9 @@
 #include "UITask.h"
 #include "RebootManager.h"
 #include "BootloopGuard.h"
+#ifdef ENABLE_TASK_WATCHDOG
+#include "WatchdogManager.h"
+#endif
 
 void OtaManager::init() {
     ArduinoOTA.setHostname("hvac-sensor-display");
@@ -26,6 +29,10 @@ void OtaManager::init() {
     });
 
     ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+        // ArduinoOTA receives the whole image inside handle(): feed the watchdog meanwhile
+#ifdef ENABLE_TASK_WATCHDOG
+        WatchdogManager::reset();
+#endif
         static uint8_t lastPercent = 0;
         uint8_t percent = progress / (total / 100);
         if (percent != lastPercent) {
