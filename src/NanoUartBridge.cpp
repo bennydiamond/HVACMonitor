@@ -288,6 +288,11 @@ void NanoUartBridge::processPacket(char* packet) {
         logger.errorf("SensorStack: Failed! reports SCD30 measurement error");
     } else if (strncmp(data_part, "E,SGP41_MEASUREMENT_ERROR", 25) == 0) {
         logger.errorf("SensorStack: Failed! reports SGP41 measurement error");
+    } else if (strncmp(data_part, "E,SGP41_CONDITIONING_ERROR", 26) == 0) {
+        logger.errorf("SensorStack: Failed! reports SGP41 conditioning error");
+    } else if (strncmp(data_part, "E,", 2) == 0) {
+        // Any other error the SensorStack reports must still reach the log
+        logger.errorf("SensorStack: Failed! reports %s", data_part + 2);
     }
 
     if (_statusManager) {
@@ -436,6 +441,12 @@ void NanoUartBridge::processPacket(char* packet) {
         I2CBridge::getInstance().processWriteResponse(status, seq);
         break;
     }
+    case 'E':
+        // Error report, already logged above
+        break;
+    case RSP_BOOTLOADER:
+        // Bootloader entry ACK, handled by NanoFlasher
+        break;
     default:
         logger.warningf("Unknown response command from Nano: %c", cmd);
         break;
