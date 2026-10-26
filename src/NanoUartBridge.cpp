@@ -133,13 +133,10 @@ void NanoUartBridge::sendCommand(char cmd) {
     }
 
     if (cmd == CMD_REBOOT) {
-        logger.info("Reboot command sent. Marking sensor stack as disconnected.");
-        if (_statusManager) {
-            _statusManager->setConnected(false);
-        }
-        if (_sensorTask) {
-            _sensorTask->notifyConnectionStatus(false, false);
-        }
+        // The stack only answers requests: unless the init sequence is restarted, nothing
+        // would be sent to it again once it is marked disconnected
+        logger.info("Reboot command sent. Restarting init sequence with sensor stack.");
+        restartInitSequence();
     }
 }
 
