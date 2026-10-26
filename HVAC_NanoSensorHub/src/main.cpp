@@ -24,7 +24,7 @@
 // ======================================================================
 
 // --- Firmware & Protocol ---
-const char NANO_FIRMWARE_VERSION[] PROGMEM = "1.4.4";
+const char NANO_FIRMWARE_VERSION[] PROGMEM = "1.4.5";
 #define CMD_GET_SENSORS 'S' // Request sensor data
 #define RSP_SENSORS 's'     // Response with sensor data
 #define CMD_GET_VERSION 'V'
@@ -130,6 +130,8 @@ const unsigned long SCD30_INVALIDATE_TIMEOUT_MS = 60000;
 // flagging it as faulty
 const uint8_t SPS30_PROBE_ATTEMPTS = 5;
 const unsigned long SPS30_PROBE_RETRY_DELAY_MS = 500;
+// How often sensors flagged faulty are initialized again (e.g. reconnected)
+const unsigned long SENSOR_RETRY_INTERVAL_MS = 10000;
 
 // --- Sensor Calculation Constants ---
 #define SHUNT_RESISTOR 150.0f
@@ -175,7 +177,8 @@ struct sps30_measurement current_sps_data = {0};
 unsigned long last_scd30_update = 0;
 SensirionI2cScd30 scd30_sensor;
 SensirionI2CSgp41 sgp41_sensor;
-uint8_t conditioning_s = 10;
+const uint8_t SGP41_CONDITIONING_STEPS = 10;
+uint8_t conditioning_s = SGP41_CONDITIONING_STEPS;
 uint8_t sensor_fault_mask = 0; // SENSOR_FAULT_* bits, set in setup()
 char tx_command_buffer[MAX_RESPONSE_LEN];
 
@@ -353,6 +356,51 @@ void read_single_adc_channel() {
 //  SETUP
 // ======================================================================
 
+// ======================================================================
+//  SENSOR INITIALIZATION
+// ======================================================================
+// Each returns true when the sensor answered and is measuring. A sensor that
+// fails is flagged in sensor_fault_mask by setup() and retried from loop().
+
+bool init_sps30(uint8_t attempts) {
+  bool ok = false;
+  for (uint8_t attempt = 0; attempt < attempts && !ok; attempt++) {
+    if (attempt > 0) {
+      delay(SPS30_PROBE_RETRY_DELAY_MS);
+      checkAndRecoverI2C();
+    }
+    ok = (sps30_probe() == 0);
+  }
+  return ok && sps30_start_measurement() >= 0;
+}
+
+bool init_scd30() {
+  scd30_sensor.begin(Wire, SCD30_I2C_ADDR_61);
+  return scd30_sensor.startPeriodicMeasurement(0) == 0;
+}
+
+bool init_sgp41() {
+  Wire.setClock(I2C_FAST_SPEED);
+  sgp41_sensor.begin(Wire);
+  // begin() does not talk to the sensor: read its serial number to check it
+  uint16_t serial[3];
+  bool ok = (sgp41_sensor.getSerialNumber(serial) == 0);
+  Wire.setClock(I2C_NORMAL_SPEED);
+  if (ok)
+    conditioning_s = SGP41_CONDITIONING_STEPS; // a (re)connected SGP41 needs it
+  return ok;
+}
+
+// One quick attempt per faulty sensor: an absent sensor NACKs right away
+void retry_faulty_sensors() {
+  if ((sensor_fault_mask & SENSOR_FAULT_SPS30) && init_sps30(1))
+    sensor_fault_mask &= ~SENSOR_FAULT_SPS30;
+  if ((sensor_fault_mask & SENSOR_FAULT_SCD30) && init_scd30())
+    sensor_fault_mask &= ~SENSOR_FAULT_SCD30;
+  if ((sensor_fault_mask & SENSOR_FAULT_SGP41) && init_sgp41())
+    sensor_fault_mask &= ~SENSOR_FAULT_SGP41;
+}
+
 volatile uint8_t urboot_reset_flags __attribute__((section(".noinit")));
 uint8_t last_reset_cause = 0;
 
@@ -385,29 +433,12 @@ void setup() {
 
   // A sensor that fails to initialize is flagged and skipped, never waited on:
   // setup() must always reach loop() so the ESP32 link (and OTA) keeps working.
-  bool sps30_ok = false;
-  for (uint8_t attempt = 0; attempt < SPS30_PROBE_ATTEMPTS && !sps30_ok;
-       attempt++) {
-    if (attempt > 0) {
-      delay(SPS30_PROBE_RETRY_DELAY_MS);
-      checkAndRecoverI2C();
-    }
-    sps30_ok = (sps30_probe() == 0);
-  }
-  if (!sps30_ok || sps30_start_measurement() < 0)
+  if (!init_sps30(SPS30_PROBE_ATTEMPTS))
     sensor_fault_mask |= SENSOR_FAULT_SPS30;
-
-  scd30_sensor.begin(Wire, SCD30_I2C_ADDR_61);
-  if (scd30_sensor.startPeriodicMeasurement(0))
+  if (!init_scd30())
     sensor_fault_mask |= SENSOR_FAULT_SCD30;
-
-  Wire.setClock(I2C_FAST_SPEED);
-  sgp41_sensor.begin(Wire);
-  // begin() does not talk to the sensor: read its serial number to check it
-  uint16_t sgp41_serial[3];
-  if (sgp41_sensor.getSerialNumber(sgp41_serial))
+  if (!init_sgp41())
     sensor_fault_mask |= SENSOR_FAULT_SGP41;
-  Wire.setClock(I2C_NORMAL_SPEED);
 
   pinMode(LIQUID_LEVEL_SENSOR_PIN, INPUT_PULLUP);
 
@@ -451,6 +482,15 @@ void loop() {
     if (checkAndRecoverI2C()) {
       send_error_response(E_I2C_BUS_STUCK_0);
     }
+  }
+
+  // Retry sensors flagged faulty; the ESP32 sees the change in the next
+  // health response. Not while a command is being received.
+  static unsigned long last_sensor_retry_time = 0;
+  if (sensor_fault_mask && !in_command &&
+      current_time - last_sensor_retry_time >= SENSOR_RETRY_INTERVAL_MS) {
+    last_sensor_retry_time = current_time;
+    retry_faulty_sensors();
   }
 
   // Timeout check for incomplete incoming commands before reading new serial

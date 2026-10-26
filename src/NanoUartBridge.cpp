@@ -9,6 +9,7 @@
 #include "SensorTask.h"
 #include "I2CBridge.h"
 #include "NanoFlasher.h"
+#include "SensorDefines.h"
 #ifdef ENABLE_TASK_WATCHDOG
 #include "WatchdogManager.h"
 #endif
@@ -315,9 +316,20 @@ void NanoUartBridge::processPacket(char* packet) {
     }
     case RSP_HEALTH: {
         int first_time_flag = -1;
+        uint8_t previous_faults = _statusManager ? _statusManager->getSensorFaultMask() : 0;
         if (_statusManager && _statusManager->processHealthPayload(payload, &first_time_flag)) {
+            uint8_t faults = _statusManager->getSensorFaultMask();
             if (_dataProcessor) {
-                _dataProcessor->setSensorFaultMask(_statusManager->getSensorFaultMask());
+                _dataProcessor->setSensorFaultMask(faults);
+            }
+            // A sensor the SensorStack initialized again: its info was last read while it
+            // was missing, so ask again (SGP41 has no info query)
+            uint8_t recovered = previous_faults & ~faults;
+            if (recovered & SENSOR_FAULT_SPS30) {
+                sendCommand(CMD_GET_SPS30_INFO);
+            }
+            if (recovered & SENSOR_FAULT_SCD30) {
+                sendCommand(CMD_GET_SCD30_INFO);
             }
             if (first_time_flag == 0) {
                 sendCommand(CMD_ACK_HEALTH);
