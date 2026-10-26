@@ -8,6 +8,7 @@
 #include "SensorDataProcessor.h"
 #include "SensorTask.h"
 #include "I2CBridge.h"
+#include "NanoFlasher.h"
 #ifdef ENABLE_TASK_WATCHDOG
 #include "WatchdogManager.h"
 #endif
@@ -18,6 +19,12 @@ static const int HEALTH_RESPONSE_TIMEOUT_MS = 500;
 static const int SCD30_INFO_INTERVAL_MS = 20000;
 static const int SENSOR_QUERY_INTERVAL_MS = 2000;
 static const int INIT_COMMAND_TIMEOUT_MS = 100;
+// SensorStack firmware check: while the stack is down, detection alternates between the
+// application (init commands) and urboot waiting on the UART (no valid application, e.g. an
+// interrupted firmware update). Neither is ever assumed: whichever answers wins.
+static const unsigned long FIRMWARE_PROBE_AFTER_MS = 5000;    // No packets for this long
+static const unsigned long FIRMWARE_PROBE_INTERVAL_MS = 5000; // ~3.5 s app attempts, then a probe
+static const unsigned long FIRMWARE_PROBE_QUIET_MS = 1200;    // Longer than urboot's 1 s timeout
 
 NanoUartBridge* NanoUartBridge::_instance = nullptr;
 
@@ -44,7 +51,10 @@ NanoUartBridge::NanoUartBridge()
       _last_health_request_time(0),
       _health_request_pending(false),
       _last_sensor_query_time(0),
-      _last_scd30_info_time(0) {
+      _last_scd30_info_time(0),
+      _last_firmware_probe_time(0),
+      _firmware_probe_quiet_since(0),
+      _suspended(false) {
     _serial_rx_buffer[0] = '\0';
     _instance = this;
 }
@@ -410,7 +420,46 @@ void NanoUartBridge::processPacket(char* packet) {
     }
 }
 
+void NanoUartBridge::setSuspended(bool suspended) {
+    _suspended = suspended;
+    if (suspended) {
+        _serial_rx_len = 0;
+        _valid_packet_start_received = false;
+        if (_statusManager) {
+            _statusManager->setConnected(false);
+        }
+        if (_sensorTask) {
+            _sensorTask->notifyConnectionStatus(false, false);
+        }
+    }
+}
+
+void NanoUartBridge::restartInitSequence() {
+    _init_sequence_active = true;
+    _current_init_command_index = 0;
+    _last_init_command_time = 0;
+    _last_health_check_time = 0;
+    _last_health_request_time = 0;
+    _health_request_pending = false;
+    _last_sensor_query_time = 0;
+    _last_scd30_info_time = 0;
+    _last_firmware_probe_time = millis(); // Give the stack time to answer before probing
+    _firmware_probe_quiet_since = 0;
+    _serial_rx_len = 0;
+    _valid_packet_start_received = false;
+    if (_statusManager) {
+        _statusManager->setConnected(false);
+    }
+    if (_sensorTask) {
+        _sensorTask->notifyConnectionStatus(false, false);
+    }
+    logger.info("Restarted init sequence with Nano Sensor Stack.");
+}
+
 void NanoUartBridge::handle() {
+    if (_suspended) {
+        return;
+    }
     bool serial_command_sent = false;
 
     readAndProcessSerial();
@@ -431,6 +480,30 @@ void NanoUartBridge::handle() {
             }
         }
     }
+
+    // SensorStack firmware check
+    if (!is_conn && millis() - last_pkt_time > FIRMWARE_PROBE_AFTER_MS &&
+        millis() - _last_firmware_probe_time > FIRMWARE_PROBE_INTERVAL_MS) {
+        // Stop transmitting first so a waiting urboot times out and restarts its autobaud
+        if (_firmware_probe_quiet_since == 0) {
+            _firmware_probe_quiet_since = millis();
+        }
+        if (millis() - _firmware_probe_quiet_since < FIRMWARE_PROBE_QUIET_MS) {
+            return;
+        }
+        _firmware_probe_quiet_since = 0;
+        _last_firmware_probe_time = millis();
+
+        bool in_bootloader = NanoFlasher::probeBootloader();
+        if (_statusManager) {
+            _statusManager->setFirmwareState(in_bootloader ? SensorStackFirmwareState::Faulty
+                                                           : SensorStackFirmwareState::Ok);
+        }
+        return;
+    }
+    // Between probes the init sequence keeps querying the application, even when the last probe
+    // found urboot: a stack that recovers on its own answers and clears the firmware issue.
+    // Init commands reaching urboot are harmless; the quiet period above resynchronizes it.
 
     // Periodic health check
     if (!serial_command_sent && is_conn &&

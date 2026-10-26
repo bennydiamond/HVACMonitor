@@ -15,6 +15,7 @@ const char *dashboard_page_html =
 <div class="summary-item"><span class="summary-label">Filter:</span><span class="pill pill-warmup" id="sum_filter">Warmup</span></div>
 <div class="summary-item"><span class="summary-label">Sensor Hub:</span><span class="pill pill-good" id="sum_nano">Online</span></div>
 </div>
+<div class="status error" id="sensorstack_fw_alert">&#9888;&#65039; <b>SensorStack firmware issue:</b> the SensorStack has no valid firmware (a firmware update was likely interrupted). Sensor readings are unavailable until its firmware is uploaded again from the <a href="/ota">OTA Update</a> page.</div>
 
 <div class="section-card">
 <div class="section-hdr" onclick="toggleSection('sec_iaq')">

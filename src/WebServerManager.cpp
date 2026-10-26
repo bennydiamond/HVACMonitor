@@ -22,6 +22,7 @@
 #include "NanoCommands.h"
 #include "UITask.h"
 #include "MainTaskEvents.h"
+#include "NanoFlasher.h"
 
 // Forward declaration from ESP-IDF libspi_flash.a (spi_flash_os_func_app.c)
 extern "C" esp_err_t esp_flash_set_dangerous_write_protection(esp_flash_t *chip, const bool protect);
@@ -33,6 +34,11 @@ static bool s_is_bootloader_update = false;
 static uint8_t *s_bootloader_buf = nullptr;
 static size_t s_bootloader_received = 0;
 static bool s_bootloader_failed = false;
+
+static bool s_is_nano_update = false;
+static bool s_nano_failed = false;
+static NanoFlasher::Uploader *s_nano_uploader = nullptr;
+
 static String s_upload_error_msg = "";
 
 template <typename F>
@@ -156,14 +162,18 @@ void WebServerManager::init(const char *firmware_version) {
       "/upload", HTTP_POST,
       []() {
         server.sendHeader("Connection", "close");
-        if (s_is_bootloader_update ? s_bootloader_failed : Update.hasError()) {
+        if (s_is_nano_update ? s_nano_failed : (s_is_bootloader_update ? s_bootloader_failed : Update.hasError())) {
           String errMsg = s_upload_error_msg.length() > 0 ? s_upload_error_msg : "Flash update failed";
           server.send(500, "text/plain", errMsg);
         } else {
-          const char* targetName = s_is_bootloader_update ? "Bootloader" : "Firmware";
-          String successMsg = String(targetName) + " updated successfully! Rebooting...";
-          server.send(200, "text/plain", successMsg);
-          RebootManager::getInstance().requestReboot("Web OTA update complete", 500);
+          if (s_is_nano_update) {
+            server.send(200, "text/plain", "Arduino Nano firmware updated successfully! Reconnecting sensor hub...");
+          } else {
+            const char* targetName = s_is_bootloader_update ? "Bootloader" : "Firmware";
+            String successMsg = String(targetName) + " updated successfully! Rebooting...";
+            server.send(200, "text/plain", successMsg);
+            RebootManager::getInstance().requestReboot("Web OTA update complete", 500);
+          }
         }
       },
       handleUpload);
@@ -305,14 +315,15 @@ void WebServerManager::handleApiStatus() {
   snprintf(chunk, sizeof(chunk),
            "\"sys\":{\"ssid\":\"%s\",\"ip\":\"%s\",\"rssi\":%d,\"mac\":\"%s\",\"wc\":%s,"
            "\"mh\":\"%s\",\"mp\":%d,\"mc\":%s,\"nv\":\"%s\",\"dsp\":%lu,\"nu\":%lu,"
-           "\"sc\":%s,\"nrc\":\"%s\",\"nr\":%u},",
+           "\"sc\":%s,\"nrc\":\"%s\",\"nr\":%u,\"nfw\":%u},",
            data.wifi_ssid, data.wifi_ip, (int)data.wifi_rssi, data.wifi_mac,
            data.wifi_connected ? "true" : "false",
            data.mqtt_host, data.mqtt_port, data.mqtt_connected ? "true" : "false",
            data.nano_version, (unsigned long)data.seconds_since_packet,
            (unsigned long)data.nano_uptime_seconds,
            data.sensor_module_connected ? "true" : "false",
-           data.nano_reset_cause, (unsigned int)data.nano_free_ram);
+           data.nano_reset_cause, (unsigned int)data.nano_free_ram,
+           (unsigned int)data.sensorstack_firmware_state);
   server.sendContent(chunk);
 
   // Section: diag
@@ -750,14 +761,24 @@ void WebServerManager::handleUpload() {
   HTTPUpload &upload = server.upload();
   if (upload.status == UPLOAD_FILE_START) {
     s_upload_error_msg = "";
-    // Check if target is explicitly set to bootloader via query string (?target=bootloader)
-    // or if the filename starts with 'bootloader'
     String target = server.hasArg("target") ? server.arg("target") : "";
     String lowerName = upload.filename;
     lowerName.toLowerCase();
-    s_is_bootloader_update = (target.equalsIgnoreCase("bootloader") || lowerName.startsWith("bootloader"));
 
-    if (s_is_bootloader_update) {
+    s_is_nano_update = (target.equalsIgnoreCase("nano") || (target.length() == 0 && (lowerName.endsWith(".hex") || lowerName.indexOf("nano") >= 0)));
+    s_is_bootloader_update = !s_is_nano_update && (target.equalsIgnoreCase("bootloader") || (target.length() == 0 && lowerName.startsWith("bootloader")));
+
+    if (s_is_nano_update) {
+      logger.infof("[Web OTA] Arduino Nano Firmware Update Started: %s", upload.filename.c_str());
+      s_nano_failed = false;
+      if (!s_nano_uploader) {
+        s_nano_uploader = new NanoFlasher::Uploader();
+      }
+      if (!s_nano_uploader || !s_nano_uploader->begin(s_upload_error_msg)) {
+        s_nano_failed = true;
+        logger.errorf("[Web OTA] Failed to allocate/initialize Nano uploader: %s", s_upload_error_msg.c_str());
+      }
+    } else if (s_is_bootloader_update) {
       logger.infof("[Web OTA] Bootloader Update Started: %s", upload.filename.c_str());
       s_bootloader_received = 0;
       s_bootloader_failed = false;
@@ -777,7 +798,14 @@ void WebServerManager::handleUpload() {
       }
     }
   } else if (upload.status == UPLOAD_FILE_WRITE) {
-    if (s_is_bootloader_update) {
+    if (s_is_nano_update) {
+      if (!s_nano_failed && s_nano_uploader) {
+        if (!s_nano_uploader->write(upload.buf, upload.currentSize, s_upload_error_msg)) {
+          s_nano_failed = true;
+          logger.errorf("[Web OTA] Nano firmware upload write error: %s", s_upload_error_msg.c_str());
+        }
+      }
+    } else if (s_is_bootloader_update) {
       if (!s_bootloader_failed) {
         if (s_bootloader_received + upload.currentSize > 0x7000) {
           s_bootloader_failed = true;
@@ -811,7 +839,29 @@ void WebServerManager::handleUpload() {
       }
     }
   } else if (upload.status == UPLOAD_FILE_END) {
-    if (s_is_bootloader_update) {
+    if (s_is_nano_update) {
+      if (s_nano_failed || !s_nano_uploader) {
+        logger.errorf("[Web OTA] Nano update upload aborted/failed: %s", s_upload_error_msg.c_str());
+      } else {
+        if (!s_nano_uploader->finish(s_upload_error_msg)) {
+          s_nano_failed = true;
+          logger.errorf("[Web OTA] Nano firmware parsing failed: %s", s_upload_error_msg.c_str());
+        } else {
+          logger.infof("[Web OTA] Nano firmware image parsed successfully (%u bytes). Flashing to ATmega328P...",
+                       s_nano_uploader->getFlashSize());
+          if (!NanoFlasher::flashImage(s_nano_uploader->getFlashBuffer(), s_nano_uploader->getFlashSize(), s_upload_error_msg)) {
+            s_nano_failed = true;
+            logger.errorf("[Web OTA] Nano flashing failed: %s", s_upload_error_msg.c_str());
+          } else {
+            logger.info("[Web OTA] Arduino Nano flashed and verified successfully via urprotocol!");
+          }
+        }
+      }
+      if (s_nano_uploader) {
+        delete s_nano_uploader;
+        s_nano_uploader = nullptr;
+      }
+    } else if (s_is_bootloader_update) {
       if (s_bootloader_failed) {
         logger.errorf("[Web OTA] Bootloader update failed: %s", s_upload_error_msg.c_str());
         if (s_bootloader_buf) {
@@ -914,6 +964,16 @@ void WebServerManager::handleUpload() {
         log_update_error();
         s_upload_error_msg = String("Update.end failed, error: ") + Update.getError();
       }
+    }
+  } else if (upload.status == UPLOAD_FILE_ABORTED) {
+    logger.warning("[Web OTA] Firmware upload aborted by client");
+    if (s_nano_uploader) {
+      delete s_nano_uploader;
+      s_nano_uploader = nullptr;
+    }
+    if (s_bootloader_buf) {
+      free(s_bootloader_buf);
+      s_bootloader_buf = nullptr;
     }
   }
 }

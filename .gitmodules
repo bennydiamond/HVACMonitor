@@ -2,3 +2,7 @@
 	path = lib/home-assistant-integration
 	url = git@github.com:bennydiamond/arduino-home-assistant.git
 	branch = main
+[submodule "HVAC_NanoSensorHub/urboot"]
+	path = HVAC_NanoSensorHub/urboot
+	url = git@github.com:bennydiamond/urboot.git
+	branch = hvac-magic-boot

@@ -42,6 +42,7 @@ UI::~UI() {
   lv_obj_del(air_filter_icon_label);
   lv_obj_del(status_bar);
   lv_timer_del(high_pressure_blink_timer);
+  lv_timer_del(sensor_firmware_blink_timer);
 
   if (_tft) {
     _tft->waitDMA();
@@ -102,6 +103,10 @@ void UI::create_widgets() {
   high_pressure_blink_timer = lv_timer_create(
       UIRuntimeTile::high_pressure_blink_cb, 750, air_filter_icon_label);
   lv_timer_pause(high_pressure_blink_timer);
+  // Same opacity toggle as the high pressure icon
+  sensor_firmware_blink_timer = lv_timer_create(
+      UIRuntimeTile::high_pressure_blink_cb, 750, sensor_icon_label);
+  lv_timer_pause(sensor_firmware_blink_timer);
 }
 
 uint32_t UI::run(void) { return lv_timer_handler(); }
@@ -357,12 +362,113 @@ void UI::update_ha_status(bool connected) {
                     connected ? COLOR_HA_BLUE : COLOR_DISCONNECTED);
 }
 void UI::update_sensor_status(bool connected) {
-  ui_set_label_text(sensor_icon_label,
-                    connected ? ICON_LAN_CONNECT : ICON_LAN_DISCONNECT);
-  ui_set_text_color(sensor_icon_label,
-                    connected ? COLOR_GREEN : COLOR_DISCONNECTED);
+  sensor_connected = connected;
+  refresh_sensor_icon();
   if (tileManager)
     tileManager->update_sensor_status(connected);
+}
+
+void UI::refresh_sensor_icon(void) {
+  // A SensorStack firmware issue (state 2) overrides the link icon and blinks
+  if (sensorstack_firmware_state == 2) {
+    ui_set_label_text(sensor_icon_label, ICON_MEMORY_ARROW_DOWN);
+    ui_set_text_color(sensor_icon_label, COLOR_HIGH);
+    if (sensor_firmware_blink_timer && sensor_firmware_blink_timer->paused) {
+      lv_timer_reset(sensor_firmware_blink_timer);
+      lv_timer_resume(sensor_firmware_blink_timer);
+    }
+    return;
+  }
+
+  if (sensor_firmware_blink_timer)
+    lv_timer_pause(sensor_firmware_blink_timer);
+  lv_obj_set_style_opa(sensor_icon_label, LV_OPA_COVER, 0);
+  ui_set_label_text(sensor_icon_label,
+                    sensor_connected ? ICON_LAN_CONNECT : ICON_LAN_DISCONNECT);
+  ui_set_text_color(sensor_icon_label,
+                    sensor_connected ? COLOR_GREEN : COLOR_DISCONNECTED);
+}
+
+void UI::create_firmware_popup(void) {
+  // Full-screen dimmed layer: absorbs touches so the tiles can't be swiped underneath
+  firmware_popup = lv_obj_create(lv_layer_top());
+  lv_obj_remove_style_all(firmware_popup);
+  lv_obj_set_size(firmware_popup, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_style_bg_color(firmware_popup, lv_color_black(), 0);
+  lv_obj_set_style_bg_opa(firmware_popup, LV_OPA_70, 0);
+  lv_obj_add_flag(firmware_popup, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_clear_flag(firmware_popup, LV_OBJ_FLAG_SCROLLABLE);
+  lv_obj_add_event_cb(firmware_popup, firmware_popup_clicked_cb, LV_EVENT_CLICKED, this);
+
+  lv_obj_t *panel = lv_obj_create(firmware_popup);
+  lv_obj_set_size(panel, 300, LV_SIZE_CONTENT);
+  lv_obj_center(panel);
+  lv_obj_set_style_bg_color(panel, lv_color_hex(0x202020), 0);
+  lv_obj_set_style_border_width(panel, 2, 0);
+  lv_obj_set_style_radius(panel, 12, 0);
+  lv_obj_set_style_pad_all(panel, 12, 0);
+  lv_obj_clear_flag(panel, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_COLUMN);
+  lv_obj_set_flex_align(panel, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                        LV_FLEX_ALIGN_CENTER);
+
+  firmware_popup_icon = lv_label_create(panel);
+  lv_obj_set_style_text_font(firmware_popup_icon, &mdi_30, 0);
+
+  firmware_popup_label = lv_label_create(panel);
+  lv_obj_set_width(firmware_popup_label, LV_PCT(100));
+  lv_label_set_long_mode(firmware_popup_label, LV_LABEL_LONG_WRAP);
+  lv_obj_set_style_text_align(firmware_popup_label, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_color(firmware_popup_label, lv_color_white(), 0);
+}
+
+void UI::firmware_popup_clicked_cb(lv_event_t *e) {
+  UI *ui_instance = (UI *)lv_event_get_user_data(e);
+  // The firmware issue notice can be acknowledged; the update notice stays until it ends
+  if (ui_instance && ui_instance->firmware_popup_dismissable)
+    lv_obj_add_flag(ui_instance->firmware_popup, LV_OBJ_FLAG_HIDDEN);
+}
+
+void UI::update_sensorstack_firmware_state(int state) {
+  // state: 0 OK, 1 update in progress, 2 firmware issue (SensorStackFirmwareState)
+  sensorstack_firmware_state = state;
+  refresh_sensor_icon();
+  if (tileManager)
+    tileManager->update_sensorstack_firmware_state(state);
+
+  if (state != 1 && state != 2) {
+    if (firmware_popup)
+      lv_obj_add_flag(firmware_popup, LV_OBJ_FLAG_HIDDEN);
+    return;
+  }
+
+  if (!firmware_popup)
+    create_firmware_popup();
+
+  // Return to the landing page underneath the popup
+  if (tileManager &&
+      lv_tileview_get_tile_act(tileview) != tileManager->get_tile1()) {
+    lv_obj_set_tile_id(tileview, 0, 0, LV_ANIM_OFF);
+    tileManager->update_tile_visibility(tileManager->get_tile1());
+  }
+
+  lv_obj_t *panel = lv_obj_get_parent(firmware_popup_icon);
+  if (state == 1) {
+    firmware_popup_dismissable = false;
+    ui_set_label_text(firmware_popup_icon, ICON_UPDATE);
+    ui_set_text_color(firmware_popup_icon, COLOR_HA_BLUE);
+    lv_obj_set_style_border_color(panel, COLOR_HA_BLUE, 0);
+    ui_set_label_text(firmware_popup_label,
+                      "Updating\nSensorStack\nfirmware...");
+  } else {
+    firmware_popup_dismissable = true;
+    ui_set_label_text(firmware_popup_icon, ICON_ALERT);
+    ui_set_text_color(firmware_popup_icon, COLOR_HIGH);
+    lv_obj_set_style_border_color(panel, COLOR_HIGH, 0);
+    ui_set_label_text(firmware_popup_label,
+                      "SensorStack\nfirmware issue\nUpload firmware\nfrom web page");
+  }
+  lv_obj_clear_flag(firmware_popup, LV_OBJ_FLAG_HIDDEN);
 }
 
 void UI::disp_flush_cb(lv_disp_drv_t *disp, const lv_area_t *area,

@@ -11,11 +11,9 @@ def format_hex_array(data: bytes, bytes_per_line: int = 16) -> str:
         lines.append("    " + ", ".join(hex_vals))
     return ",\n".join(lines)
 
-def build_assets():
-    # Resolve project root (directory containing platformio.ini)
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    project_dir = os.path.abspath(os.path.join(script_dir, ".."))
-    
+def build_assets(project_dir):
+    # project_dir: project root (directory containing platformio.ini)
+
     web_dir = os.path.join(project_dir, "web")
     output_header = os.path.join(project_dir, "include", "webserver", "WebServerAssetsGz.h")
     
@@ -73,11 +71,10 @@ def build_assets():
     print(f"[compress_web_assets] Compressed web/app.js: {len(js_data)} -> {len(js_gz)} bytes")
     print(f"[compress_web_assets] Generated {output_header}")
 
-# Support PlatformIO SCons execution
-try:
-    Import("env")
-    build_assets()
-except Exception:
+if __name__ == "__main__":
     # Direct Python execution (e.g. python scripts/compress_web_assets.py)
-    if __name__ == "__main__":
-        build_assets()
+    build_assets(os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")))
+else:
+    # PlatformIO SCons execution: __file__ is not defined there, use the project dir from env
+    Import("env")
+    build_assets(env.subst("$PROJECT_DIR"))

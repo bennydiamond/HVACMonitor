@@ -1,6 +1,6 @@
 #!/bin/bash
 
-lv_font_conv --bpp 4 --size 30 --no-compress --font materialdesignicons-webfont.ttf --format lvgl -o src/mdi_30.c \
+lv_font_conv --bpp 4 --size 30 --no-compress --font materialdesignicons-webfont.ttf --format lvgl -o src/ui/mdi_30.c \
 --range \
 0xF0873,\
 0xF029A,\
@@ -12,9 +12,17 @@ lv_font_conv --bpp 4 --size 30 --no-compress --font materialdesignicons-webfont.
 0xF00B5,\
 0xF07E4,\
 0xF1084,\
+0xF12FE,\
+0xF0BAC,\
+0xF07AB,\
+0xF1799,\
 0xF0210,\
 0xF146C,\
 0xF081D,\
+0xF01FA,\
+0xF1402,\
+0xF1502,\
+0xF058C,\
 0xF0318,\
 0xF0319,\
 0xF07D0,\
@@ -30,4 +38,7 @@ lv_font_conv --bpp 4 --size 30 --no-compress --font materialdesignicons-webfont.
 0xF0150,\
 0xF01BC,\
 0xF0C90,\
-0xF05A9
+0xF05A9,\
+0xF06B0,\
+0xF0026,\
+0xF1CA6

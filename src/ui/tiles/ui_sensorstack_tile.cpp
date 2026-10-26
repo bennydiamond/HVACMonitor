@@ -4,7 +4,9 @@
 extern const lv_font_t custom_font_30;
 const int SCROLL_SPEED_MS_PX_SS = 5;
 
-UISensorStackTile::UISensorStackTile() : 
+UISensorStackTile::UISensorStackTile() :
+connected(false),
+firmware_state(0),
 tile_obj(nullptr),
 version_label(nullptr),
 uptime_label(nullptr),
@@ -106,13 +108,40 @@ void UISensorStackTile::update_sensorstack_ram(uint16_t ram) {
     }
 }
 void UISensorStackTile::update_sensor_status(bool connected) {
-    ui_set_label_text(status_icon, connected ? ICON_LAN_CONNECT : ICON_LAN_DISCONNECT);
-    ui_set_label_text(status_label, connected ? "Connected" : "Disconnected");
-    ui_set_text_color(status_icon, connected ? COLOR_GREEN : COLOR_DISCONNECTED);
-    ui_set_text_color(status_label, connected ? COLOR_GREEN : COLOR_DISCONNECTED);
+    this->connected = connected;
+    refresh_status();
     if(connected == false) {
         update_sensorstack_uptime(0);
     }
+}
+
+void UISensorStackTile::update_firmware_state(int state) {
+    firmware_state = state;
+    refresh_status();
+}
+
+void UISensorStackTile::refresh_status() {
+    // Firmware state (1 updating, 2 firmware issue) takes precedence over the link state
+    const char* icon;
+    const char* text;
+    lv_color_t color;
+    if (firmware_state == 2) {
+        icon = ICON_ALERT;
+        text = "Firmware issue";
+        color = COLOR_HIGH;
+    } else if (firmware_state == 1) {
+        icon = ICON_UPDATE;
+        text = "Updating FW";
+        color = COLOR_HA_BLUE;
+    } else {
+        icon = connected ? ICON_LAN_CONNECT : ICON_LAN_DISCONNECT;
+        text = connected ? "Connected" : "Disconnected";
+        color = connected ? COLOR_GREEN : COLOR_DISCONNECTED;
+    }
+    ui_set_label_text(status_icon, icon);
+    ui_set_label_text(status_label, text);
+    ui_set_text_color(status_icon, color);
+    ui_set_text_color(status_label, color);
 }
 
 void UISensorStackTile::update_fw_version(const char* fw) {

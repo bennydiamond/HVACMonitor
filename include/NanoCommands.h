@@ -9,6 +9,8 @@
 #define CMD_ACK_HEALTH        'A' // Acknowledge Health Status
 #define RSP_VERSION           'v'
 #define CMD_REBOOT            'R' // Request Nano Reboot
+#define CMD_BOOTLOADER        'B' // Request Nano Enter Bootloader
+#define RSP_BOOTLOADER        'b' // Response/ACK for Nano Enter Bootloader
 #define CMD_GET_SPS30_INFO    'P' // Request SPS30 info
 #define RSP_SPS30_INFO        'p' // Response with SPS30 info
 #define CMD_SPS30_CLEAN       'C' // Request manual SPS30 fan cleaning

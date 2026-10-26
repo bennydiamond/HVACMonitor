@@ -50,3 +50,8 @@
 #define ICON_DATABASE           "\xF3\xB0\x86\xBC"  // U+F01BC
 #define ICON_IP                 "\xF3\xB0\xB2\x90"  // U+F0C90
 #define ICON_WIFI               "\xF3\xB0\x96\xA9"  // U+F05A9
+
+// SensorStack firmware popup
+#define ICON_UPDATE             "\xF3\xB0\x9A\xB0"  // U+F06B0
+#define ICON_ALERT              "\xF3\xB0\x80\xA6"  // U+F0026
+#define ICON_MEMORY_ARROW_DOWN  "\xF3\xB1\xB2\xA6"  // U+F1CA6

@@ -58,6 +58,7 @@ class UI : public IUIManager, public IUIUpdater {
     void update_sensorstack_ram(uint16_t) override;
     void update_network_rssi(int8_t) override;
     void update_network_ha_conn(bool) override;
+    void update_sensorstack_firmware_state(int state) override;
     void update_last_packet_time(uint32_t) override;
     void update_ssid(const char* ssid) override;
     void update_ip(const char* ip) override;
@@ -84,6 +85,9 @@ private:
     void inactivity_timer_cb(lv_timer_t *timer);
     static void tile_change_event_cb_static(lv_event_t * e);
     void tile_change_event_cb(lv_event_t * e);
+    void refresh_sensor_icon(void);
+    void create_firmware_popup(void);
+    static void firmware_popup_clicked_cb(lv_event_t * e);
 
     lv_obj_t* tileview = nullptr;
     lv_obj_t* status_bar = nullptr;
@@ -94,6 +98,15 @@ private:
     lv_obj_t* ha_icon_label = nullptr;
     lv_obj_t* sensor_icon_label = nullptr;
     lv_timer_t* high_pressure_blink_timer = nullptr;
+    lv_timer_t* sensor_firmware_blink_timer = nullptr;
+    // Last SensorStack link and firmware state, combined into the status bar icon
+    bool sensor_connected = false;
+    int sensorstack_firmware_state = 0;
+    // SensorStack firmware popup (on lv_layer_top, above the tileview and status bar)
+    lv_obj_t* firmware_popup = nullptr;
+    lv_obj_t* firmware_popup_icon = nullptr;
+    lv_obj_t* firmware_popup_label = nullptr;
+    bool firmware_popup_dismissable = false;
 };
 
 #endif // UI_H

@@ -53,6 +53,7 @@ class IUIUpdater;
     X(UI_SENSORSTACK_RAM) \
     X(UI_NETWORK_RSSI) \
     X(UI_NETWORK_HA_CONN) \
+    X(UI_SENSORSTACK_FIRMWARE_STATE) \
     X(UI_SHOW_OTA_POPUP)
 
 // X-macro for string message types
@@ -144,6 +145,7 @@ public:
     void update_sensorstack_ram(uint16_t ram);
     void update_network_rssi(int8_t rssi);
     void update_network_ha_conn(bool ha_conn);
+    void update_sensorstack_firmware_state(int state); // SensorStackFirmwareState as int
 
     void queue_ota_popup();
 

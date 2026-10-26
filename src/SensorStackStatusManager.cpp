@@ -16,6 +16,7 @@ SensorStackStatusManager::SensorStackStatusManager()
       _free_ram(0),
       _reset_cause_code(0),
       _first_health_packet_received(false),
+      _firmware_state(SensorStackFirmwareState::Ok),
       _sps30_device_info{},
       _sgp41_test_result_data{} {
     _version[0] = '\0';
@@ -49,6 +50,31 @@ void SensorStackStatusManager::onPacketReceived() {
     if (!_connected) {
         setConnected(true);
     }
+    // A valid packet can only come from a running application
+    if (_firmware_state == SensorStackFirmwareState::Faulty) {
+        setFirmwareState(SensorStackFirmwareState::Ok);
+    }
+}
+
+void SensorStackStatusManager::setFirmwareState(SensorStackFirmwareState state) {
+    if (_firmware_state == state) {
+        return;
+    }
+    _firmware_state = state;
+
+    switch (state) {
+        case SensorStackFirmwareState::Updating:
+            logger.info("SensorStack firmware update in progress.");
+            break;
+        case SensorStackFirmwareState::Faulty:
+            logger.error("SensorStack firmware issue: bootloader is waiting for a firmware upload (no valid application).");
+            break;
+        case SensorStackFirmwareState::Ok:
+        default:
+            logger.info("SensorStack firmware state OK.");
+            break;
+    }
+    if (_ui) _ui->update_sensorstack_firmware_state(static_cast<int>(state));
 }
 
 void SensorStackStatusManager::setConnected(bool connected) {
@@ -361,6 +387,7 @@ void SensorStackStatusManager::updateDiagnostics() {
 
 void SensorStackStatusManager::populateDashboardData(LiveDashboardData& data) const {
     data.sensor_module_connected = _connected;
+    data.sensorstack_firmware_state = static_cast<uint8_t>(_firmware_state);
     data.seconds_since_packet = (_last_packet_time > 0) ? (millis() - _last_packet_time) / 1000 : 0;
     data.nano_uptime_seconds = (_connected && _nano_boot_millis > 0) ? (millis() - _nano_boot_millis) / 1000 : 0;
     data.nano_free_ram = _free_ram;

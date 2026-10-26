@@ -5,17 +5,18 @@ const char *ota_page_html =
     R"rawliteral(<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OTA Firmware Update</title><link rel="stylesheet" href="/style.css?v=%FIRMWARE_VERSION%"><script src="/app.js?v=%FIRMWARE_VERSION%"></script></head><body><div class="container" style="max-width:640px"><div class="header"><div class="brand">HVAC & IAQ Monitor</div><div class="nav"><a href="/">Dashboard</a><a href="/config">Settings</a><a href="/ota" class="active">OTA Update</a></div></div>
 <div class="config-section" style="margin-top:20px">
 <h2 style="text-align:center">Over-The-Air Update</h2>
-<p style="color:var(--text-muted);margin-bottom:20px;font-size:14px;text-align:center">Select a compiled application binary (.bin) or 2nd-stage bootloader (.bin) to flash wirelessly to the ESP32.</p>
+<p style="color:var(--text-muted);margin-bottom:20px;font-size:14px;text-align:center">Select an ESP32 application binary (.bin), 2nd-stage bootloader (.bin), or Arduino Nano firmware (.hex / .bin) to flash wirelessly.</p>
 
 <form id="ota_form" onsubmit="startOtaUpload(event)" style="width:100%;box-sizing:border-box">
 <div style="margin-bottom:12px">
   <label for="ota_target" style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">Update Target:</label>
   <select id="ota_target" name="target" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:6px;background:var(--card-sub);color:var(--text);box-sizing:border-box">
-    <option value="firmware" selected>Application Firmware (OTA partition)</option>
-    <option value="bootloader">Bootloader (Flash offset 0x1000)</option>
+    <option value="firmware" selected>ESP32 Application Firmware (OTA partition)</option>
+    <option value="bootloader">ESP32 Bootloader (Flash offset 0x1000)</option>
+    <option value="nano">Arduino Nano Sensor Hub (UART urprotocol)</option>
   </select>
 </div>
-<input type="file" id="ota_file" name="update" accept=".bin" required style="width:100%;padding:12px;border:1px dashed var(--border);border-radius:6px;background:var(--card-sub);color:var(--text);margin-bottom:15px;box-sizing:border-box"><br>
+<input type="file" id="ota_file" name="update" accept=".bin,.hex" required style="width:100%;padding:12px;border:1px dashed var(--border);border-radius:6px;background:var(--card-sub);color:var(--text);margin-bottom:15px;box-sizing:border-box"><br>
 <button type="submit" id="ota_submit_btn" class="save-button" style="width:100%;padding:12px;font-size:15px">Upload & Flash</button>
 </form>
 
@@ -35,6 +36,7 @@ const char *ota_page_html =
 <strong>System Information:</strong><br>
 Current Firmware Version: <span style="color:var(--text);font-weight:bold">%FIRMWARE_VERSION%</span><br>
 Target Platform: <span style="color:var(--text)">ESP32 (240MHz, Dual Core, 4MB Flash)</span><br>
+Coprocessor: <span style="color:var(--text)">ATmega328P Nano Sensor Hub (16MHz, UART 19200 baud)</span><br>
 Active Partition Scheme: <span style="color:var(--text)">Dual OTA with Rollback</span>
 </div>
 </div></div>
@@ -46,6 +48,8 @@ document.getElementById("ota_file").addEventListener("change", function(e) {
     const sel = document.getElementById("ota_target");
     if (fn.startsWith("bootloader")) {
       sel.value = "bootloader";
+    } else if (fn.endsWith(".hex") || fn.indexOf("nano") !== -1) {
+      sel.value = "nano";
     }
   }
 });
@@ -54,14 +58,18 @@ function startOtaUpload(e) {
   e.preventDefault();
   const fileInput = document.getElementById("ota_file");
   if (!fileInput.files || fileInput.files.length === 0) {
-    alert("Please select a .bin file first.");
+    alert("Please select a .bin or .hex file first.");
     return;
   }
   const file = fileInput.files[0];
   const target = document.getElementById("ota_target").value;
   const isBootloader = (target === "bootloader" || file.name.toLowerCase().startsWith("bootloader"));
+  const isNano = (target === "nano" || file.name.toLowerCase().endsWith(".hex") || file.name.toLowerCase().indexOf("nano") !== -1);
 
   if (isBootloader && !confirm("Warning: You are about to flash the 2nd-stage BOOTLOADER directly to flash offset 0x1000. Ensure this file is a valid ESP32 bootloader.bin. Proceed?")) {
+    return;
+  }
+  if (isNano && !confirm("Notice: Flashing Arduino Nano Sensor Hub firmware over UART. Sensor readings will be temporarily suspended during flashing (~10-15s). Proceed?")) {
     return;
   }
 
@@ -77,7 +85,8 @@ function startOtaUpload(e) {
   submitBtn.style.opacity = "0.5";
   fileInput.disabled = true;
   progressWrap.style.display = "block";
-  filename.textContent = (isBootloader ? "[Bootloader] " : "[Firmware] ") + file.name + " (" + (file.size / 1024).toFixed(1) + " KB)";
+  const tag = isNano ? "[Nano FW] " : (isBootloader ? "[Bootloader] " : "[ESP32 App] ");
+  filename.textContent = tag + file.name + " (" + (file.size / 1024).toFixed(1) + " KB)";
 
   const formData = new FormData();
   formData.append("update", file);
@@ -92,25 +101,25 @@ function startOtaUpload(e) {
       pct.textContent = percent + "%";
       detail.textContent = (evt.loaded / 1024).toFixed(1) + " KB of " + (evt.total / 1024).toFixed(1) + " KB transferred";
       if (percent < 100) {
-        statusMsg.textContent = "Uploading " + (isBootloader ? "bootloader..." : "firmware...");
+        statusMsg.textContent = "Uploading " + (isNano ? "Nano firmware to ESP32..." : (isBootloader ? "bootloader..." : "firmware..."));
         statusMsg.style.color = "var(--accent)";
       } else {
-        statusMsg.textContent = isBootloader ? "Verifying and flashing bootloader at 0x1000... Please wait." : "Flash write & verification in progress... Please wait.";
+        statusMsg.textContent = isNano ? "Flashing Arduino Nano over UART (urprotocol)... Please wait ~15s." : (isBootloader ? "Verifying and flashing bootloader at 0x1000... Please wait." : "Flash write & verification in progress... Please wait.");
         statusMsg.style.color = "#fbbf24";
       }
     }
   });
 
-  function startCountdown(msg) {
-    let secs = 10;
+  function startCountdown(msg, isNanoUpdate) {
+    let secs = isNanoUpdate ? 6 : 10;
     bar.style.width = "100%";
     pct.textContent = "100%";
     statusMsg.style.color = "#34d399";
-    statusMsg.textContent = msg || "Update successful! Rebooting...";
+    statusMsg.textContent = msg || (isNanoUpdate ? "Nano update successful! Reconnecting..." : "Update successful! Rebooting...");
     const interval = setInterval(function() {
       secs--;
       if (secs > 0) {
-        detail.textContent = "Device is rebooting. Redirecting to dashboard in " + secs + "s...";
+        detail.textContent = (isNanoUpdate ? "Sensor hub reconnecting. Redirecting to dashboard in " : "Device is rebooting. Redirecting to dashboard in ") + secs + "s...";
       } else {
         clearInterval(interval);
         window.location.href = "/";
@@ -120,7 +129,7 @@ function startOtaUpload(e) {
 
   xhr.onload = function() {
     if (xhr.status === 200) {
-      startCountdown(xhr.responseText || "Update complete! Rebooting device...");
+      startCountdown(xhr.responseText || "Update complete!", isNano);
     } else {
       statusMsg.textContent = "Update failed (Status " + xhr.status + "): " + xhr.responseText;
       statusMsg.style.color = "#f87171";
@@ -131,7 +140,7 @@ function startOtaUpload(e) {
   };
 
   xhr.onerror = function() {
-    startCountdown("Flash completed! Device is restarting...");
+    startCountdown(isNano ? "Upload finished, check sensor status on dashboard..." : "Flash completed! Device is restarting...", isNano);
   };
 
   xhr.send(formData);

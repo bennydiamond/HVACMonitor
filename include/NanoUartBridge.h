@@ -24,6 +24,7 @@ public:
                SensorTask* sensorTask = nullptr);
 
     void setSensorTask(SensorTask* sensorTask) { _sensorTask = sensorTask; }
+    SensorStackStatusManager* getStatusManager() const { return _statusManager; }
 
     void handle();
     void loop() { handle(); }
@@ -37,10 +38,16 @@ public:
     bool querySps30InfoBlocking(uint32_t timeout_ms = 2000);
     bool runSgp41TestBlocking(uint32_t timeout_ms = 4000);
 
+    // Flashing & Maintenance Control
+    void setSuspended(bool suspended);
+    bool isSuspended() const { return _suspended; }
+    void restartInitSequence();
+
+    static uint8_t calculateChecksum(const char* data_str);
+
     enum InitCmd { CMD_INIT_NONE, CMD_INIT_VERSION, CMD_INIT_HEALTH, CMD_INIT_SPS30_INFO, CMD_INIT_SCD30_INFO };
 
 private:
-    uint8_t calculateChecksum(const char* data_str);
     void readAndProcessSerial();
     void processPacket(char* packet);
     static bool strEndsWith(const char* str, const char* suffix);
@@ -70,4 +77,7 @@ private:
     bool _health_request_pending;
     unsigned long _last_sensor_query_time;
     unsigned long _last_scd30_info_time;
+    unsigned long _last_firmware_probe_time;
+    unsigned long _firmware_probe_quiet_since; // 0 while not waiting for the line to go quiet
+    bool _suspended;
 };
