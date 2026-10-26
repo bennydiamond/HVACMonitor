@@ -16,6 +16,7 @@ public:
         uint8_t error_code;
         uint8_t data[32]; // Max 32 bytes of data
         uint8_t data_len;
+        uint8_t seq;      // Sequence tag of the request this reply answers
     };
     
     // Singleton instance
@@ -32,31 +33,33 @@ public:
     static Result writeBytes(uint8_t addr, uint8_t* data, uint8_t len);
     static Result writeReadBytes(uint8_t addr, uint8_t* writeData, uint8_t writeLen, uint8_t readLen);
     
-    // Response handling
-    static void processReadResponse(uint8_t status, uint8_t* data, uint8_t len);
-    static void processWriteResponse(uint8_t status);
-    
-    // Queue for I2C responses
-    static QueueHandle_t getResponseQueue() {
-        if (_response_queue == nullptr) {
-            _response_queue = xQueueCreate(1, sizeof(Result));
-        }
-        return _response_queue;
-    }
-    
-    // I2C communication functions
-    static void send_i2c_read_request(uint8_t address, uint8_t num_bytes);
-    static void send_i2c_write_request(uint8_t address, uint8_t* data, uint8_t data_len);
-    static void send_i2c_write_read_request(uint8_t address, uint8_t* write_data, uint8_t write_len, uint8_t read_len);
-    
+    // Response handling (main loop): queue every reply with the tag the SensorStack echoed.
+    // Matching it to a request is left to the requesting task.
+    static void processReadResponse(uint8_t status, uint8_t* data, uint8_t len, uint8_t seq);
+    static void processWriteResponse(uint8_t status, uint8_t seq);
+
+    // I2C communication functions. seq is echoed by the SensorStack in its reply.
+    static void send_i2c_write_request(uint8_t address, uint8_t* data, uint8_t data_len, uint8_t seq);
+    static void send_i2c_write_read_request(uint8_t address, uint8_t* write_data, uint8_t write_len, uint8_t read_len, uint8_t seq);
+
 private:
     I2CBridge() {} // Private constructor for singleton
-    
+
     // Helper function for checksum calculation
     static uint8_t calculate_checksum(const char* data_str);
-    
+
+    // Request/response matching, all in the requesting task (SensorTask): each request gets
+    // its own tag, and the wait discards queued replies carrying any other tag, i.e. late
+    // replies to requests that already timed out.
+    static uint8_t beginRequest();
+    static bool waitForResponse(uint8_t seq, Result& result, uint32_t timeout_ms);
+
+    // Room for a late reply arriving right before the expected one
+    static const UBaseType_t RESPONSE_QUEUE_LENGTH = 4;
+
     static unsigned long _timeout_ms;
     static QueueHandle_t _response_queue;
+    static uint8_t _next_seq; // Requesting task only
 };
 
 // Function declarations for HAL implementation

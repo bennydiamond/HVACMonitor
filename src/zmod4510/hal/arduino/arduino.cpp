@@ -59,18 +59,7 @@ _Delay ( uint32_t ms ) {
 static int
 _I2CRead ( void*  ifce, uint8_t  slAddr, uint8_t*  wrData, int  wrSize, uint8_t*  rdData, int  rdSize ) {
   ( void) ifce;
-  
-  
-  if (wrSize > 0 && wrData != nullptr) {
-    String hexData;
-    for (int i = 0; i < wrSize; i++) {
-      if (i > 0) hexData += " ";
-      char hex[4];
-      sprintf(hex, "%02X", wrData[i]);
-      hexData += hex;
-    }
-  }
-  
+
   I2CBridge& i2c = I2CBridge::getInstance();
   I2CBridge::Result result;
   
@@ -87,46 +76,21 @@ _I2CRead ( void*  ifce, uint8_t  slAddr, uint8_t*  wrData, int  wrSize, uint8_t*
     return HAL_SetError(result.error_code, aesArduino, _GetErrorString);
   }
   
-  // Copy the data to the output buffer
-  memcpy(rdData, result.data, result.data_len);
-  
-  // Log the read data
-  String hexData;
-  for (int i = 0; i < result.data_len; i++) {
-    if (i > 0) hexData += " ";
-    char hex[4];
-    sprintf(hex, "%02X", result.data[i]);
-    hexData += hex;
+  // rdData holds exactly rdSize bytes: a reply of any other length is an error
+  if (result.data_len != rdSize) {
+    logger.warningf("ZMOD4510: I2CRead got %d bytes, expected %d", result.data_len, rdSize);
+    return HAL_SetError(I2C_ERROR_DATA_NACK, aesArduino, _GetErrorString);
   }
-  
+  memcpy(rdData, result.data, rdSize);
+
   return ecSuccess;
 }
 
 
 static int
 _I2CWrite( void*  ifce, uint8_t  slAddr, uint8_t*  wrData1, int  wrSize1, uint8_t*  wrData2, int  wrSize2 ) {
-  ( void) ifce;  
-  // Log the write data buffers
-  if (wrSize1 > 0 && wrData1 != nullptr) {
-    String hexData;
-    for (int i = 0; i < wrSize1; i++) {
-      if (i > 0) hexData += " ";
-      char hex[4];
-      sprintf(hex, "%02X", wrData1[i]);
-      hexData += hex;
-    }
-  }
-  
-  if (wrSize2 > 0 && wrData2 != nullptr) {
-    String hexData;
-    for (int i = 0; i < wrSize2; i++) {
-      if (i > 0) hexData += " ";
-      char hex[4];
-      sprintf(hex, "%02X", wrData2[i]);
-      hexData += hex;
-    }
-  }
-  
+  ( void) ifce;
+
   I2CBridge& i2c = I2CBridge::getInstance();
   I2CBridge::Result result;
   

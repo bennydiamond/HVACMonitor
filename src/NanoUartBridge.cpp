@@ -383,6 +383,12 @@ void NanoUartBridge::processPacket(char* packet) {
         break;
     }
     case RSP_I2C_READ: {
+        // i<status>,<count>[,<bytes>...],<seq>: take the trailing tag off first
+        char *seq_field = strrchr(payload, ',');
+        if (!seq_field) return;
+        *seq_field = '\0';
+        uint8_t seq = strtol(seq_field + 1, nullptr, 16);
+
         char *token = strtok(payload, ",");
         if (!token) return;
         uint8_t status = strtol(token, nullptr, 16);
@@ -392,7 +398,8 @@ void NanoUartBridge::processPacket(char* packet) {
 
         uint8_t data[32];
         uint8_t bytes_read = 0;
-        while ((token = strtok(NULL, ",")) != NULL && bytes_read < num_bytes) {
+        while (bytes_read < num_bytes && bytes_read < sizeof(data) &&
+               (token = strtok(NULL, ",")) != NULL) {
             data[bytes_read++] = strtol(token, nullptr, 16);
         }
         if (bytes_read != num_bytes) {
@@ -401,17 +408,20 @@ void NanoUartBridge::processPacket(char* packet) {
         if (status != I2C_ERROR_NONE) {
             logger.warningf("I2C read error: 0x%02X", status);
         }
-        I2CBridge::getInstance().processReadResponse(status, data, bytes_read);
+        I2CBridge::getInstance().processReadResponse(status, data, bytes_read, seq);
         break;
     }
     case RSP_I2C_WRITE: {
-        char *token = strtok(payload, ",");
-        if (!token) return;
-        uint8_t status = strtol(token, nullptr, 16);
+        // w<status>,<seq>
+        char *seq_field = strchr(payload, ',');
+        if (!seq_field) return;
+        *seq_field = '\0';
+        uint8_t status = strtol(payload, nullptr, 16);
+        uint8_t seq = strtol(seq_field + 1, nullptr, 16);
         if (status != I2C_ERROR_NONE) {
             logger.warningf("I2C write error: 0x%02X", status);
         }
-        I2CBridge::getInstance().processWriteResponse(status);
+        I2CBridge::getInstance().processWriteResponse(status, seq);
         break;
     }
     default:

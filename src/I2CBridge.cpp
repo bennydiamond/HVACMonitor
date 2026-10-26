@@ -8,6 +8,7 @@
 // Private member variables for the singleton
 unsigned long I2CBridge::_timeout_ms = 1000;
 QueueHandle_t I2CBridge::_response_queue = nullptr;
+uint8_t I2CBridge::_next_seq = 0;
 
 // Helper function for checksum calculation
 uint8_t I2CBridge::calculate_checksum(const char* data_str) {
@@ -23,34 +24,30 @@ uint8_t I2CBridge::calculate_checksum(const char* data_str) {
     return crc;
 }
 
-// I2C communication functions
-void I2CBridge::send_i2c_read_request(uint8_t address, uint8_t num_bytes) {
-    if (num_bytes > 32) {
-        logger.warning("I2C read request exceeds maximum buffer size (32 bytes)");
-        num_bytes = 32; // Limit to maximum allowed
-    }
-    
-    char data_part[16]; // Buffer for command data
-    snprintf(data_part, 16, "%c%02X,%02X", CMD_I2C_READ, address, num_bytes);
-    
-    uint8_t checksum = calculate_checksum(data_part);
-#ifdef I2C_BRIDGE_DEBUG
-    logger.debugf("Sending I2C read request: <%s,%d>", data_part, checksum);
-#endif
-    // Use SerialMutex for atomic packet sending
-    SerialMutex& serialMutex = SerialMutex::getInstance();
-    if (serialMutex.lock()) {
-        // We still need to use direct Serial here for communication with the Nano
-        Serial.print('<');
-        Serial.print(data_part);
-        Serial.print(',');
-        Serial.print(checksum);
-        Serial.print('>');
-        serialMutex.unlock();
-    }
+uint8_t I2CBridge::beginRequest() {
+    // Drop replies left over from earlier requests
+    xQueueReset(_response_queue);
+    return _next_seq++;
 }
 
-void I2CBridge::send_i2c_write_request(uint8_t address, uint8_t* data, uint8_t data_len) {
+bool I2CBridge::waitForResponse(uint8_t seq, Result& result, uint32_t timeout_ms) {
+    TickType_t start = xTaskGetTickCount();
+    TickType_t timeout = pdMS_TO_TICKS(timeout_ms);
+    TickType_t elapsed;
+    while ((elapsed = xTaskGetTickCount() - start) < timeout) {
+        if (xQueueReceive(_response_queue, &result, timeout - elapsed) != pdTRUE) {
+            return false;
+        }
+        if (result.seq == seq) {
+            return true;
+        }
+        logger.warningf("I2CBridge: Dropped stale I2C response (seq %02X, expected %02X)", result.seq, seq);
+    }
+    return false;
+}
+
+// I2C communication functions
+void I2CBridge::send_i2c_write_request(uint8_t address, uint8_t* data, uint8_t data_len, uint8_t seq) {
     // 1. Initial check remains the same
     if (data_len > 96) {
         logger.warning("I2C write request exceeds maximum buffer size (96 bytes)");
@@ -73,19 +70,19 @@ void I2CBridge::send_i2c_write_request(uint8_t address, uint8_t* data, uint8_t d
     }
     written_len = result;
 
-    // Append each data byte as hex, safely checking remaining space each time
-    for (uint8_t i = 0; i < data_len; i++) {
+    // Append each data byte as hex, then the sequence tag, checking remaining space each time
+    for (uint16_t i = 0; i <= data_len; i++) {
         size_t remaining_size = buffer_size - written_len;
-        result = snprintf(data_part + written_len, remaining_size, ",%02X", data[i]);
+        result = snprintf(data_part + written_len, remaining_size, ",%02X", i < data_len ? data[i] : seq);
 
-        // Check if the append operation failed or was truncated
+        // A truncated command would be parsed as a different request: don't send it
         if (result < 0 || (size_t)result >= remaining_size) {
-            logger.errorf("Buffer overflow while formatting I2C write data. Command truncated.");
-            break; // Stop appending data to prevent overflow
+            logger.errorf("Buffer overflow while formatting I2C write data. Command not sent.");
+            return;
         }
         written_len += result;
     }
-    
+
     // 3. The rest of the function proceeds with the safely-built string
     uint8_t checksum = calculate_checksum(data_part);
 #ifdef I2C_BRIDGE_DEBUG
@@ -103,7 +100,7 @@ void I2CBridge::send_i2c_write_request(uint8_t address, uint8_t* data, uint8_t d
     }
 }
 
-void I2CBridge::send_i2c_write_read_request(uint8_t address, uint8_t* write_data, uint8_t write_len, uint8_t read_len) {
+void I2CBridge::send_i2c_write_read_request(uint8_t address, uint8_t* write_data, uint8_t write_len, uint8_t read_len, uint8_t seq) {
     // 1. Initial checks remain the same
     if (write_len > 16) {
         logger.warning("I2C write-read request exceeds maximum write buffer size (16 bytes)");
@@ -130,15 +127,15 @@ void I2CBridge::send_i2c_write_read_request(uint8_t address, uint8_t* write_data
     }
     written_len = result;
 
-    // Append each write byte as hex, safely checking remaining space each time
-    for (uint8_t i = 0; i < write_len; i++) {
+    // Append each write byte as hex, then the sequence tag, checking remaining space each time
+    for (uint16_t i = 0; i <= write_len; i++) {
         size_t remaining_size = buffer_size - written_len;
-        result = snprintf(data_part + written_len, remaining_size, ",%02X", write_data[i]);
+        result = snprintf(data_part + written_len, remaining_size, ",%02X", i < write_len ? write_data[i] : seq);
 
-        // Check if the append operation failed or was truncated
+        // A truncated command would be parsed as a different request: don't send it
         if (result < 0 || (size_t)result >= remaining_size) {
-            logger.errorf("Buffer overflow while formatting I2C write data. Command truncated.");
-            break; // Stop appending data to prevent overflow
+            logger.errorf("Buffer overflow while formatting I2C write data. Command not sent.");
+            return;
         }
         written_len += result;
     }
@@ -163,7 +160,7 @@ void I2CBridge::send_i2c_write_read_request(uint8_t address, uint8_t* write_data
 bool I2CBridge::begin() {
     // Initialize the response queue
     if (_response_queue == nullptr) {
-        _response_queue = xQueueCreate(1, sizeof(Result));
+        _response_queue = xQueueCreate(RESPONSE_QUEUE_LENGTH, sizeof(Result));
         if (_response_queue == nullptr) {
             logger.error("Failed to create I2C response queue");
             return false;
@@ -176,19 +173,20 @@ I2CBridge::Result I2CBridge::readBytes(uint8_t addr, uint8_t len) {
     Result result = {false, I2C_ERROR_PENDING, {0}, 0};
     const int max_retries = 3;
     int attempt = 0;
+    bool got_response = false;
 
     while (attempt < max_retries) {
-        // Make sure the queue is empty before sending a new request
-        xQueueReset(_response_queue);
-        
-        // Send the read request to the Nano
-        send_i2c_read_request(addr, len);
+        // Each attempt gets its own tag, so a late reply to a previous attempt is dropped
+        uint8_t seq = beginRequest();
+
+        // Send the read request to the Nano (write-read with nothing to write)
+        send_i2c_write_read_request(addr, nullptr, 0, len, seq);
 #ifdef I2C_BRIDGE_DEBUG
         logger.debugf("I2CBridge: Waiting for read response (addr=0x%02X, len=%d, attempt=%d)", addr, len, attempt + 1);
 #endif
         
         // Wait for response with timeout
-        if (xQueueReceive(_response_queue, &result, pdMS_TO_TICKS(1000)) == pdTRUE) {
+        if (waitForResponse(seq, result, 1000)) {
 #ifdef I2C_BRIDGE_DEBUG
             // Log the received data
             if (result.data_len > 0) {
@@ -207,6 +205,9 @@ I2CBridge::Result I2CBridge::readBytes(uint8_t addr, uint8_t len) {
             if (result.success) {
                 return result;
             }
+            got_response = true;
+        } else {
+            got_response = false;
         }
 
         // Timeout or error occurred
@@ -216,10 +217,14 @@ I2CBridge::Result I2CBridge::readBytes(uint8_t addr, uint8_t len) {
             delay(1); // Small delay before retry
         }
     }
-    
-    // All retries failed
-    logger.warningf("I2CBridge: Read response timeout after %d attempts for addr=0x%02X", max_retries, addr);
-    result.error_code = I2C_ERROR_TIMEOUT;
+
+    // All retries failed: keep the SensorStack's error code when the last attempt got one
+    if (got_response) {
+        logger.warningf("I2CBridge: Read failed after %d attempts for addr=0x%02X, status=%d", max_retries, addr, result.error_code);
+    } else {
+        logger.warningf("I2CBridge: Read response timeout after %d attempts for addr=0x%02X", max_retries, addr);
+        result.error_code = I2C_ERROR_TIMEOUT;
+    }
     return result;
 }
 
@@ -227,13 +232,14 @@ I2CBridge::Result I2CBridge::writeBytes(uint8_t addr, uint8_t* data, uint8_t len
     Result result = {false, I2C_ERROR_PENDING, {0}, 0};
     const int max_retries = 3;
     int attempt = 0;
+    bool got_response = false;
 
     while (attempt < max_retries) {
-        // Make sure the queue is empty before sending a new request
-        xQueueReset(_response_queue);
+        // Each attempt gets its own tag, so a late reply to a previous attempt is dropped
+        uint8_t seq = beginRequest();
 
         // Send the write request to the Nano
-        send_i2c_write_request(addr, data, len);
+        send_i2c_write_request(addr, data, len, seq);
 
 #ifdef I2C_BRIDGE_DEBUG
         // Log the data being sent
@@ -245,13 +251,16 @@ I2CBridge::Result I2CBridge::writeBytes(uint8_t addr, uint8_t* data, uint8_t len
         logger.debugf("I2CBridge: Waiting for write response (addr=0x%02X, data=%s, attempt=%d)", addr, hexData, attempt + 1);
 #endif
         // Wait for response with timeout
-        if (xQueueReceive(_response_queue, &result, pdMS_TO_TICKS(1000)) == pdTRUE) {
+        if (waitForResponse(seq, result, 1000)) {
 #ifdef I2C_BRIDGE_DEBUG
             logger.debugf("I2CBridge: Write response received - addr=0x%02X, status=%d, attempt=%d", addr, result.error_code, attempt + 1);
 #endif
             if (result.success) {
                 return result;
             }
+            got_response = true;
+        } else {
+            got_response = false;
         }
 
         // Timeout or error occurred
@@ -262,17 +271,21 @@ I2CBridge::Result I2CBridge::writeBytes(uint8_t addr, uint8_t* data, uint8_t len
         }
     }
 
-    logger.warningf("I2CBridge: Write response timeout after %d attempts for addr=0x%02X", max_retries, addr);
-    result.error_code = I2C_ERROR_TIMEOUT;
+    // All retries failed: keep the SensorStack's error code when the last attempt got one
+    if (got_response) {
+        logger.warningf("I2CBridge: Write failed after %d attempts for addr=0x%02X, status=%d", max_retries, addr, result.error_code);
+    } else {
+        logger.warningf("I2CBridge: Write response timeout after %d attempts for addr=0x%02X", max_retries, addr);
+        result.error_code = I2C_ERROR_TIMEOUT;
+    }
     return result;
 }
 
 I2CBridge::Result I2CBridge::writeReadBytes(uint8_t addr, uint8_t* writeData, uint8_t writeLen, uint8_t readLen) {
     Result result = {false, I2C_ERROR_PENDING, {0}, 0};
-    
-    // Make sure the queue is empty before sending a new request
-    xQueueReset(_response_queue);
-    
+
+    uint8_t seq = beginRequest();
+
 #ifdef I2C_BRIDGE_DEBUG
     // Log the write data
     char writeHexData[100];
@@ -284,13 +297,13 @@ I2CBridge::Result I2CBridge::writeReadBytes(uint8_t addr, uint8_t* writeData, ui
                  addr, writeHexData, readLen);
 #endif
     // Send the write-read request to the Nano
-    send_i2c_write_read_request(addr, writeData, writeLen, readLen);
-    
+    send_i2c_write_read_request(addr, writeData, writeLen, readLen, seq);
+
     // Wait for response with timeout
 #ifdef I2C_BRIDGE_DEBUG
     uint32_t start_time = millis();
 #endif
-    if (xQueueReceive(_response_queue, &result, pdMS_TO_TICKS(1000)) == pdTRUE) {
+    if (waitForResponse(seq, result, 1000)) {
 #ifdef I2C_BRIDGE_DEBUG
         // Log the received data
         if (result.data_len > 0) {
@@ -313,11 +326,11 @@ I2CBridge::Result I2CBridge::writeReadBytes(uint8_t addr, uint8_t* writeData, ui
     }
 #ifdef I2C_BRIDGE_DEBUG
     else {
-        logger.debugf("I2CBridge: Failed Write-read response timeout (%u ms round trip) for addr=0x%02X, reg=0x%02X", 
+        logger.debugf("I2CBridge: Failed Write-read response timeout (%u ms round trip) for addr=0x%02X, reg=0x%02X",
                   millis() - start_time, addr, writeLen > 0 ? writeData[0] : 0);
     }
 #endif
-    
+
     // Timeout occurred
     logger.warningf("I2CBridge: Write-read response timeout for addr=0x%02X, reg=0x%02X", 
                   addr, writeLen > 0 ? writeData[0] : 0);
@@ -325,12 +338,13 @@ I2CBridge::Result I2CBridge::writeReadBytes(uint8_t addr, uint8_t* writeData, ui
     return result;
 }
 
-void I2CBridge::processReadResponse(uint8_t status, uint8_t* data, uint8_t len) {
+void I2CBridge::processReadResponse(uint8_t status, uint8_t* data, uint8_t len, uint8_t seq) {
     Result result;
     result.success = (status == I2C_ERROR_NONE);
     result.error_code = status;
     result.data_len = len;
-    
+    result.seq = seq;
+
     if (len > 0 && len <= sizeof(result.data)) {
         memcpy(result.data, data, len);
     } else if (len > sizeof(result.data)) {
@@ -358,20 +372,20 @@ void I2CBridge::processReadResponse(uint8_t status, uint8_t* data, uint8_t len) 
     if (status != I2C_ERROR_NONE) {
         logger.warningf("ESP32: Received I2C read error from Nano - status: %d, data_len: %d", status, len);
     }
-    
-    // Send to queue for any waiting tasks
-    BaseType_t result_sent = xQueueSend(_response_queue, &result, 0);
-    if (result_sent != pdTRUE) {
+
+    // Send to queue for the waiting task
+    if (xQueueSend(_response_queue, &result, 0) != pdTRUE) {
         logger.warning("I2CBridge: Failed to send response to queue");
     }
 }
 
-void I2CBridge::processWriteResponse(uint8_t status) {
+void I2CBridge::processWriteResponse(uint8_t status, uint8_t seq) {
     Result result;
     result.success = (status == I2C_ERROR_NONE);
     result.error_code = status;
     result.data_len = 0;
-    
+    result.seq = seq;
+
     // Clear all data bytes to ensure clean state
     memset(result.data, 0, sizeof(result.data));
 #ifdef I2C_BRIDGE_DEBUG
@@ -382,10 +396,9 @@ void I2CBridge::processWriteResponse(uint8_t status) {
     if (status != I2C_ERROR_NONE) {
         logger.warningf("ESP32: Received I2C write error from Nano - status: %d", status);
     }
-    
-    // Send to queue for any waiting tasks
-    BaseType_t result_sent = xQueueSend(_response_queue, &result, 0);
-    if (result_sent != pdTRUE) {
+
+    // Send to queue for the waiting task
+    if (xQueueSend(_response_queue, &result, 0) != pdTRUE) {
         logger.warning("I2CBridge: Failed to send write response to queue");
     }
 }
@@ -400,11 +413,11 @@ extern "C" {
     int i2c_read(uint8_t addr, uint8_t* data, uint8_t len) {
         I2CBridge::Result result = I2CBridge::getInstance().readBytes(addr, len);
         
-        if (result.success && result.data_len > 0) {
-            memcpy(data, result.data, result.data_len);
+        if (result.success && result.data_len == len) {
+            memcpy(data, result.data, len);
             return 0;
         }
-        
-        return result.error_code;
+
+        return result.success ? I2C_ERROR_DATA_NACK : result.error_code;
     }
 }

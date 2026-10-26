@@ -24,7 +24,7 @@
 // ======================================================================
 
 // --- Firmware & Protocol ---
-const char NANO_FIRMWARE_VERSION[] PROGMEM = "1.4.2";
+const char NANO_FIRMWARE_VERSION[] PROGMEM = "1.4.3";
 #define CMD_GET_SENSORS 'S' // Request sensor data
 #define RSP_SENSORS 's'     // Response with sensor data
 #define CMD_GET_VERSION 'V'
@@ -626,6 +626,55 @@ void send_data_packet(unsigned long timestamp) {
   Serial.println('>');
 }
 
+// Parses the next comma-separated hex field of an I2C bridge command.
+// Returns false when no field is left.
+static bool next_hex_field(char **p, uint8_t *out) {
+  if (**p == ',')
+    (*p)++;
+  char *endptr;
+  long value = strtol(*p, &endptr, 16);
+  if (endptr == *p)
+    return false;
+  *p = endptr;
+  *out = (uint8_t)value;
+  return true;
+}
+
+// Takes the sequence tag (always the last field of an I2C bridge command) off
+// the end, so the fields before it parse on their own and even a malformed
+// command gets a tagged reply.
+static uint8_t take_seq_field(char *fields) {
+  char *last = strrchr(fields, ',');
+  if (!last)
+    return 0;
+  *last = '\0';
+  return (uint8_t)strtol(last + 1, nullptr, 16);
+}
+
+// Sends the single response every I2C bridge command gets, success or not.
+// The request's sequence tag is echoed as the last field so the ESP32 can
+// discard replies to requests it already gave up on.
+static void send_i2c_response(char rsp, uint8_t status, const uint8_t *data,
+                              uint8_t len, uint8_t seq) {
+  char *pos = tx_command_buffer;
+  const char *end = tx_command_buffer + sizeof(tx_command_buffer);
+  if (rsp == RSP_I2C_READ) {
+    pos += snprintf_P(pos, end - pos, FMT_I2C_READ, rsp, status, len);
+    for (uint8_t i = 0; i < len; i++)
+      pos += snprintf_P(pos, end - pos, FMT_I2C_READ_DATA, data[i]);
+  } else {
+    pos += snprintf_P(pos, end - pos, FMT_I2C_WRITE, rsp, status);
+  }
+  snprintf_P(pos, end - pos, FMT_I2C_READ_DATA, seq);
+
+  const uint8_t checksum = calculate_checksum(tx_command_buffer);
+  Serial.print('<');
+  Serial.print(tx_command_buffer);
+  Serial.print(',');
+  Serial.print(checksum);
+  Serial.println('>');
+}
+
 void process_command(const char *buffer) {
   const char *comma = strrchr(buffer, ',');
   if (!comma)
@@ -634,10 +683,10 @@ void process_command(const char *buffer) {
   if (data_len <= 0 || data_len >= MAX_COMMAND_LEN)
     return;
   const uint8_t received_checksum = atoi(comma + 1);
-  char temp_char = buffer[data_len];
+  // Terminate at the checksum comma (kept that way): command parsers must
+  // never read the checksum digits as data
   const_cast<char *>(buffer)[data_len] = '\0';
   const uint8_t calculated_checksum = calculate_checksum(buffer);
-  const_cast<char *>(buffer)[data_len] = temp_char;
   if (received_checksum != calculated_checksum)
     return;
 
@@ -842,174 +891,105 @@ void process_command(const char *buffer) {
   }
 
   case CMD_I2C_READ: {
+    // I<addr>,<write_len>,<read_len>[,<write bytes>...],<seq>
     checkAndRecoverI2C();
 
     char *p = const_cast<char *>(buffer + 1);
-    char *endptr;
-
-    i2c_address = strtol(p, &endptr, 16);
-    if (p == endptr) {
-      i2c_status = I2C_ERROR_OTHER;
-      break;
-    }
-    p = endptr;
-    if (*p == ',')
-      p++;
-
-    uint8_t write_len = strtol(p, &endptr, 16);
-    if (p == endptr) {
-      i2c_status = I2C_ERROR_OTHER;
-      break;
-    }
-    p = endptr;
-    if (*p == ',')
-      p++;
-
-    i2c_num_bytes = strtol(p, &endptr, 16);
-    if (p == endptr) {
-      i2c_status = I2C_ERROR_OTHER;
-      break;
-    }
-    p = endptr;
-
-    if (i2c_num_bytes > I2C_WIRE_LIB_MAX_READ)
-      i2c_num_bytes = I2C_WIRE_LIB_MAX_READ;
-    if (write_len > I2C_CMD_MAX_WRITE_IN_READ) {
-      i2c_status = I2C_ERROR_BUF_LEN;
-      break;
-    }
-
+    const uint8_t seq = take_seq_field(p);
+    uint8_t write_len = 0;
     uint8_t write_data[I2C_CMD_MAX_WRITE_IN_READ];
-    if (write_len > 0) {
+
+    if (!next_hex_field(&p, &i2c_address) || !next_hex_field(&p, &write_len) ||
+        !next_hex_field(&p, &i2c_num_bytes)) {
+      i2c_status = I2C_ERROR_OTHER;
+    } else if (write_len > I2C_CMD_MAX_WRITE_IN_READ ||
+               i2c_num_bytes > I2C_WIRE_LIB_MAX_READ) {
+      i2c_status = I2C_ERROR_BUF_LEN;
+    } else {
       for (uint8_t i = 0; i < write_len; i++) {
-        if (*p == ',')
-          p++;
-        write_data[i] = strtol(p, &endptr, 16);
-        if (p == endptr) {
+        if (!next_hex_field(&p, &write_data[i])) {
           i2c_status = I2C_ERROR_OTHER;
           break;
         }
-        p = endptr;
-      }
-      if (i2c_status != I2C_ERROR_NONE)
-        break;
-    }
-
-    Wire.setClock(I2C_FAST_SPEED);
-    if (write_len > 0) {
-      Wire.beginTransmission(i2c_address);
-      Wire.write(write_data, write_len);
-      uint8_t i2c_result = Wire.endTransmission(false);
-
-      if (i2c_result != 0) {
-        i2c_status = (i2c_result == 2) ? I2C_ERROR_ADDR_NACK : I2C_ERROR_OTHER;
-        recoverI2Cbus();
-      } else {
-        delay(I2C_WRITE_READ_DELAY_MS);
       }
     }
 
-    if (i2c_status == I2C_ERROR_NONE && i2c_num_bytes > 0) {
-      uint8_t bytes_read = Wire.requestFrom(i2c_address, i2c_num_bytes);
-      if (bytes_read != i2c_num_bytes) {
-        i2c_status = I2C_ERROR_DATA_NACK;
-        i2c_num_bytes = bytes_read;
-        recoverI2Cbus();
-      }
-      for (uint8_t i = 0; i < bytes_read; i++) {
-        i2c_data[i] = Wire.read();
-      }
-    }
-    Wire.setClock(I2C_NORMAL_SPEED);
+    uint8_t bytes_read = 0;
+    if (i2c_status == I2C_ERROR_NONE) {
+      Wire.setClock(I2C_FAST_SPEED);
+      if (write_len > 0) {
+        Wire.beginTransmission(i2c_address);
+        Wire.write(write_data, write_len);
+        uint8_t i2c_result = Wire.endTransmission(false);
 
-    checkAndReportI2cTimeout();
-
-    snprintf_P(tx_command_buffer, sizeof(tx_command_buffer), FMT_I2C_READ,
-               RSP_I2C_READ, i2c_status, i2c_num_bytes);
-    if (i2c_status == I2C_ERROR_NONE && i2c_num_bytes > 0) {
-      char *pos = tx_command_buffer + strlen(tx_command_buffer);
-      for (uint8_t i = 0; i < i2c_num_bytes; i++) {
-        int written = snprintf_P(
-            pos, sizeof(tx_command_buffer) - (pos - tx_command_buffer),
-            FMT_I2C_READ_DATA, i2c_data[i]);
-        if (written <= 0) {
-          break;
+        if (i2c_result != 0) {
+          i2c_status =
+              (i2c_result == 2) ? I2C_ERROR_ADDR_NACK : I2C_ERROR_OTHER;
+          recoverI2Cbus();
+        } else {
+          delay(I2C_WRITE_READ_DELAY_MS);
         }
-        pos += written;
       }
+
+      if (i2c_status == I2C_ERROR_NONE && i2c_num_bytes > 0) {
+        bytes_read = Wire.requestFrom(i2c_address, i2c_num_bytes);
+        for (uint8_t i = 0; i < bytes_read; i++) {
+          i2c_data[i] = Wire.read();
+        }
+        if (bytes_read != i2c_num_bytes) {
+          i2c_status = I2C_ERROR_DATA_NACK;
+          recoverI2Cbus();
+        }
+      }
+      Wire.setClock(I2C_NORMAL_SPEED);
+
+      checkAndReportI2cTimeout();
     }
 
-    checksum = calculate_checksum(tx_command_buffer);
-    Serial.print('<');
-    Serial.print(tx_command_buffer);
-    Serial.print(',');
-    Serial.print(checksum);
-    Serial.println('>');
+    send_i2c_response(RSP_I2C_READ, i2c_status, i2c_data,
+                      i2c_status == I2C_ERROR_NONE ? bytes_read : 0, seq);
     break;
   }
 
   case CMD_I2C_WRITE: {
+    // W<addr>,<len>[,<bytes>...],<seq>
     checkAndRecoverI2C();
 
     char *p = const_cast<char *>(buffer + 1);
-    char *endptr;
+    const uint8_t seq = take_seq_field(p);
 
-    i2c_address = strtol(p, &endptr, 16);
-    if (p == endptr) {
+    if (!next_hex_field(&p, &i2c_address) ||
+        !next_hex_field(&p, &i2c_num_bytes)) {
       i2c_status = I2C_ERROR_OTHER;
-      break;
-    }
-    p = endptr;
-    if (*p == ',')
-      p++;
-
-    i2c_num_bytes = strtol(p, &endptr, 16);
-    if (p == endptr) {
-      i2c_status = I2C_ERROR_OTHER;
-      break;
-    }
-    p = endptr;
-
-    if (i2c_num_bytes > sizeof(i2c_data)) {
+    } else if (i2c_num_bytes > sizeof(i2c_data) ||
+               i2c_num_bytes > TWI_BUFFER_SIZE) {
+      // Wire silently drops bytes past its TX buffer and still reports
+      // success: never send a truncated write as if it were complete
       i2c_status = I2C_ERROR_BUF_LEN;
-      break;
-    }
-
-    for (uint8_t i = 0; i < i2c_num_bytes; i++) {
-      if (*p == ',')
-        p++;
-      i2c_data[i] = strtol(p, &endptr, 16);
-      if (p == endptr) {
-        i2c_status = I2C_ERROR_OTHER;
-        break;
+    } else {
+      for (uint8_t i = 0; i < i2c_num_bytes; i++) {
+        if (!next_hex_field(&p, &i2c_data[i])) {
+          i2c_status = I2C_ERROR_OTHER;
+          break;
+        }
       }
-      p = endptr;
     }
-    if (i2c_status != I2C_ERROR_NONE)
-      break;
-    Wire.setClock(I2C_FAST_SPEED);
-    Wire.beginTransmission(i2c_address);
-    Wire.write(i2c_data, i2c_num_bytes);
-    uint8_t i2c_result = Wire.endTransmission();
 
-    if (i2c_result != 0) {
-      i2c_status = (i2c_result == 2) ? I2C_ERROR_ADDR_NACK : I2C_ERROR_OTHER;
-      recoverI2Cbus();
-      break;
+    if (i2c_status == I2C_ERROR_NONE) {
+      Wire.setClock(I2C_FAST_SPEED);
+      Wire.beginTransmission(i2c_address);
+      Wire.write(i2c_data, i2c_num_bytes);
+      uint8_t i2c_result = Wire.endTransmission();
+      if (i2c_result != 0) {
+        i2c_status = (i2c_result == 2) ? I2C_ERROR_ADDR_NACK : I2C_ERROR_OTHER;
+        recoverI2Cbus();
+      }
+      Wire.setClock(I2C_NORMAL_SPEED);
+
+      checkAndReportI2cTimeout();
     }
-    Wire.setClock(I2C_NORMAL_SPEED);
 
-    checkAndReportI2cTimeout();
-
-    snprintf_P(tx_command_buffer, sizeof(tx_command_buffer), FMT_I2C_WRITE,
-               RSP_I2C_WRITE, i2c_status);
-
-    checksum = calculate_checksum(tx_command_buffer);
-    Serial.print('<');
-    Serial.print(tx_command_buffer);
-    Serial.print(',');
-    Serial.print(checksum);
-    Serial.println('>');
+    send_i2c_response(RSP_I2C_WRITE, i2c_status, nullptr, 0, seq);
     break;
   }
 
