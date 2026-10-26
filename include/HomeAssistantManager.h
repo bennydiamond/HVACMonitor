@@ -197,6 +197,10 @@ private:
     // Static callbacks for ArduinoHA
     static void onMqttConnected();
     static void onMqttDisconnected();
+    static void onMqttStateChanged(HAMqtt::ConnectionState state);
+
+    // Failed MQTT connect attempts since the last successful connection (main loop only)
+    uint32_t _mqttFailedAttempts = 0;
     static void onBrightnessCommand(uint8_t brightness, HALight* sender);
     static void onStateCommand(bool state, HALight* sender);
     static void onRebootCommand(HAButton* sender);

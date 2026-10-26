@@ -292,8 +292,27 @@ void loop() {
 
   if (millis() - last_wifi_check_time > WIFI_CHECK_INTERVAL_MS) {
     last_wifi_check_time = millis();
+    // Wi-Fi retry, whether it never connected or was lost. Arduino's auto-reconnect
+    // skips some cases (e.g. after an authentication failure); this covers them all.
+    static uint32_t wifi_retry_attempts = 0;
+    static unsigned long wifi_down_since = 0;
     if (WiFi.status() != WL_CONNECTED) {
+      if (wifi_retry_attempts == 0) {
+        wifi_down_since = millis();
+        logger.warningf("WiFi not connected (status %d); retrying every %d s.",
+                        WiFi.status(), WIFI_CHECK_INTERVAL_MS / 1000);
+      } else if (wifi_retry_attempts % 30 == 0) { // every 5 min
+        logger.warningf("WiFi still not connected (status %d), retry attempt %lu.",
+                        WiFi.status(), (unsigned long)wifi_retry_attempts);
+      }
+      wifi_retry_attempts++;
       WiFi.reconnect();
+    } else if (wifi_retry_attempts > 0) {
+      // Logs queued while offline reach syslog now; this one sums up the outage
+      logger.infof("WiFi reconnected after %lu attempts (down %lu s). IP: %s, RSSI: %d dBm",
+                   (unsigned long)wifi_retry_attempts, (millis() - wifi_down_since) / 1000,
+                   WiFi.localIP().toString().c_str(), WiFi.RSSI());
+      wifi_retry_attempts = 0;
     }
     update_wifi_status();
     UITask::getInstance().update_network_ha_conn(ha_conn);

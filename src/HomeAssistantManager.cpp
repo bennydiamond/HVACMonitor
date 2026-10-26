@@ -541,7 +541,8 @@ void HomeAssistantManager::init(const char* firmware_version) {
 
     _mqtt.onConnected(onMqttConnected);
     _mqtt.onDisconnected(onMqttDisconnected);
-    
+    _mqtt.onStateChanged(onMqttStateChanged);
+
     // Configure MQTT client for better stability
     //_mqtt.setBufferSize(1024);
     //_mqtt.setKeepAlive(30);
@@ -573,11 +574,54 @@ HAMqtt* HomeAssistantManager::getMqtt() {
 }
 
 bool HomeAssistantManager::isMqttConnected() {
-    return _mqtt.isConnected();
+    // Without Wi-Fi the session is dead even if the client has not noticed yet
+    return WiFi.status() == WL_CONNECTED && _mqtt.isConnected();
 }
 
 void HomeAssistantManager::loop() {
+    // ArduinoHA retries the broker every 10 s whenever it is disconnected: only let it
+    // run once Wi-Fi is up (the main loop retries Wi-Fi itself). A session lost with
+    // Wi-Fi is detected and re-established here once Wi-Fi is back.
+    if (WiFi.status() != WL_CONNECTED) {
+        return;
+    }
     _mqtt.loop();
+}
+
+void HomeAssistantManager::onMqttStateChanged(HAMqtt::ConnectionState state) {
+    if (!_instance) return;
+    // Each attempt goes Connecting -> Connected or a failure state. Log the first
+    // failure, then one reminder every 5 min (30 attempts, 10 s apart) to keep syslog readable.
+    if (state == HAMqtt::StateConnected) {
+        if (_instance->_mqttFailedAttempts > 0) {
+            logger.infof("MQTT broker reachable again after %lu failed attempts.",
+                         (unsigned long)_instance->_mqttFailedAttempts);
+        }
+        _instance->_mqttFailedAttempts = 0;
+        return;
+    }
+    if (state == HAMqtt::StateConnecting || state == HAMqtt::StateDisconnected) {
+        return;
+    }
+
+    uint32_t attempts = ++_instance->_mqttFailedAttempts;
+    if (attempts == 1 || attempts % 30 == 0) {
+        const char* reason;
+        switch (state) {
+            case HAMqtt::StateConnectionTimeout: reason = "no answer from broker"; break;
+            case HAMqtt::StateConnectionLost:    reason = "connection lost"; break;
+            case HAMqtt::StateConnectionFailed:  reason = "connection refused or broker unreachable"; break;
+            case HAMqtt::StateBadProtocol:       reason = "protocol not supported"; break;
+            case HAMqtt::StateBadClientId:       reason = "client ID rejected"; break;
+            case HAMqtt::StateUnavailable:       reason = "broker unavailable"; break;
+            case HAMqtt::StateBadCredentials:    reason = "bad username or password"; break;
+            case HAMqtt::StateUnauthorized:      reason = "not authorized"; break;
+            default:                             reason = "unknown error"; break;
+        }
+        ConfigManagerAccessor config;
+        logger.warningf("MQTT connection to %s:%d failed (%s, state %d); retrying every 10 s (attempt %lu).",
+                        config->getMqttHost(), config->getMqttPort(), reason, (int)state, (unsigned long)attempts);
+    }
 }
 
 void HomeAssistantManager::onMqttConnected() {
