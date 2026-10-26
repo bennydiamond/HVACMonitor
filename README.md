@@ -142,7 +142,49 @@ Uploading to the ESP32 is straightforward.
 
 2.  **OTA Updates**:
     - Once the initial firmware is flashed on ESP32, subsequent updates can be done over the network using either the PlatformIO OTA command or the built-in web updater.
-    - For Arduino Nano, manual firmware flashing is still required
+    - The Arduino Nano (SensorStack) firmware can also be updated from the web updater (`.hex` file, flashed over UART by the ESP32). This requires the custom urboot bootloader to be installed once over ISP; see `HVAC_NanoSensorHub/BOOTLOADER.md`.
+
+### 4. MicroSD Failsafe Recovery & Configuration
+
+The Sunton ESP32-2432S022C includes an onboard MicroSD (TF) card slot. To guarantee that the device can never be permanently locked out by a runtime crash, buggy firmware, or network misconfiguration, an early boot-time failsafe check runs immediately on power-on.
+
+This check executes **before** the LVGL UI, FreeRTOS tasks, Task Watchdog, WiFi stack, or Serial communication with the Arduino Nano initialize. The SPI bus and SD card are active **only** during this boot check; they are completely unmounted and shut down (pins placed in high-impedance mode) before the UI loads to guarantee zero impact on LVGL rendering performance.
+
+To use this feature, format a MicroSD card with FAT/FAT32 and place either or both of the following files in the card's root directory:
+
+#### 1. Failsafe Firmware Flashing (`firmware.bin`)
+- **File Name**: `firmware.bin` (or `FIRMWARE.BIN`)
+- **Behavior**:
+  - The boot routine performs integrity validation: checks minimum size (>= 64 KB), partition limit (<= ~1.98 MB), the ESP32 binary header magic byte (`0xE9`), and the target chip ID (`ESP32`).
+  - If valid, the image is written directly to the next OTA partition and verified.
+  - Upon successful flash, `firmware.bin` is automatically deleted from the card (or renamed to `.done` if deletion fails) to prevent boot loops.
+  - The device immediately restarts into the newly flashed firmware.
+  - If validation or flashing fails, the file is renamed to `firmware.bin.bad` or `.failed` to prevent repetitive boot loops.
+
+#### 2. Configuration Injection (`config.txt`)
+- **File Name**: `config.txt` (or `CONFIG.TXT`, `wifi.txt`)
+- **Behavior**:
+  - Injects new Wi-Fi credentials and optional MQTT overrides into non-volatile storage (NVS `hvac-config` namespace).
+  - Persisted settings override compiled defaults (`secrets.h`) without requiring a reflash.
+  - Once written to NVS, `config.txt` is automatically deleted from the card (or renamed to `.done`) so plain-text credentials are not left on the card.
+  - Normal boot continues and uses the new credentials immediately.
+
+##### Configuration Syntax Example (`config.txt`):
+```ini
+# Wi-Fi Credentials
+ssid=MyHomeWiFi
+password=MySecretPassword
+
+# Facultative / Optional: MQTT Broker & Device Overrides
+mqtt_host=192.168.1.100
+mqtt_port=1883
+mqtt_user=homeassistant
+mqtt_password=mqttsecret
+mqtt_device_id=hvac_diff_pressure_sensor_01
+mqtt_device_name=HVAC Sensor Display
+```
+
+> **Note**: Both keys and values support whitespace around `=` and quotes around values (e.g. `ssid = "My Network"`). Comment lines starting with `#`, `;`, or `//` are ignored.
 
 ## Home Assistant Integration
 
