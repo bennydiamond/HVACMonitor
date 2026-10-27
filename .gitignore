@@ -9,3 +9,7 @@ sdkconfig.*
 !sdkconfig.defaults
 dependencies.lock
 managed_components/
+
+# Secrets
+include/secrets.h
+!include/secrets.h.example
