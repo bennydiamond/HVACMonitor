@@ -39,6 +39,16 @@ static bool s_is_nano_update = false;
 static bool s_nano_failed = false;
 static NanoFlasher::Uploader *s_nano_uploader = nullptr;
 
+enum class UploadState {
+  Idle,
+  InProgress,
+  Success,
+  Failed,
+  Aborted
+};
+
+static UploadState s_upload_state = UploadState::Idle;
+static size_t s_upload_bytes_received = 0;
 static String s_upload_error_msg = "";
 
 template <typename F>
@@ -189,18 +199,52 @@ void WebServerManager::init(const char *firmware_version) {
       "/upload", HTTP_POST,
       []() {
         server.sendHeader("Connection", "close");
-        if (s_is_nano_update ? s_nano_failed : (s_is_bootloader_update ? s_bootloader_failed : Update.hasError())) {
-          String errMsg = s_upload_error_msg.length() > 0 ? s_upload_error_msg : "Flash update failed";
-          server.send(500, "text/plain", errMsg);
-        } else {
-          if (s_is_nano_update) {
-            server.send(200, "text/plain", "Arduino Nano firmware updated successfully! Reconnecting sensor hub...");
-          } else {
-            const char* targetName = s_is_bootloader_update ? "Bootloader" : "Firmware";
-            String successMsg = String(targetName) + " updated successfully! Rebooting...";
-            server.send(200, "text/plain", successMsg);
-            RebootManager::getInstance().requestReboot("Web OTA update complete", 500);
-          }
+        UploadState state = s_upload_state;
+        size_t bytes = s_upload_bytes_received;
+
+        // Reset state for future requests
+        s_upload_state = UploadState::Idle;
+        s_upload_bytes_received = 0;
+
+        switch (state) {
+          case UploadState::Idle:
+            if (Update.isRunning()) {
+              Update.abort();
+            }
+            server.send(400, "text/plain", "No firmware file uploaded or empty payload");
+            return;
+
+          case UploadState::Aborted:
+            if (Update.isRunning()) {
+              Update.abort();
+            }
+            server.send(400, "text/plain", s_upload_error_msg.length() > 0 ? s_upload_error_msg : "Firmware upload aborted by client");
+            return;
+
+          case UploadState::InProgress:
+            if (Update.isRunning()) {
+              Update.abort();
+            }
+            server.send(400, "text/plain", "Firmware upload interrupted prematurely");
+            return;
+
+          case UploadState::Failed:
+            if (!s_is_nano_update && !s_is_bootloader_update && Update.isRunning()) {
+              Update.abort();
+            }
+            server.send(400, "text/plain", s_upload_error_msg.length() > 0 ? s_upload_error_msg : "Flash update failed");
+            return;
+
+          case UploadState::Success:
+            if (s_is_nano_update) {
+              server.send(200, "text/plain", "Arduino Nano firmware updated successfully! Reconnecting sensor hub...");
+            } else {
+              const char* targetName = s_is_bootloader_update ? "Bootloader" : "Firmware";
+              String successMsg = String(targetName) + " updated successfully! Rebooting...";
+              server.send(200, "text/plain", successMsg);
+              RebootManager::getInstance().requestReboot("Web OTA update complete", 500);
+            }
+            return;
         }
       },
       handleUpload);
@@ -829,6 +873,12 @@ void WebServerManager::handleUpload() {
 #endif
   HTTPUpload &upload = server.upload();
   if (upload.status == UPLOAD_FILE_START) {
+    if (Update.isRunning()) {
+      Update.abort();
+    }
+    Update.clearError();
+    s_upload_state = UploadState::InProgress;
+    s_upload_bytes_received = 0;
     s_upload_error_msg = "";
     String target = server.hasArg("target") ? server.arg("target") : "";
     String lowerName = upload.filename;
@@ -867,6 +917,10 @@ void WebServerManager::handleUpload() {
       }
     }
   } else if (upload.status == UPLOAD_FILE_WRITE) {
+    if (s_upload_state != UploadState::InProgress) {
+      return;
+    }
+    s_upload_bytes_received += upload.currentSize;
     if (s_is_nano_update) {
       if (!s_nano_failed && s_nano_uploader) {
         if (!s_nano_uploader->write(upload.buf, upload.currentSize, s_upload_error_msg)) {
@@ -909,19 +963,24 @@ void WebServerManager::handleUpload() {
     }
   } else if (upload.status == UPLOAD_FILE_END) {
     if (s_is_nano_update) {
-      if (s_nano_failed || !s_nano_uploader) {
+      if (s_upload_bytes_received == 0 || s_nano_failed || !s_nano_uploader) {
+        s_upload_state = UploadState::Failed;
+        if (s_upload_error_msg.length() == 0) s_upload_error_msg = "Nano update upload aborted/failed";
         logger.errorf("[Web OTA] Nano update upload aborted/failed: %s", s_upload_error_msg.c_str());
       } else {
         if (!s_nano_uploader->finish(s_upload_error_msg)) {
           s_nano_failed = true;
+          s_upload_state = UploadState::Failed;
           logger.errorf("[Web OTA] Nano firmware parsing failed: %s", s_upload_error_msg.c_str());
         } else {
           logger.infof("[Web OTA] Nano firmware image parsed successfully (%u bytes). Flashing to ATmega328P...",
                        s_nano_uploader->getFlashSize());
           if (!NanoFlasher::flashImage(s_nano_uploader->getFlashBuffer(), s_nano_uploader->getFlashSize(), s_upload_error_msg)) {
             s_nano_failed = true;
+            s_upload_state = UploadState::Failed;
             logger.errorf("[Web OTA] Nano flashing failed: %s", s_upload_error_msg.c_str());
           } else {
+            s_upload_state = UploadState::Success;
             logger.info("[Web OTA] Arduino Nano flashed and verified successfully via urprotocol!");
           }
         }
@@ -931,7 +990,9 @@ void WebServerManager::handleUpload() {
         s_nano_uploader = nullptr;
       }
     } else if (s_is_bootloader_update) {
-      if (s_bootloader_failed) {
+      if (s_upload_bytes_received == 0 || s_bootloader_failed) {
+        s_upload_state = UploadState::Failed;
+        if (s_upload_error_msg.length() == 0) s_upload_error_msg = "Bootloader update failed";
         logger.errorf("[Web OTA] Bootloader update failed: %s", s_upload_error_msg.c_str());
         if (s_bootloader_buf) {
           free(s_bootloader_buf);
@@ -941,6 +1002,7 @@ void WebServerManager::handleUpload() {
         logger.infof("[Web OTA] Bootloader upload finished (%u bytes). Verifying...", s_bootloader_received);
         if (s_bootloader_received < 4096) {
           s_bootloader_failed = true;
+          s_upload_state = UploadState::Failed;
           s_upload_error_msg = "Bootloader image is too small (< 4KB)";
           logger.error("[Web OTA] Bootloader binary is too small (< 4KB)");
         } else {
@@ -965,18 +1027,22 @@ void WebServerManager::handleUpload() {
 
           if (!has_magic) {
             s_bootloader_failed = true;
+            s_upload_state = UploadState::Failed;
             s_upload_error_msg = "Invalid binary: missing ESP32 image magic byte (0xE9)";
             logger.errorf("[Web OTA] Bootloader validation failed: bad magic byte 0x%02X", hdr->magic);
           } else if (!is_esp32_chip) {
             s_bootloader_failed = true;
+            s_upload_state = UploadState::Failed;
             s_upload_error_msg = "Invalid binary: chip ID does not match ESP32";
             logger.errorf("[Web OTA] Bootloader validation failed: chip_id 0x%04X != ESP32", hdr->chip_id);
           } else if (has_app_desc) {
             s_bootloader_failed = true;
+            s_upload_state = UploadState::Failed;
             s_upload_error_msg = "Validation rejected: file is an Application Firmware binary, NOT a bootloader!";
             logger.error("[Web OTA] Bootloader validation rejected: detected Application Descriptor (0xABCD5432)!");
           } else if (!entry_in_bl_range) {
             s_bootloader_failed = true;
+            s_upload_state = UploadState::Failed;
             s_upload_error_msg = "Validation rejected: entry address outside valid bootloader IRAM range";
             logger.errorf("[Web OTA] Bootloader validation failed: entry_addr 0x%08X out of range", hdr->entry_addr);
           } else {
@@ -991,6 +1057,7 @@ void WebServerManager::handleUpload() {
             if (err != ESP_OK) {
               esp_flash_set_dangerous_write_protection(esp_flash_default_chip, true);
               s_bootloader_failed = true;
+              s_upload_state = UploadState::Failed;
               s_upload_error_msg = String("Flash erase failed: ") + esp_err_to_name(err);
               logger.errorf("[Web OTA] esp_flash_erase_region failed: 0x%x (%s)", err, esp_err_to_name(err));
             } else {
@@ -999,6 +1066,7 @@ void WebServerManager::handleUpload() {
               esp_flash_set_dangerous_write_protection(esp_flash_default_chip, true);
               if (err != ESP_OK) {
                 s_bootloader_failed = true;
+                s_upload_state = UploadState::Failed;
                 s_upload_error_msg = String("Flash write failed: ") + esp_err_to_name(err);
                 logger.errorf("[Web OTA] esp_flash_write failed: 0x%x (%s)", err, esp_err_to_name(err));
               } else {
@@ -1011,9 +1079,11 @@ void WebServerManager::handleUpload() {
                 err = esp_image_verify(ESP_IMAGE_VERIFY_SILENT, &part_pos, &meta);
                 if (err != ESP_OK) {
                   s_bootloader_failed = true;
+                  s_upload_state = UploadState::Failed;
                   s_upload_error_msg = String("Flash image verification failed: ") + esp_err_to_name(err);
                   logger.errorf("[Web OTA] Flash verification failed for bootloader: 0x%x", err);
                 } else {
+                  s_upload_state = UploadState::Success;
                   logger.info("[Web OTA] Bootloader passed all 4 checks, successfully flashed and verified at 0x1000!");
                 }
               }
@@ -1026,16 +1096,36 @@ void WebServerManager::handleUpload() {
         }
       }
     } else {
-      if (Update.end(true)) {
+      if (s_upload_bytes_received == 0 || s_upload_state != UploadState::InProgress || Update.hasError()) {
+        s_upload_state = UploadState::Failed;
+        if (Update.isRunning()) {
+          Update.abort();
+        }
+        if (s_upload_error_msg.length() == 0) {
+          s_upload_error_msg = (s_upload_bytes_received == 0) ? "Empty firmware image (0 bytes)" : "Firmware upload failed";
+        }
+      } else if (Update.end(true)) {
+        s_upload_state = UploadState::Success;
         logger.infof("Web OTA Update Success: %u bytes", upload.totalSize);
         BootloopGuard::markOtaTrialPending();
       } else {
+        s_upload_state = UploadState::Failed;
         log_update_error();
         s_upload_error_msg = String("Update.end failed, error: ") + Update.getError();
+        if (Update.isRunning()) {
+          Update.abort();
+        }
       }
     }
   } else if (upload.status == UPLOAD_FILE_ABORTED) {
+    s_upload_state = UploadState::Aborted;
+    if (s_upload_error_msg.length() == 0) {
+      s_upload_error_msg = "Firmware upload aborted by client";
+    }
     logger.warning("[Web OTA] Firmware upload aborted by client");
+    if (Update.isRunning()) {
+      Update.abort();
+    }
     if (s_nano_uploader) {
       delete s_nano_uploader;
       s_nano_uploader = nullptr;
