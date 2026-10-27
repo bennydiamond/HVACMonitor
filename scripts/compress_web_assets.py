@@ -40,7 +40,11 @@ def build_assets(project_dir):
         with open(output_header, "r", encoding="utf-8") as f:
             header_content = f.read()
             if f"// SHA256: {content_hash}" in header_content:
-                # Up to date, no rewrite needed
+                # Up to date, update mtime so build tools (Ninja/CMake) know it is fresh
+                try:
+                    os.utime(output_header, None)
+                except OSError:
+                    pass
                 return
 
     # Compress assets (level 9, mtime=0 for deterministic output)
@@ -72,8 +76,10 @@ def build_assets(project_dir):
     print(f"[compress_web_assets] Generated {output_header}")
 
 if __name__ == "__main__":
-    # Direct Python execution (e.g. python scripts/compress_web_assets.py)
-    build_assets(os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")))
+    import sys
+    # Direct Python execution (e.g. python scripts/compress_web_assets.py [project_dir])
+    target_dir = sys.argv[1] if len(sys.argv) > 1 else os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+    build_assets(target_dir)
 else:
     # PlatformIO SCons execution: __file__ is not defined there, use the project dir from env
     Import("env")

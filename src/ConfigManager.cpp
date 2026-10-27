@@ -865,7 +865,7 @@ void ConfigManager::setMqttPassword(const char* value) {
     if (strcmp(mqttPassword, value) != 0) {
         snprintf(mqttPassword, sizeof(mqttPassword), "%s", value);
         if (preferences.putString(KEY_MQTT_PASSWORD, mqttPassword) > 0) {
-            logger.infof("Saved new MQTT password: %s", mqttPassword);
+            logger.info("Saved new MQTT password to NVS.");
         } else {
             logger.errorf("Failed to save key '%s' to NVS.", KEY_MQTT_PASSWORD);
         }

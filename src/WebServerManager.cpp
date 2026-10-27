@@ -72,6 +72,33 @@ static void streamTemplate(const char *html_template, F resolver) {
     }
   };
 
+  auto write_escaped_html = [&](const char *s) {
+    const char *start = s;
+    while (*s) {
+      const char *esc = nullptr;
+      size_t esc_len = 0;
+      switch (*s) {
+        case '&':  esc = "&amp;"; esc_len = 5; break;
+        case '\"': esc = "&quot;"; esc_len = 6; break;
+        case '\'': esc = "&#39;"; esc_len = 5; break;
+        case '<':  esc = "&lt;"; esc_len = 4; break;
+        case '>':  esc = "&gt;"; esc_len = 4; break;
+        default:   break;
+      }
+      if (esc) {
+        if (s > start) {
+          write_str(start, s - start);
+        }
+        write_str(esc, esc_len);
+        start = s + 1;
+      }
+      s++;
+    }
+    if (s > start) {
+      write_str(start, s - start);
+    }
+  };
+
   const char *p = html_template;
   while (*p) {
     const char *token_start = strchr(p, '%');
@@ -108,7 +135,7 @@ static void streamTemplate(const char *html_template, F resolver) {
     if (valid_token) {
       char val_buf[96] = {0};
       if (resolver(key, val_buf, sizeof(val_buf))) {
-        write_str(val_buf, strlen(val_buf));
+        write_escaped_html(val_buf);
         p = token_end + 1;
       } else {
         // Unknown key, output literal token
@@ -406,11 +433,17 @@ void WebServerManager::handleConfigUpdate() {
       server.send(400, "text/plain", "Password cannot exceed 64 characters");
       return;
     }
+    if (password.length() > 0 && password.length() < 8) {
+      server.send(400, "text/plain", "Password must be at least 8 characters");
+      return;
+    }
 
     {
       ConfigManagerAccessor config;
       config->setWifiSsid(ssid.c_str());
-      config->setWifiPassword(password.c_str());
+      if (password.length() > 0) {
+        config->setWifiPassword(password.c_str());
+      }
     }
 
     logger.infof("Wi-Fi configuration saved (SSID: %s). Rebooting device...",
@@ -432,9 +465,25 @@ void WebServerManager::handleConfigUpdate() {
     String deviceId = server.arg("device_id");
     String deviceName = server.arg("device_name");
 
-    if (host.length() == 0 || user.length() == 0 || password.length() == 0 ||
+    host.trim();
+    user.trim();
+    deviceId.trim();
+    deviceName.trim();
+
+    if (host.length() == 0 || user.length() == 0 ||
         deviceId.length() == 0 || deviceName.length() == 0) {
-      server.send(400, "text/plain", "All MQTT fields are required");
+      server.send(400, "text/plain", "Host, user, device ID, and device name are required");
+      return;
+    }
+
+    if (host.length() > 63 || user.length() > 31 ||
+        deviceId.length() > 31 || deviceName.length() > 63) {
+      server.send(400, "text/plain", "One or more fields exceed maximum length");
+      return;
+    }
+
+    if (password.length() > 63) {
+      server.send(400, "text/plain", "Password cannot exceed 63 characters");
       return;
     }
 
@@ -444,13 +493,21 @@ void WebServerManager::handleConfigUpdate() {
       return;
     }
 
-    ConfigManagerAccessor config;
-    config->setMqttHost(host.c_str());
-    config->setMqttPort(portNum);
-    config->setMqttUser(user.c_str());
-    config->setMqttPassword(password.c_str());
-    config->setMqttDeviceId(deviceId.c_str());
-    config->setMqttDeviceName(deviceName.c_str());
+    {
+      ConfigManagerAccessor config;
+      if (password.length() == 0 && strlen(config->getMqttPassword()) == 0) {
+        server.send(400, "text/plain", "MQTT password is required");
+        return;
+      }
+      config->setMqttHost(host.c_str());
+      config->setMqttPort(portNum);
+      config->setMqttUser(user.c_str());
+      if (password.length() > 0) {
+        config->setMqttPassword(password.c_str());
+      }
+      config->setMqttDeviceId(deviceId.c_str());
+      config->setMqttDeviceName(deviceName.c_str());
+    }
 
     logger.info("MQTT device configuration saved. Rebooting device...");
     server.sendHeader("Connection", "close");
@@ -686,8 +743,11 @@ void WebServerManager::handleConfigUpdate() {
         config->setMqttPort(intVal);
       else if (type == "user")
         config->setMqttUser(valueStr.c_str());
-      else if (type == "password")
-        config->setMqttPassword(valueStr.c_str());
+      else if (type == "password") {
+        if (valueStr.length() > 0) {
+          config->setMqttPassword(valueStr.c_str());
+        }
+      }
       else if (type == "device_id")
         config->setMqttDeviceId(valueStr.c_str());
       else if (type == "device_name")
@@ -1093,11 +1153,25 @@ void WebServerManager::handleConfigSystem() {
     if (strcmp(key, "BACKLIGHT_OFF_SEL") == 0) { if (currentBrightness == 0) snprintf(buf, len, " selected"); return true; }
     if (strcmp(key, "INACTIVITY_TIMER_DELAY") == 0) { snprintf(buf, len, "%u", (unsigned)config->getInactivityTimerDelay()); return true; }
     if (strcmp(key, "WIFI_SSID") == 0) { snprintf(buf, len, "%s", config->getWifiSsid()); return true; }
-    if (strcmp(key, "WIFI_PASSWORD") == 0) { snprintf(buf, len, "%s", config->getWifiPassword()); return true; }
+    if (strcmp(key, "WIFI_PASS_PLACEHOLDER") == 0) {
+      if (strlen(config->getWifiPassword()) > 0) {
+        snprintf(buf, len, "•••••••• (leave blank to keep)");
+      } else {
+        snprintf(buf, len, "Enter Wi-Fi password");
+      }
+      return true;
+    }
     if (strcmp(key, "MQTT_HOST") == 0) { snprintf(buf, len, "%s", config->getMqttHost()); return true; }
     if (strcmp(key, "MQTT_PORT") == 0) { snprintf(buf, len, "%u", config->getMqttPort()); return true; }
     if (strcmp(key, "MQTT_USER") == 0) { snprintf(buf, len, "%s", config->getMqttUser()); return true; }
-    if (strcmp(key, "MQTT_PASSWORD") == 0) { snprintf(buf, len, "%s", config->getMqttPassword()); return true; }
+    if (strcmp(key, "MQTT_PASS_PLACEHOLDER") == 0) {
+      if (strlen(config->getMqttPassword()) > 0) {
+        snprintf(buf, len, "•••••••• (leave blank to keep)");
+      } else {
+        snprintf(buf, len, "Enter MQTT password");
+      }
+      return true;
+    }
     if (strcmp(key, "MQTT_DEVICE_ID") == 0) { snprintf(buf, len, "%s", config->getMqttDeviceId()); return true; }
     if (strcmp(key, "MQTT_DEVICE_NAME") == 0) { snprintf(buf, len, "%s", config->getMqttDeviceName()); return true; }
     return false;
