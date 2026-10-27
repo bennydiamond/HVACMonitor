@@ -39,6 +39,10 @@ static bool s_is_nano_update = false;
 static bool s_nano_failed = false;
 static NanoFlasher::Uploader *s_nano_uploader = nullptr;
 
+static bool s_app_header_checked = false;
+static uint8_t s_app_header_buf[0x24] = {0};
+static size_t s_app_header_len = 0;
+
 enum class UploadState {
   Idle,
   InProgress,
@@ -200,11 +204,12 @@ void WebServerManager::init(const char *firmware_version) {
       []() {
         server.sendHeader("Connection", "close");
         UploadState state = s_upload_state;
-        size_t bytes = s_upload_bytes_received;
 
         // Reset state for future requests
         s_upload_state = UploadState::Idle;
         s_upload_bytes_received = 0;
+        s_app_header_checked = false;
+        s_app_header_len = 0;
 
         switch (state) {
           case UploadState::Idle:
@@ -880,6 +885,8 @@ void WebServerManager::handleUpload() {
     s_upload_state = UploadState::InProgress;
     s_upload_bytes_received = 0;
     s_upload_error_msg = "";
+    s_app_header_checked = false;
+    s_app_header_len = 0;
     String target = server.hasArg("target") ? server.arg("target") : "";
     String lowerName = upload.filename;
     lowerName.toLowerCase();
@@ -940,22 +947,36 @@ void WebServerManager::handleUpload() {
         }
       }
     } else {
-      static bool s_app_header_checked = false;
-      if (Update.progress() == 0) {
-        s_app_header_checked = false;
-      }
-      if (!s_app_header_checked && upload.currentSize >= 0x24) {
-        s_app_header_checked = true;
-        uint32_t word_at_0x20 = 0;
-        memcpy(&word_at_0x20, upload.buf + 0x20, sizeof(word_at_0x20));
-        if (word_at_0x20 != ESP_APP_DESC_MAGIC_WORD) {
-          Update.abort();
-          s_upload_error_msg = "Validation rejected: file is missing Application Descriptor. Did you upload a bootloader to the firmware target?";
-          logger.error("[Web OTA] Firmware validation rejected: missing 0xABCD5432 app descriptor!");
+      if (!s_app_header_checked) {
+        size_t needed = sizeof(s_app_header_buf) - s_app_header_len;
+        size_t to_copy = (upload.currentSize < needed) ? upload.currentSize : needed;
+        memcpy(s_app_header_buf + s_app_header_len, upload.buf, to_copy);
+        s_app_header_len += to_copy;
+
+        if (s_app_header_len >= sizeof(s_app_header_buf)) {
+          s_app_header_checked = true;
+          if (s_app_header_buf[0] != ESP_IMAGE_HEADER_MAGIC) {
+            Update.abort();
+            s_upload_state = UploadState::Failed;
+            s_upload_error_msg = "Invalid binary: missing ESP32 image magic byte (0xE9)";
+            logger.errorf("[Web OTA] Firmware validation rejected: magic byte is 0x%02X (expected 0x%02X)!",
+                          s_app_header_buf[0], ESP_IMAGE_HEADER_MAGIC);
+          } else {
+            uint32_t word_at_0x20 = 0;
+            memcpy(&word_at_0x20, s_app_header_buf + 0x20, sizeof(word_at_0x20));
+            if (word_at_0x20 != ESP_APP_DESC_MAGIC_WORD) {
+              Update.abort();
+              s_upload_state = UploadState::Failed;
+              s_upload_error_msg = "Validation rejected: file is missing Application Descriptor. Did you upload a bootloader to the firmware target?";
+              logger.errorf("[Web OTA] Firmware validation rejected: word at 0x20 is 0x%08X (expected 0x%08X)!",
+                            word_at_0x20, ESP_APP_DESC_MAGIC_WORD);
+            }
+          }
         }
       }
-      if (!Update.hasError()) {
+      if (s_upload_state == UploadState::InProgress && !Update.hasError()) {
         if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+          s_upload_state = UploadState::Failed;
           log_update_error();
           s_upload_error_msg = String("Update.write failed, error: ") + Update.getError();
         }
@@ -1096,6 +1117,13 @@ void WebServerManager::handleUpload() {
         }
       }
     } else {
+      if (!s_app_header_checked) {
+        s_upload_state = UploadState::Failed;
+        if (s_upload_error_msg.length() == 0) {
+          s_upload_error_msg = "Firmware image is too small (< 36 bytes)";
+        }
+        logger.error("[Web OTA] Firmware image is too small (< 36 bytes)");
+      }
       if (s_upload_bytes_received == 0 || s_upload_state != UploadState::InProgress || Update.hasError()) {
         s_upload_state = UploadState::Failed;
         if (Update.isRunning()) {
@@ -1119,6 +1147,8 @@ void WebServerManager::handleUpload() {
     }
   } else if (upload.status == UPLOAD_FILE_ABORTED) {
     s_upload_state = UploadState::Aborted;
+    s_app_header_checked = false;
+    s_app_header_len = 0;
     if (s_upload_error_msg.length() == 0) {
       s_upload_error_msg = "Firmware upload aborted by client";
     }
