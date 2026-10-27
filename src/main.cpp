@@ -140,15 +140,14 @@ void setup_wifi() {
   }
 
   size_t pass_len = strlen(password);
-  if (pass_len == 0 && strlen(WIFI_PASSWORD) > 0) {
-    logger.info("WiFi password empty; falling back to default password from secrets.");
-    snprintf(password, sizeof(password), "%s", WIFI_PASSWORD);
-  } else if (pass_len > 0 && (pass_len < 8 || pass_len > 64)) {
+  if (pass_len > 0 && (pass_len < 8 || pass_len > 64)) {
     logger.errorf("Invalid WiFi password (length %u); falling back to default password.", pass_len);
     snprintf(password, sizeof(password), "%s", WIFI_PASSWORD);
+    pass_len = strlen(password);
   }
 
-  logger.infof("Initiating WiFi connection to SSID '%s'", ssid);
+  logger.infof("Initiating WiFi connection to SSID '%s'%s", ssid,
+               (pass_len == 0) ? " (open network)" : "");
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
   WiFi.setSleep(false);
@@ -158,7 +157,7 @@ void setup_wifi() {
   WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
     wifi_state_changed = true;
   }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
-  WiFi.begin(ssid, password);
+  WiFi.begin(ssid, (pass_len > 0) ? password : nullptr);
   unsigned long start_time = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start_time < 15000) {
     // Without Wi-Fi this waits the full 15 s: keep it off the watchdog's account

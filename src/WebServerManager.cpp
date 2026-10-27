@@ -419,6 +419,7 @@ void WebServerManager::handleConfigUpdate() {
       server.arg("action") == "save") {
     String ssid = server.arg("ssid");
     String password = server.arg("password");
+    bool isOpen = server.hasArg("open_network") && (server.arg("open_network") == "1" || server.arg("open_network") == "true");
 
     ssid.trim();
     if (ssid.length() == 0) {
@@ -429,25 +430,27 @@ void WebServerManager::handleConfigUpdate() {
       server.send(400, "text/plain", "SSID cannot exceed 32 characters");
       return;
     }
-    if (password.length() > 64) {
-      server.send(400, "text/plain", "Password cannot exceed 64 characters");
-      return;
-    }
-    if (password.length() > 0 && password.length() < 8) {
-      server.send(400, "text/plain", "Password must be at least 8 characters");
-      return;
-    }
-
-    {
-      ConfigManagerAccessor config;
-      config->setWifiSsid(ssid.c_str());
-      if (password.length() > 0) {
-        config->setWifiPassword(password.c_str());
+    if (isOpen) {
+      password = "";
+    } else if (password.length() > 0) {
+      if (password.length() < 8 || password.length() > 64) {
+        server.send(400, "text/plain", "Password must be 8 to 64 characters (or check open network)");
+        return;
       }
     }
 
-    logger.infof("Wi-Fi configuration saved (SSID: %s). Rebooting device...",
-                 ssid.c_str());
+    bool updatePassword = isOpen || (password.length() > 0);
+
+    {
+      ConfigManagerAccessor config;
+      if (!config->setWifiCredentials(ssid.c_str(), isOpen ? "" : password.c_str(), updatePassword)) {
+        server.send(400, "text/plain", "Failed to save Wi-Fi configuration (invalid SSID or password)");
+        return;
+      }
+    }
+
+    logger.infof("Wi-Fi configuration saved (SSID: %s%s). Rebooting device...",
+                 ssid.c_str(), isOpen ? ", open network" : "");
     server.sendHeader("Connection", "close");
     server.send(200, "text/plain",
                 "Wi-Fi configuration saved successfully. Rebooting device...");

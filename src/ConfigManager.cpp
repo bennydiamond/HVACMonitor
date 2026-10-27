@@ -237,7 +237,8 @@ void ConfigManager::init() {
     pm10DangerThreshold = preferences.getInt(KEY_PM10_DANGER, DEFAULT_PM10_DANGER_THRESHOLD);
     
     // Load WiFi configuration with validation
-    size_t ssidLen = preferences.getString(KEY_WIFI_SSID, wifiSsid, sizeof(wifiSsid));
+    size_t rawSsidLen = preferences.getString(KEY_WIFI_SSID, wifiSsid, sizeof(wifiSsid));
+    size_t ssidLen = (rawSsidLen > 0) ? strlen(wifiSsid) : 0;
     bool validSsid = (ssidLen > 0 && ssidLen <= 32);
     if (validSsid) {
         bool allSpaces = true;
@@ -250,15 +251,24 @@ void ConfigManager::init() {
         if (allSpaces) validSsid = false;
     }
     if (!validSsid) {
-        logger.warningf("Invalid WiFi SSID in NVS; falling back to default.");
+        if (rawSsidLen > 0) {
+            logger.warningf("Invalid WiFi SSID in NVS (length %u); falling back to default.", ssidLen);
+        }
         snprintf(wifiSsid, sizeof(wifiSsid), "%s", DEFAULT_WIFI_SSID);
     }
 
-    size_t passLen = preferences.getString(KEY_WIFI_PASSWORD, wifiPassword, sizeof(wifiPassword));
-    // If password is not set in NVS (passLen == 0) or invalid length, fall back to default
-    if (passLen == 0 || (passLen < 8 || passLen > 64)) {
-        logger.warningf("WiFi password not set or invalid in NVS (length %u); falling back to default.", passLen);
+    size_t rawPassLen = preferences.getString(KEY_WIFI_PASSWORD, wifiPassword, sizeof(wifiPassword));
+    // If password is not set in NVS (rawPassLen == 0), fall back to default
+    if (rawPassLen == 0) {
         snprintf(wifiPassword, sizeof(wifiPassword), "%s", DEFAULT_WIFI_PASSWORD);
+    } else {
+        // Password exists in NVS: check actual string length (excluding null terminator)
+        size_t passLen = strlen(wifiPassword);
+        // Valid password is 0 (open network) or 8-64 characters
+        if (passLen > 0 && (passLen < 8 || passLen > 64)) {
+            logger.warningf("WiFi password invalid in NVS (length %u); falling back to default.", passLen);
+            snprintf(wifiPassword, sizeof(wifiPassword), "%s", DEFAULT_WIFI_PASSWORD);
+        }
     }
     
     // Load MQTT configuration
@@ -794,38 +804,73 @@ void ConfigManager::setPm10DangerThreshold(int value) {
     }
 }
 
-void ConfigManager::setWifiSsid(const char* value) {
-    if (!value) return;
+bool ConfigManager::setWifiSsid(const char* value) {
+    if (!value) return false;
     size_t len = strlen(value);
     if (len == 0 || len > 32) {
         logger.errorf("Rejected invalid WiFi SSID (length %u, max 32)", len);
-        return;
+        return false;
     }
     if (strcmp(wifiSsid, value) != 0) {
         snprintf(wifiSsid, sizeof(wifiSsid), "%s", value);
         if (preferences.putString(KEY_WIFI_SSID, wifiSsid) > 0) {
             logger.infof("Saved new WiFi SSID: %s", wifiSsid);
+            return true;
         } else {
             logger.errorf("Failed to save key '%s' to NVS.", KEY_WIFI_SSID);
+            return false;
         }
     }
+    return true;
 }
 
-void ConfigManager::setWifiPassword(const char* value) {
-    if (!value) return;
+bool ConfigManager::setWifiPassword(const char* value) {
+    if (!value) return false;
     size_t len = strlen(value);
     if (len > 0 && (len < 8 || len > 64)) {
         logger.errorf("Rejected invalid WiFi password (length %u, must be 0 or 8-64)", len);
-        return;
+        return false;
     }
     if (strcmp(wifiPassword, value) != 0) {
         snprintf(wifiPassword, sizeof(wifiPassword), "%s", value);
         if (preferences.putString(KEY_WIFI_PASSWORD, wifiPassword) > 0) {
             logger.info("Saved new WiFi password to NVS.");
+            return true;
         } else {
             logger.errorf("Failed to save key '%s' to NVS.", KEY_WIFI_PASSWORD);
+            return false;
         }
     }
+    return true;
+}
+
+bool ConfigManager::setWifiCredentials(const char* ssid, const char* password, bool updatePassword) {
+    if (!ssid) return false;
+    size_t ssidLen = strlen(ssid);
+    if (ssidLen == 0 || ssidLen > 32) {
+        logger.errorf("Rejected invalid WiFi SSID (length %u, max 32)", ssidLen);
+        return false;
+    }
+    if (updatePassword) {
+        if (!password) return false;
+        size_t passLen = strlen(password);
+        if (passLen > 0 && (passLen < 8 || passLen > 64)) {
+            logger.errorf("Rejected invalid WiFi password (length %u, must be 0 or 8-64)", passLen);
+            return false;
+        }
+    }
+
+    if (updatePassword) {
+        if (!setWifiPassword(password)) {
+            logger.error("Failed to save WiFi password; aborting SSID update.");
+            return false;
+        }
+    }
+    if (!setWifiSsid(ssid)) {
+        logger.error("Failed to save WiFi SSID.");
+        return false;
+    }
+    return true;
 }
 
 void ConfigManager::setMqttHost(const char* value) {

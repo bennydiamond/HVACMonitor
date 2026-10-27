@@ -95,8 +95,9 @@ public:
     void setHumiAcceptableLow(float value);
     void setHumiAcceptableHigh(float value);
     void setInactivityTimerDelay(int value);
-    void setWifiSsid(const char* value);
-    void setWifiPassword(const char* value);
+    bool setWifiSsid(const char* value);
+    bool setWifiPassword(const char* value);
+    bool setWifiCredentials(const char* ssid, const char* password, bool updatePassword = true);
     void setMqttHost(const char* value);
     void setMqttPort(int value);
     void setMqttUser(const char* value);
