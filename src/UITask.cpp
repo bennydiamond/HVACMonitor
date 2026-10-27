@@ -66,10 +66,8 @@ const UITask::UIUpdateFunc UITask::updateTable[UI_MSG_COUNT] = {
     [](IUIUpdater* u, const UIMessage& m) { u->update_pm4(m.value.f); },
     // UI_PM10
     [](IUIUpdater* u, const UIMessage& m) { u->update_pm10(m.value.f); },
-    // UI_WIFI_CONNECTED
-    [](IUIUpdater* u, const UIMessage& m) { u->update_wifi_status(m.value.b, 0); },
-    // UI_WIFI_RSSI
-    [](IUIUpdater* u, const UIMessage& m) { u->update_wifi_status(true, m.value.i); },
+    // UI_WIFI_STATUS
+    [](IUIUpdater* u, const UIMessage& m) { u->update_wifi_status(m.value.wifi.connected, m.value.wifi.rssi); },
     // UI_SENSOR_STATUS
     [](IUIUpdater* u, const UIMessage& m) { u->update_sensor_status(m.value.b); },
     // UI_CLEAR_SENSOR_READINGS
@@ -377,8 +375,7 @@ void UITask::update_pm_values(float v1, float v2, float v3, float v4) {
     queueSendOrWarn(UIMessage{UI_PM10, v4});
 }
 void UITask::update_wifi_status(bool connected, long rssi) {
-    queueSendOrWarn(UIMessage{UI_WIFI_CONNECTED, connected});
-    queueSendOrWarn(UIMessage{UI_WIFI_RSSI, static_cast<int>(rssi)});
+    queueSendOrWarn(UIMessage{UI_WIFI_STATUS, connected, static_cast<int8_t>(rssi)});
 }
 void UITask::update_sensor_status(bool connected) {
     queueSendOrWarn(UIMessage{UI_SENSOR_STATUS, connected});

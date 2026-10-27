@@ -36,8 +36,7 @@ class IUIUpdater;
     X(UI_PM25) \
     X(UI_PM4) \
     X(UI_PM10) \
-    X(UI_WIFI_CONNECTED) \
-    X(UI_WIFI_RSSI) \
+    X(UI_WIFI_STATUS) \
     X(UI_SENSOR_STATUS) \
     X(UI_CLEAR_SENSOR_READINGS) \
     X(UI_SPS30_FAN_INTERVAL) \
@@ -81,6 +80,11 @@ public:
     // String array definition using X-macro
     static const char* UIMessageTypeNames[UI_MSG_COUNT];
 
+    struct WifiStatus {
+        bool connected;
+        int8_t rssi;
+    };
+
     struct UIMessage {
         UIMessage() = default;
         UIMessageType type;
@@ -88,13 +92,19 @@ public:
             float f;
             int i;
             bool b;
+            WifiStatus wifi;
         } value;
         template<typename T>
         UIMessage(UIMessageType t, T v) : type(t) {
             if constexpr (std::is_same<T, float>::value) value.f = v;
             else if constexpr (std::is_same<T, int>::value) value.i = v;
             else if constexpr (std::is_same<T, bool>::value) value.b = v;
+            else if constexpr (std::is_same<T, WifiStatus>::value) value.wifi = v;
             else static_assert(sizeof(T) == 0, "Unsupported UIMessage value type");
+        }
+        UIMessage(UIMessageType t, bool connected, int8_t rssi) : type(t) {
+            value.wifi.connected = connected;
+            value.wifi.rssi = rssi;
         }
     };
 

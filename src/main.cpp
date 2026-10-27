@@ -87,6 +87,8 @@ RollingAverage<float> aht20_humidity_avg(10);
 
 TaskHandle_t mainTaskHandle = nullptr;
 
+static volatile bool wifi_state_changed = false;
+
 // =================== UTILITY FUNCTIONS ===================
 void update_wifi_status() {
   char current_ssid[33];
@@ -150,6 +152,12 @@ void setup_wifi() {
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
   WiFi.setSleep(false);
+  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
+    wifi_state_changed = true;
+  }, ARDUINO_EVENT_WIFI_STA_GOT_IP);
+  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
+    wifi_state_changed = true;
+  }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
   WiFi.begin(ssid, password);
   unsigned long start_time = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start_time < 15000) {
@@ -247,6 +255,14 @@ void loop() {
 #endif
 
   BootloopGuard::handle();
+
+  static bool previous_wifi_connected = (WiFi.status() == WL_CONNECTED);
+  bool current_wifi_connected = (WiFi.status() == WL_CONNECTED);
+  if (wifi_state_changed || (current_wifi_connected != previous_wifi_connected)) {
+    wifi_state_changed = false;
+    previous_wifi_connected = current_wifi_connected;
+    update_wifi_status();
+  }
 
   static bool previous_mqtt_connect_status = false;
   static unsigned long mqtt_connected_since = 0;
