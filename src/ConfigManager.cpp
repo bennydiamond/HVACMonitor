@@ -877,7 +877,8 @@ bool ConfigManager::setWifiPassword(const char *value) {
   }
   if (strcmp(wifiPassword, value) != 0) {
     snprintf(wifiPassword, sizeof(wifiPassword), "%s", value);
-    if (preferences.putString(KEY_WIFI_PASSWORD, wifiPassword) > 0) {
+    // putString() returns the length written: 0 is also success for an open network
+    if (preferences.putString(KEY_WIFI_PASSWORD, wifiPassword) == len) {
       logger.info("Saved new WiFi password to NVS.");
       return true;
     } else {

@@ -32,8 +32,9 @@ public:
     void setSps30Info(const SPS30DeviceInfo& info);
     void setSgp41TestResult(const SGP41TestResult& result);
     void setScd30Info(bool auto_cal, uint16_t force_cal);
-    void setScd30AutoCalState(bool auto_cal);
-    void setScd30ForceCalValue(uint16_t force_cal);
+    // force: publish to Home Assistant even when unchanged (see HomeAssistantManager)
+    void setScd30AutoCalState(bool auto_cal, bool force = false);
+    void setScd30ForceCalValue(uint16_t force_cal, bool force = false);
     void setFirmwareState(SensorStackFirmwareState state);
     void setSensorFaultMask(uint8_t mask);
 

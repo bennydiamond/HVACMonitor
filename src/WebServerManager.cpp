@@ -47,8 +47,6 @@ constexpr size_t JSON_STATUS_BUFFER_RESERVE_BYTES = 1500;
 constexpr float JSON_FALLBACK_MISSING_VALUE = -1.0f;
 constexpr float JSON_FALLBACK_MISSING_TEMP_C = -999.0f;
 constexpr float JSON_FALLBACK_ZERO = 0.0f;
-
-// Configuration limits and bounds imported from ConfigLimits
 } // namespace
 
 WebServer server(80);
@@ -665,14 +663,6 @@ void WebServerManager::handleApiStatus() {
   out += ",\"h_al\":";
   appendFloat(out, humi_al, 1, ConfigDefaults::HUMI_ACCEPTABLE_LOW);
   out += ",\"h_ah\":";
-  appendFloat(out, humi_ah, 1, ConfigDefaults::HUMI_ACCEPTABLE_HIGH);
-  out += ",\"humi_cl\":";
-  appendFloat(out, humi_cl, 1, ConfigDefaults::HUMI_COMFORTABLE_LOW);
-  out += ",\"humi_ch\":";
-  appendFloat(out, humi_ch, 1, ConfigDefaults::HUMI_COMFORTABLE_HIGH);
-  out += ",\"humi_al\":";
-  appendFloat(out, humi_al, 1, ConfigDefaults::HUMI_ACCEPTABLE_LOW);
-  out += ",\"humi_ah\":";
   appendFloat(out, humi_ah, 1, ConfigDefaults::HUMI_ACCEPTABLE_HIGH);
   out += "}}";
 
@@ -1345,13 +1335,10 @@ void WebServerManager::handleConfigUpdate() {
     } else if (section == "scd30") {
       if (type == "autocal" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_SWITCH_STATE, ConfigLimits::MAX_SWITCH_STATE)) {
         bool enabled = (intVal != 0);
+        // Home Assistant and the screen are updated once the SensorStack confirms
         send_command_to_nano_with_param(CMD_SET_SCD30_AUTOCAL,
                                         enabled ? '1' : '0');
-        HomeAssistantManager *ha = HomeAssistantManager::getInstance();
-        if (ha)
-          ha->updateScd30AutoCalState(enabled);
-        UITask::getInstance().update_scd30_autocal(enabled);
-        logger.infof("SCD30 AutoCalibration set to %s via Web Server",
+        logger.infof("SCD30 AutoCalibration %s requested via Web Server",
                      enabled ? "ON" : "OFF");
       } else if (type == "forcecal" &&
                  parseStrictInt(valueStr, intVal, SensorDefines::SCD30_FORCECAL_MIN_PPM, SensorDefines::SCD30_FORCECAL_MAX_PPM)) {
@@ -1359,11 +1346,7 @@ void WebServerManager::handleConfigUpdate() {
         char cmd_str[8];
         snprintf(cmd_str, sizeof(cmd_str), "%c%u", CMD_SET_SCD30_FORCECAL, ppm);
         send_command_to_nano_str(cmd_str);
-        HomeAssistantManager *ha = HomeAssistantManager::getInstance();
-        if (ha)
-          ha->updateScd30ForceCalValue(ppm);
-        UITask::getInstance().update_scd30_forcecal(ppm);
-        logger.infof("SCD30 Force Calibration set to %u ppm via Web Server",
+        logger.infof("SCD30 Force Calibration to %u ppm requested via Web Server",
                      ppm);
       } else {
         ok = false;
@@ -1374,8 +1357,10 @@ void WebServerManager::handleConfigUpdate() {
 
     if (ok) {
       server.send(200, "text/plain", "Saved successfully");
+      // Logs go to syslog and MQTT: never write a secret's value
+      const bool secret = type.indexOf("password") >= 0;
       logger.infof("Threshold updated: %s_%s = %s", section.c_str(),
-                   type.c_str(), valueStr.c_str());
+                   type.c_str(), secret ? "***" : valueStr.c_str());
     } else {
       server.send(400, "text/plain", errorMsg);
     }

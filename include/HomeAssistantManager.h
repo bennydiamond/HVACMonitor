@@ -56,8 +56,10 @@ public:
     bool isMqttConnected();
 
     void publishNanoResetCause(const char* cause);
-    void updateScd30AutoCalState(bool state);
-    void updateScd30ForceCalValue(uint16_t value);
+    // force: publish even when unchanged, e.g. to revert Home Assistant's control
+    // after the SensorStack rejected a command
+    void updateScd30AutoCalState(bool state, bool force = false);
+    void updateScd30ForceCalValue(uint16_t value, bool force = false);
     bool getScd30AutoCalState() const { return _scd30AutoCalSwitch.getCurrentState(); }
     uint16_t getScd30ForceCalValue() const { return _scd30ForceCalNumber.getCurrentState().toUInt16(); }
     bool getBacklightState() const { return _backlight.getCurrentState(); }

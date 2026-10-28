@@ -1099,6 +1099,7 @@ void HomeAssistantManager::onLogLevelCommand(int8_t index, HASelect* sender) {
     if (!_instance) return;
     if (index < 0 || index > 3) {
         logger.warningf("Rejected invalid log level from Home Assistant: %d (allowed 0-3)", index);
+        sender->setState(sender->getCurrentState(), true);
         return;
     }
     AppLogLevel level = static_cast<AppLogLevel>(index);
@@ -1141,12 +1142,12 @@ void HomeAssistantManager::publishNanoResetCause(const char* cause) {
 
 void HomeAssistantManager::onScd30AutoCalCommand(bool state, HASwitch* sender) {
     logger.infof("SCD30 AutoCalibration %s command from Home Assistant.", state ? "ON" : "OFF");
-    sender->setState(state);
+    // The state is published once the SensorStack confirms it (processScd30AutoCalPayload)
     send_command_to_nano_with_param(CMD_SET_SCD30_AUTOCAL, state ? '1' : '0');
 }
 
-void HomeAssistantManager::updateScd30AutoCalState(bool state) {
-    _scd30AutoCalSwitch.setState(state);
+void HomeAssistantManager::updateScd30AutoCalState(bool state, bool force) {
+    _scd30AutoCalSwitch.setState(state, force);
 }
 
 void HomeAssistantManager::onScd30ForceCalCommand(HANumeric number, HANumber* sender) {
@@ -1154,7 +1155,8 @@ void HomeAssistantManager::onScd30ForceCalCommand(HANumeric number, HANumber* se
     if (ppm_raw < SensorDefines::SCD30_FORCECAL_MIN_PPM || ppm_raw > SensorDefines::SCD30_FORCECAL_MAX_PPM) {
         logger.warningf("Rejected out-of-range SCD30 Force Cal from Home Assistant: %d ppm (allowed %u-%u)",
                         ppm_raw, SensorDefines::SCD30_FORCECAL_MIN_PPM, SensorDefines::SCD30_FORCECAL_MAX_PPM);
-        sender->setState(sender->getCurrentState());
+        // Republish the unchanged value so Home Assistant reverts its control
+        sender->setState(sender->getCurrentState(), true);
         return;
     }
     uint16_t ppm_value = static_cast<uint16_t>(ppm_raw);
@@ -1165,8 +1167,8 @@ void HomeAssistantManager::onScd30ForceCalCommand(HANumeric number, HANumber* se
     send_command_to_nano_str(cmd_with_param);
 }
 
-void HomeAssistantManager::updateScd30ForceCalValue(uint16_t value) {
-    _scd30ForceCalNumber.setState(value);
+void HomeAssistantManager::updateScd30ForceCalValue(uint16_t value, bool force) {
+    _scd30ForceCalNumber.setState(value, force);
 }
 
 void HomeAssistantManager::updateBacklightState(bool state, uint8_t brightness) {
@@ -1183,7 +1185,7 @@ void HomeAssistantManager::onInactivityTimerDelayCommand(HANumeric number, HANum
             logger.warningf("Rejected out-of-range inactivity timer delay from Home Assistant: %d (allowed %d-%d)",
                             delay, ConfigLimits::MIN_INACTIVITY_DELAY_S, ConfigLimits::MAX_INACTIVITY_DELAY_S);
             ConfigManagerAccessor config;
-            sender->setState(static_cast<int32_t>(config->getInactivityTimerDelay()));
+            sender->setState(static_cast<int32_t>(config->getInactivityTimerDelay()), true);
             return;
         }
         ConfigManagerAccessor config;
