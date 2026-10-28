@@ -29,6 +29,8 @@ SensorDataProcessor::SensorDataProcessor()
       _sensorTask(nullptr),
       _last_received_timestamp(0),
       _sensor_fault_mask(0),
+      _voc_algorithm(SENSOR_SAMPLING_INTERVAL_S),
+      _nox_algorithm(SensirionGasIndexAlgorithm::ALGORITHM_TYPE_NOX, SENSOR_SAMPLING_INTERVAL_S),
       _co2_avg(100),
       _co_avg(20),
       _voc_avg(100),
