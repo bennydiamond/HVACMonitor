@@ -24,7 +24,7 @@
 // ======================================================================
 
 // --- Firmware & Protocol ---
-const char NANO_FIRMWARE_VERSION[] PROGMEM = "1.4.10";
+const char NANO_FIRMWARE_VERSION[] PROGMEM = "1.4.11";
 #define CMD_GET_SENSORS 'S' // Request sensor data
 #define RSP_SENSORS 's'     // Response with sensor data
 #define CMD_GET_VERSION 'V'
@@ -36,10 +36,18 @@ const char NANO_FIRMWARE_VERSION[] PROGMEM = "1.4.10";
 #define CMD_BOOTLOADER 'B' // Request Nano Enter Bootloader
 #define RSP_BOOTLOADER 'b' // Response/ACK for Nano Enter Bootloader
 
-#define BOOT_KEY_ADDR ((volatile uint16_t *)(RAMEND - 3))
-#define BOOT_INV_ADDR ((volatile uint16_t *)(RAMEND - 1))
+// 4-byte handoff block shared with the urboot bootloader at the start of SRAM
+// (see urboot.c). platformio.ini starts .data after it, so nothing else in this
+// firmware uses it. It holds either a boot request (key + inverse, read by the
+// bootloader) or a reset report (written by the bootloader, or by this firmware
+// before a requested reboot). Cleared in setup() after reading.
+#define HANDOFF_ADDR RAMSTART
+#define BOOT_KEY_ADDR ((volatile uint16_t *)(HANDOFF_ADDR))
+#define BOOT_INV_ADDR ((volatile uint16_t *)(HANDOFF_ADDR + 2))
 #define BOOT_KEY_MAGIC ((uint16_t)0xB007)
 #define BOOT_KEY_INVERSE ((uint16_t)0x4FF8) // ~0xB007
+#define RESET_REPORT ((volatile uint8_t *)(HANDOFF_ADDR))
+#define RESET_REPORT_TAG ((uint8_t)0xC3)
 #define CMD_GET_SPS30_INFO 'P'              // Request SPS30 info
 #define RSP_SPS30_INFO 'p'                  // Response with SPS30 info
 #define CMD_SPS30_CLEAN 'C'                 // Request manual SPS30 fan cleaning
@@ -435,19 +443,47 @@ uint8_t last_reset_cause = 0;
 void capture_r2(void) __attribute__((naked, section(".init0"), used));
 void capture_r2(void) { asm volatile("sts urboot_reset_flags, r2\n"); }
 
+// Leaves a reset report saying the next watchdog reset was requested
+void report_software_reset() {
+  RESET_REPORT[0] = _BV(WDRF);
+  RESET_REPORT[1] = (uint8_t)~_BV(WDRF);
+  RESET_REPORT[2] = RESET_REPORT_TAG;
+  RESET_REPORT[3] = (uint8_t)~RESET_REPORT_TAG;
+}
+
+// Reset cause from the flags urboot passed in r2. Any reset through the
+// bootloader (reset button, bootloader request) ends with the bootloader's own
+// watchdog reset, so r2 then only holds WDRF: the reset report left in the
+// handoff block gives the reset that really happened.
+uint8_t determine_reset_cause() {
+  uint8_t flags = urboot_reset_flags;
+  bool report_valid = RESET_REPORT[1] == (uint8_t)~RESET_REPORT[0] &&
+                      RESET_REPORT[2] == RESET_REPORT_TAG &&
+                      RESET_REPORT[3] == (uint8_t)~RESET_REPORT_TAG;
+  if (flags == _BV(WDRF) && report_valid) {
+    if (RESET_REPORT[0] & _BV(WDRF))
+      return SensorDefines::RESET_CAUSE_SOFTWARE; // Watchdog reset we requested
+    flags = RESET_REPORT[0];
+  }
+  // Power-on first: a power-up can also set BORF (slow supply ramp)
+  if (flags & _BV(PORF))
+    return SensorDefines::RESET_CAUSE_POWER_ON;
+  if (flags & _BV(BORF))
+    return SensorDefines::RESET_CAUSE_BROWN_OUT;
+  if (flags & _BV(WDRF))
+    return SensorDefines::RESET_CAUSE_WATCHDOG;
+  if (flags & _BV(EXTRF))
+    return SensorDefines::RESET_CAUSE_EXTERNAL;
+  return SensorDefines::RESET_CAUSE_UNKNOWN;
+}
+
 void setup() {
   Serial.begin(SERIAL_BAUD_RATE);
 
-  if (urboot_reset_flags & (1 << 3))
-    last_reset_cause = SensorDefines::RESET_CAUSE_WATCHDOG;
-  else if (urboot_reset_flags & (1 << 2))
-    last_reset_cause = SensorDefines::RESET_CAUSE_BROWN_OUT;
-  else if (urboot_reset_flags & (1 << 1))
-    last_reset_cause = SensorDefines::RESET_CAUSE_EXTERNAL;
-  else if (urboot_reset_flags & (1 << 0))
-    last_reset_cause = SensorDefines::RESET_CAUSE_POWER_ON;
-  else
-    last_reset_cause = SensorDefines::RESET_CAUSE_UNKNOWN;
+  last_reset_cause = determine_reset_cause();
+  // Consumed: a later reset must not see this report or a stale boot request
+  for (uint8_t i = 0; i < 4; i++)
+    RESET_REPORT[i] = 0;
 
   pinMode(DEBUG_LED_PIN, OUTPUT);
   digitalWrite(DEBUG_LED_PIN, HIGH);
@@ -866,6 +902,7 @@ void process_command(const char *buffer) {
     Serial.flush();
 
     MCUSR = 0;
+    // The bootloader replaces the request with its reset report
     *BOOT_KEY_ADDR = BOOT_KEY_MAGIC;
     *BOOT_INV_ADDR = BOOT_KEY_INVERSE;
     wdt_enable(WDTO_15MS);
@@ -875,6 +912,7 @@ void process_command(const char *buffer) {
   }
 
   case CMD_REBOOT:
+    report_software_reset();
     wdt_enable(WDTO_15MS);
     while (1)
       ;

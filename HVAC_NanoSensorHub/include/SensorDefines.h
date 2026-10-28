@@ -81,6 +81,7 @@ constexpr uint8_t RESET_CAUSE_POWER_ON  = 1;
 constexpr uint8_t RESET_CAUSE_EXTERNAL  = 2;
 constexpr uint8_t RESET_CAUSE_BROWN_OUT = 3;
 constexpr uint8_t RESET_CAUSE_WATCHDOG  = 4;
+constexpr uint8_t RESET_CAUSE_SOFTWARE  = 5; // Reboot requested by the ESP32 (incl. bootloader entry)
 
 // ==============================================================================
 // Helper Validity Functions

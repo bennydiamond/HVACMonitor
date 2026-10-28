@@ -38,6 +38,7 @@ const char* SensorStackStatusManager::resetCauseToString(uint8_t code) {
         case SensorDefines::RESET_CAUSE_EXTERNAL:  return "External";
         case SensorDefines::RESET_CAUSE_BROWN_OUT: return "Brown-Out";
         case SensorDefines::RESET_CAUSE_WATCHDOG:  return "Watchdog";
+        case SensorDefines::RESET_CAUSE_SOFTWARE:  return "Software";
         case SensorDefines::RESET_CAUSE_UNKNOWN:
         default: return "Unknown";
     }

@@ -10,27 +10,28 @@ The Arduino Nano serves as a coprocessor to the main ESP32. Because only UART RX
 
 ### Bootloader Modifications (`urboot/src/urboot.c`)
 
-1. **Dual 16-Bit Complementary Magic Keys (`MAGIC_BOOT`)**:
-   - Location: Stored in the top 4 bytes of SRAM (`RAMEND - 3` to `RAMEND`).
-   - **Key 1**: `0xB007` at `0x08FC` (SRAM byte addresses `0x08FC - 0x08FD`).
-   - **Key 2**: `0x4FF8` (`~0xB007`, bitwise complement) at `0x08FE` (SRAM byte addresses `0x08FE - 0x08FF`).
-   - Both keys must match precisely for the bootloader to stay in programming mode.
+1. **Handoff Block at the Start of SRAM (`0x0100 - 0x0103`)**:
+   - Shared by the bootloader and the application. The application reserves it (`-Wl,--section-start=.data=0x800104` in `platformio.ini`) and urboot's page buffer starts right after it (`RAMBUFFER = RAMSTART + 4`), so nothing else ever writes it.
+   - It holds one of two records, each self-checking:
 
-2. **Power-On & Brownout Protection**:
-   - Checks `MCUSR` flags:
-     ```c
-     if (!(mcusr & (_BV(PORF) | _BV(BORF))) && (mcusr & _BV(WDRF))) {
-         // Only enter if triggered by watchdog, never on cold power-on or brownout
-     }
-     ```
-   - Prevents uninitialized RAM contents after power loss or brownouts from accidentally triggering the bootloader.
+     | Record | Written by | `0x0100` | `0x0101` | `0x0102` | `0x0103` |
+     | :--- | :--- | :--- | :--- | :--- | :--- |
+     | Boot request | Application | Key `0xB007` (LE) | | Inverse `0x4FF8` (LE) | |
+     | Reset report | Bootloader, or application before a requested reboot | Reset flags (`MCUSR`) | `~flags` | Tag `0xC3` | `~0xC3` |
 
-3. **Immediate RAM Key Invalidation**:
-   - The bootloader wipes both keys (`*BOOT_KEY_ADDR = 0; *BOOT_INV_ADDR = 0;`) upon boot.
-   - If the ESP32 fails to start flashing within 1 second, the 1-second watchdog fires, resets the Nano, and because the keys are zeroed, the Nano immediately launches the main application.
+   - The application reads and then clears the block at every start, so after a crash only the bootloader can have written it.
 
-4. **Reset Reason Preservation (`r2`)**:
-   - The bootloader preserves `MCUSR` in register `r2` across the bootloader trampoline so the application sketch's `.init0` handler (`urboot_reset_flags`) can continue reading and reporting the exact reset cause (`Power-On`, `Brown-Out`, `External`, `Watchdog`).
+2. **Bootloader Entry**:
+   - urboot stays in programming mode after an external reset (`EXTRF`: reset button), after a watchdog reset with a valid boot request (`WDRF` + both keys), or when the application vector is erased (see 5). Otherwise it starts the application at once.
+   - A boot request is only honoured after a watchdog reset, so random RAM contents after a power-on or brown-out cannot trigger it.
+
+3. **Reset Report**:
+   - Staying in programming mode always ends with urboot's own 1-second watchdog reset (when no upload starts, or after one). That reset clears the original flags, so the application would only see `Watchdog`.
+   - Before waiting for the host, urboot therefore replaces the block with a reset report holding the flags that started it (10 bytes of code). The boot request is consumed at the same time.
+   - The application uses the report only when its own flags are `WDRF` alone (the bootloader's exit reset): saved `EXTRF` gives `External`, saved `WDRF` gives `Software`. The application writes the same report before a plain reboot request (`R`), which also yields `Software`.
+
+4. **Reset Flags in `r2`**:
+   - urboot copies `MCUSR` to register `r2` and clears it. The application's `.init0` handler stores `r2` in `urboot_reset_flags`; `determine_reset_cause()` combines it with the reset report (`Power-On`, `Brown-Out`, `External`, `Watchdog`, `Software`).
 
 5. **Fail-Safe Glitch & Power-Loss Protection (`VBL=1`)**:
    - Before jumping to the application via `rjmp_application` (`rjmp 0x8064` wrapping to vector 25 at `0x0064`), `urboot` inspects the flash word at vector 25 (`0x0064`).
@@ -40,7 +41,7 @@ The Arduino Nano serves as a coprocessor to the main ESP32. Because only UART RX
 6. **Hardware Features Enabled**:
    - **`AUTOBAUD=1`**: Hardware bit timing on the falling edge of `0x30` (`STK_GET_SYNC`), locking onto any host baud rate (19,200 baud, 115,200 baud, etc.).
    - **`EEPROM=1`**: Enables read (`0x01`) and write (`0x00`) access to Nano EEPROM via `urprotocol`.
-   - **Compiled Size**: 372 bytes (comfortably fits in the 384/512-byte section at `0x7E80 - 0x7FFF`).
+   - **Compiled Size**: 382 bytes (fits in the 384-byte section at `0x7E80 - 0x7FFF`, 2 bytes to spare).
 
 ---
 
@@ -105,6 +106,8 @@ avrdude -c stk500v1 -p m328p -P /dev/ttyACM0 -b 19200 \
 ```
 
 *(Replace `/dev/ttyACM0` with your Uno's serial port if different, e.g. `/dev/ttyUSB0`)*.
+
+> **Bootloader and application go together.** The handoff block layout must match on both sides: a bootloader with the block at `0x0100` needs SensorStack firmware 1.4.11 or later, and the reverse. Programming the bootloader erases the chip, so urboot then stays in programming mode (erased application vector): the ESP32 reports a SensorStack firmware issue, and the matching application is uploaded from the ESP32 web page.
 
 #### Fuse Meanings:
 - **`hfuse = 0xD7`**: `BOOTSZ = 11` (512-byte boot size `0x7E00 - 0x7FFF`), `BOOTRST = 1` (unprogrammed: the CPU starts at `0x0000`).
