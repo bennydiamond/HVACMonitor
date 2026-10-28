@@ -38,14 +38,19 @@ bool CST820::getTouch(uint16_t *x, uint16_t *y, uint8_t *gesture)
     }
 
     uint8_t fingerDetected = data[1]; // Register 0x02: Finger count
-    if (fingerDetected == 0) {
-        return false;
+    if (fingerDetected != 1) {
+        return false; // No touch, or a corrupted read (single-touch controller)
+    }
+
+    uint16_t touchX = ((data[2] & 0x0F) << 8) | data[3]; // Registers 0x03-0x04: X coord
+    uint16_t touchY = ((data[4] & 0x0F) << 8) | data[5]; // Registers 0x05-0x06: Y coord
+    if (touchX >= PANEL_WIDTH || touchY >= PANEL_HEIGHT) {
+        return false; // Outside the panel: a corrupted read
     }
 
     *gesture = data[0]; // Register 0x01: Gesture ID
-    *x = ((data[2] & 0x0F) << 8) | data[3]; // Registers 0x03-0x04: X coord
-    *y = ((data[4] & 0x0F) << 8) | data[5]; // Registers 0x05-0x06: Y coord
-
+    *x = touchX;
+    *y = touchY;
     return true;
 }
 
@@ -69,7 +74,8 @@ uint8_t CST820::i2c_read_continuous(uint8_t addr, uint8_t *data, uint32_t length
   Wire.beginTransmission(I2C_ADDR_CST820);
   Wire.write(addr);
   if (Wire.endTransmission(true)) return -1;
-  Wire.requestFrom(I2C_ADDR_CST820, length);
+  // A short read would leave Wire.read()'s -1 (0xFF) in the buffer
+  if (Wire.requestFrom(I2C_ADDR_CST820, length) != length) return -1;
   for (int i = 0; i < length; i++) {
     *data++ = Wire.read();
   }

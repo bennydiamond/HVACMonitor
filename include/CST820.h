@@ -24,6 +24,10 @@ public:
     CST820(int8_t sda_pin = -1, int8_t scl_pin = -1, int8_t rst_pin = -1, int8_t int_pin = -1);
 
     void begin(void);
+    // Coordinates are in the panel's native portrait orientation
+    static constexpr uint16_t PANEL_WIDTH = 240;
+    static constexpr uint16_t PANEL_HEIGHT = 320;
+
     bool getTouch(uint16_t *x, uint16_t *y, uint8_t *gesture);
 
 private:

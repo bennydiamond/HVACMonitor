@@ -195,7 +195,7 @@ private:
     using UIUpdateFunc = void(*)(IUIUpdater*, const UIMessage&);
     static const UIUpdateFunc updateTable[UI_MSG_COUNT];
 
-    static constexpr size_t UI_STRING_MAX_LEN = 20;
+    static constexpr size_t UI_STRING_MAX_LEN = 32; // Longest string sent: a Wi-Fi SSID
     static constexpr size_t UI_STRING_MSG_SIZE = sizeof(uint8_t) + UI_STRING_MAX_LEN + 1;
     QueueHandle_t uiStringQueue = nullptr;
     enum UIStringType : uint8_t {

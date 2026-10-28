@@ -507,7 +507,7 @@ void UI::touchpad_read_cb(lv_indev_drv_t *indev_driver, lv_indev_data_t *data) {
   bool touched = _touch->getTouch(&touchX, &touchY, &gesture);
   if (touched) {
     uint16_t rotatedX = touchY;
-    uint16_t rotatedY = 239 - touchX;
+    uint16_t rotatedY = (CST820::PANEL_WIDTH - 1) - touchX;
     last_x = rotatedX;
     last_y = rotatedY;
     data->point.x = last_x;

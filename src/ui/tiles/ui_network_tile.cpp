@@ -110,13 +110,13 @@ void UINetworkTile::update_network_ha_conn(bool ha_conn) {
 }
 
 void UINetworkTile::update_ssid(const char* ssid) {
-    if (ssid_label) ui_set_label_text(ssid_label, ssid);
+    if (ssid_label) ui_set_label_text_fmt(ssid_label, "SSID: %s", ssid);
 }
 void UINetworkTile::update_ip(const char* ip) {
-    if (ip_label) ui_set_label_text(ip_label, ip);
+    if (ip_label) ui_set_label_text_fmt(ip_label, "IP: %s", ip);
 }
 void UINetworkTile::update_mac(const char* mac) {
-    if (mac_label) ui_set_label_text(mac_label, mac);
+    if (mac_label) ui_set_label_text_fmt(mac_label, "MAC: %s", mac);
 }
 void UINetworkTile::set_visible(bool visible) {
     if (tile_obj) {

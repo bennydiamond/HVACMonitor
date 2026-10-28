@@ -111,7 +111,7 @@ void UITileManager::update_tile_visibility(lv_obj_t* current_tile) {
     struct TilePos { lv_obj_t* tile; int col; int row; };
     TilePos tiles[] = {
         {main_tile_obj, 0, 0}, {secondary_tile_obj, 0, 1}, {gas_tile_obj, 0, 2}, {powerdraw_tile_obj, 0, 3},
-        {runtime_tile_obj, 1, 0}, {network_tile_obj, 1, 1},
+        {runtime_tile_obj, 1, 0}, {network_tile_obj, 1, 1}, {reboot_tile_obj, 1, 2},
         {sensorstack_tile_obj, 2, 0}, {scd30_tile_obj, 2, 1}, {sps30_tile_obj, 2, 2}, {sgp41_tile_obj, 2, 3}
     };
     
