@@ -389,9 +389,14 @@ bool SensorStackStatusManager::processScd30ForceCalPayload(char* payload) {
     if (!token) return false;
     uint16_t actual_value = strtol(token, nullptr, 16);
 
-    logger.debugf("SCD30 Force Calibration Set: SetResult=%d, ReadResult=%d, ActualValue=%u ppm",
-                  set_result, read_result, actual_value);
-    setScd30ForceCalValue(actual_value);
+    if (set_result == 0 && read_result == 0 && isValidForceCal(actual_value)) {
+        logger.debugf("SCD30 Force Calibration Set: SetResult=%d, ReadResult=%d, ActualValue=%u ppm",
+                      set_result, read_result, actual_value);
+        setScd30ForceCalValue(actual_value);
+    } else {
+        logger.warningf("SCD30 Force Calibration rejected or failed: SetResult=%d, ReadResult=%d, Value=%u ppm",
+                        set_result, read_result, actual_value);
+    }
     return true;
 }
 

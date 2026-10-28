@@ -48,6 +48,14 @@ constexpr float SCD30_TEMP_MAX_VALID_C = 70.0f;
 constexpr float SCD30_HUMI_MIN_VALID_PCT = 0.0f;
 constexpr float SCD30_HUMI_MAX_VALID_PCT = 100.0f;
 
+// Sensirion SCD30 Forced Recalibration (FRC) allowed target range per datasheet: 400 - 2000 ppm
+constexpr uint16_t SCD30_FORCECAL_MIN_PPM = 400;
+constexpr uint16_t SCD30_FORCECAL_MAX_PPM = 2000;
+
+inline bool isValidForceCal(uint16_t ppm) {
+  return ppm >= SCD30_FORCECAL_MIN_PPM && ppm <= SCD30_FORCECAL_MAX_PPM;
+}
+
 // ==============================================================================
 // SensorStack Sensor Faults
 // ==============================================================================

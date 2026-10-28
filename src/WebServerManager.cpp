@@ -17,6 +17,7 @@
 #include "MainTaskEvents.h"
 #include "NanoCommands.h"
 #include "NanoFlasher.h"
+#include "SensorDefines.h"
 #include "UITask.h"
 #include "webserver/WebServerAssets.h"
 #include "webserver/WebServerConfigClimate.h"
@@ -1307,7 +1308,7 @@ void WebServerManager::handleConfigUpdate() {
         logger.infof("SCD30 AutoCalibration set to %s via Web Server",
                      enabled ? "ON" : "OFF");
       } else if (type == "forcecal" &&
-                 parseStrictInt(valueStr, intVal, 400, 2000)) {
+                 parseStrictInt(valueStr, intVal, SCD30_FORCECAL_MIN_PPM, SCD30_FORCECAL_MAX_PPM)) {
         uint16_t ppm = static_cast<uint16_t>(intVal);
         char cmd_str[8];
         snprintf(cmd_str, sizeof(cmd_str), "%c%u", CMD_SET_SCD30_FORCECAL, ppm);

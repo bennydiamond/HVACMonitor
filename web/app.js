@@ -61,6 +61,17 @@ function validateThresholdRelation(e, t, val) {
 function updateThreshold(e, t) {
   const n = document.getElementById(e + "_" + t + "_input"), s = document.getElementById(e + "_" + t + "_button"), o = document.getElementById(e + "_" + t + "_status");
   const valNum = parseFloat(n.value);
+  if (n && n.hasAttribute("min") && n.hasAttribute("max")) {
+    const minVal = parseFloat(n.min);
+    const maxVal = parseFloat(n.max);
+    if (!isNaN(valNum) && (valNum < minVal || valNum > maxVal)) {
+      o.textContent = "Error: Value must be between " + minVal + " and " + maxVal;
+      o.className = "status error";
+      o.style.display = "block";
+      setTimeout((() => { o.style.display = "none"; }), 4e3);
+      return;
+    }
+  }
   if (!isNaN(valNum)) {
     const relErr = validateThresholdRelation(e, t, valNum);
     if (relErr) {

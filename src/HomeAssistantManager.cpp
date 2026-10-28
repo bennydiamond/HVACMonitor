@@ -511,8 +511,8 @@ void HomeAssistantManager::init(const char* firmware_version) {
     _scd30ForceCalNumber.setIcon("mdi:tune-variant");
     _scd30ForceCalNumber.setEntityCategory(entity_category_config);
     _scd30ForceCalNumber.setUnitOfMeasurement("ppm");
-    _scd30ForceCalNumber.setMin(400);
-    _scd30ForceCalNumber.setMax(2000);
+    _scd30ForceCalNumber.setMin(SCD30_FORCECAL_MIN_PPM);
+    _scd30ForceCalNumber.setMax(SCD30_FORCECAL_MAX_PPM);
     _scd30ForceCalNumber.setStep(1);
     _scd30ForceCalNumber.onCommand(onScd30ForceCalCommand);
     
@@ -1141,6 +1141,7 @@ void HomeAssistantManager::publishNanoResetCause(const char* cause) {
 
 void HomeAssistantManager::onScd30AutoCalCommand(bool state, HASwitch* sender) {
     logger.infof("SCD30 AutoCalibration %s command from Home Assistant.", state ? "ON" : "OFF");
+    sender->setState(state);
     send_command_to_nano_with_param(CMD_SET_SCD30_AUTOCAL, state ? '1' : '0');
 }
 
@@ -1150,8 +1151,10 @@ void HomeAssistantManager::updateScd30AutoCalState(bool state) {
 
 void HomeAssistantManager::onScd30ForceCalCommand(HANumeric number, HANumber* sender) {
     int32_t ppm_raw = number.toInt32();
-    if (ppm_raw < 400 || ppm_raw > 2000) {
-        logger.warningf("Rejected out-of-range SCD30 Force Cal from Home Assistant: %d ppm (allowed 400-2000)", ppm_raw);
+    if (ppm_raw < SCD30_FORCECAL_MIN_PPM || ppm_raw > SCD30_FORCECAL_MAX_PPM) {
+        logger.warningf("Rejected out-of-range SCD30 Force Cal from Home Assistant: %d ppm (allowed %u-%u)",
+                        ppm_raw, SCD30_FORCECAL_MIN_PPM, SCD30_FORCECAL_MAX_PPM);
+        sender->setState(sender->getCurrentState());
         return;
     }
     uint16_t ppm_value = static_cast<uint16_t>(ppm_raw);
@@ -1175,13 +1178,17 @@ void HomeAssistantManager::updateBacklightState(bool state, uint8_t brightness) 
 
 void HomeAssistantManager::onInactivityTimerDelayCommand(HANumeric number, HANumber* sender) {
     if (_instance) {
-        int delay = number.toInt32();
+        int32_t delay = number.toInt32();
         if (delay < 10 || delay > 120) {
             logger.warningf("Rejected out-of-range inactivity timer delay from Home Assistant: %d (allowed 10-120)", delay);
+            ConfigManagerAccessor config;
+            sender->setState(static_cast<int32_t>(config->getInactivityTimerDelay()));
             return;
         }
         ConfigManagerAccessor config;
         config->setInactivityTimerDelay(delay);
+        sender->setState(delay);
+        _instance->_lastInactivityTimerDelayPublishTime = millis();
         logger.infof("Inactivity timer delay updated to %d seconds via Home Assistant", delay);
     }
 }

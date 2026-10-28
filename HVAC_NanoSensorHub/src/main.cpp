@@ -24,7 +24,7 @@
 // ======================================================================
 
 // --- Firmware & Protocol ---
-const char NANO_FIRMWARE_VERSION[] PROGMEM = "1.4.8";
+const char NANO_FIRMWARE_VERSION[] PROGMEM = "1.4.9";
 #define CMD_GET_SENSORS 'S' // Request sensor data
 #define RSP_SENSORS 's'     // Response with sensor data
 #define CMD_GET_VERSION 'V'
@@ -985,9 +985,15 @@ void process_command(const char *buffer) {
     if (data_len > 1) {
       uint_val = atoi(&buffer[1]);
     }
-    Wire.setClock(I2C_NORMAL_SPEED);
-    int_val = scd30_sensor.forceRecalibration(uint_val);
-    uint_val2 = scd30_sensor.getForceRecalibrationStatus(uint_val);
+    if (isValidForceCal(uint_val)) {
+      Wire.setClock(I2C_NORMAL_SPEED);
+      int_val = scd30_sensor.forceRecalibration(uint_val);
+      uint_val2 = scd30_sensor.getForceRecalibrationStatus(uint_val);
+    } else {
+      int_val = -1;
+      uint_val2 = 0;
+      uint_val = 0;
+    }
     snprintf_P(tx_command_buffer, sizeof(tx_command_buffer), FMT_SCD30_FORCECAL,
                RSP_SCD30_FORCECAL, int_val, uint_val2, uint_val);
     checksum = calculate_checksum(tx_command_buffer);
