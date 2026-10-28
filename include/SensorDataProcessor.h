@@ -61,7 +61,6 @@ public:
   FanStatus getFanStatus() const { return _live_fan_status; }
   bool isPressureHigh() const { return _live_is_pressure_high; }
   bool isWaterDetected() const { return _live_water_detected; }
-  bool isSgp41Conditioning() const { return _sgp41_was_conditioning; }
 
 private:
   UITask *_ui;

@@ -112,6 +112,7 @@ public:
         count = 0;
         head = 0;
         tail = 0;
+        lastValue = 0; // getAverage() returns it when empty: never a stale reading
         running_sum = 0.0;
     }
 

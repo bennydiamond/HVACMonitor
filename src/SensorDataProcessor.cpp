@@ -154,6 +154,12 @@ void SensorDataProcessor::processPacket(const NanoSensorPacket& pkt) {
     const bool sgp41_conditioning = pkt.isSgp41Conditioning();
     if (sgp41_conditioning && !_sgp41_was_conditioning) {
         _sgp41_was_conditioning = true;
+        // The sensor restarted cold: its earlier readings and the algorithms' learned
+        // baselines no longer apply
+        _voc_avg.clear();
+        _nox_avg.clear();
+        _voc_algorithm.reset();
+        _nox_algorithm.reset();
         logger.info("SGP41 VOC/NOx sensor entered conditioning phase");
     } else if (!sgp41_conditioning && _sgp41_was_conditioning) {
         _sgp41_was_conditioning = false;
@@ -180,6 +186,10 @@ void SensorDataProcessor::processPacket(const NanoSensorPacket& pkt) {
     }
     if (scd30_has_data) {
         _co2_avg.add(pkt.getCo2Ppm());
+    } else {
+        // No current reading (warm-up, or the SensorStack expired a stale one): don't
+        // keep showing, or later average in, the old values
+        _co2_avg.clear();
     }
 
     // 6. Update Rolling Averages
@@ -237,7 +247,7 @@ void SensorDataProcessor::processPacket(const NanoSensorPacket& pkt) {
         // Readings of faulty sensors are left blank (cleared when the fault was reported)
         if (scd30_ok) {
             _ui->update_temp_humi(temp_c, humi_pct);
-            _ui->update_co2(_co2_avg.getAverage());
+            _ui->update_co2(scd30_has_data ? _co2_avg.getAverage() : NAN);
         }
         _ui->update_fan_current(pkt.getFanAmps(), fan_status);
         _ui->update_compressor_amps(_compressor_amps_avg.getAverage());
