@@ -107,7 +107,7 @@ avrdude -c stk500v1 -p m328p -P /dev/ttyACM0 -b 19200 \
 
 *(Replace `/dev/ttyACM0` with your Uno's serial port if different, e.g. `/dev/ttyUSB0`)*.
 
-> **Bootloader and application go together.** The handoff block layout must match on both sides: a bootloader with the block at `0x0100` needs SensorStack firmware 1.4.11 or later, and the reverse. Programming the bootloader erases the chip, so urboot then stays in programming mode (erased application vector): the ESP32 reports a SensorStack firmware issue, and the matching application is uploaded from the ESP32 web page.
+> **Bootloader and application go together.** The handoff block layout must match on both sides: a bootloader with the block at `0x0100` needs SensorStack firmware 1.5.0 or later, and the reverse. Programming the bootloader erases the chip, so urboot then stays in programming mode (erased application vector): the ESP32 reports a SensorStack firmware issue, and the matching application is uploaded from the ESP32 web page.
 
 #### Fuse Meanings:
 - **`hfuse = 0xD7`**: `BOOTSZ = 11` (512-byte boot size `0x7E00 - 0x7FFF`), `BOOTRST = 1` (unprogrammed: the CPU starts at `0x0000`).

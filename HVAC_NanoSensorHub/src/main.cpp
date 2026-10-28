@@ -24,7 +24,7 @@
 // ======================================================================
 
 // --- Firmware & Protocol ---
-const char NANO_FIRMWARE_VERSION[] PROGMEM = "1.4.11";
+const char NANO_FIRMWARE_VERSION[] PROGMEM = "1.5.0";
 #define CMD_GET_SENSORS 'S' // Request sensor data
 #define RSP_SENSORS 's'     // Response with sensor data
 #define CMD_GET_VERSION 'V'
@@ -48,15 +48,15 @@ const char NANO_FIRMWARE_VERSION[] PROGMEM = "1.4.11";
 #define BOOT_KEY_INVERSE ((uint16_t)0x4FF8) // ~0xB007
 #define RESET_REPORT ((volatile uint8_t *)(HANDOFF_ADDR))
 #define RESET_REPORT_TAG ((uint8_t)0xC3)
-#define CMD_GET_SPS30_INFO 'P'              // Request SPS30 info
-#define RSP_SPS30_INFO 'p'                  // Response with SPS30 info
-#define CMD_SPS30_CLEAN 'C'                 // Request manual SPS30 fan cleaning
-#define RSP_SPS30_CLEAN 'c'                 // ACK for fan cleaning command
-#define CMD_SGP41_TEST 'G'                  // Request SGP41 test
-#define RSP_SGP41_TEST 'g'                  // Response with SGP41 test result
-#define CMD_GET_SCD30_INFO 'D'              // Request SCD30 info
-#define RSP_SCD30_INFO 'd'                  // Response with SCD30 info
-#define CMD_SET_SCD30_AUTOCAL 'T'           // Set SCD30 AutoCalibration
+#define CMD_GET_SPS30_INFO 'P'     // Request SPS30 info
+#define RSP_SPS30_INFO 'p'         // Response with SPS30 info
+#define CMD_SPS30_CLEAN 'C'        // Request manual SPS30 fan cleaning
+#define RSP_SPS30_CLEAN 'c'        // ACK for fan cleaning command
+#define CMD_SGP41_TEST 'G'         // Request SGP41 test
+#define RSP_SGP41_TEST 'g'         // Response with SGP41 test result
+#define CMD_GET_SCD30_INFO 'D'     // Request SCD30 info
+#define RSP_SCD30_INFO 'd'         // Response with SCD30 info
+#define CMD_SET_SCD30_AUTOCAL 'T'  // Set SCD30 AutoCalibration
 #define RSP_SCD30_AUTOCAL 't'      // Response with SCD30 AutoCalibration result
 #define CMD_SET_SCD30_FORCECAL 'F' // Set SCD30 Forced Recalibration
 #define RSP_SCD30_FORCECAL                                                     \
@@ -433,7 +433,8 @@ void retry_faulty_sensors() {
     sensor_fault_mask &= ~SensorDefines::SENSOR_FAULT_SPS30;
   if ((sensor_fault_mask & SensorDefines::SENSOR_FAULT_SCD30) && init_scd30())
     sensor_fault_mask &= ~SensorDefines::SENSOR_FAULT_SCD30;
-  if ((sensor_fault_mask & SensorDefines::SENSOR_FAULT_SGP41) && init_sgp41(true))
+  if ((sensor_fault_mask & SensorDefines::SENSOR_FAULT_SGP41) &&
+      init_sgp41(true))
     sensor_fault_mask &= ~SensorDefines::SENSOR_FAULT_SGP41;
 }
 
@@ -612,7 +613,8 @@ void loop() {
       Wire.setClock(I2C_FAST_SPEED);
       uint16_t dummy_voc = 0;
       uint16_t err = sgp41_sensor.executeConditioning(
-          SensorDefines::SGP41_DEFAULT_RH_TICKS, SensorDefines::SGP41_DEFAULT_TEMP_TICKS, dummy_voc);
+          SensorDefines::SGP41_DEFAULT_RH_TICKS,
+          SensorDefines::SGP41_DEFAULT_TEMP_TICKS, dummy_voc);
       if (err != 0) {
         send_error_response(E_SGP41_CONDITIONING_ERROR_1);
       }
@@ -661,7 +663,8 @@ unsigned long read_all_sensors() {
         sps30_ok = false;
       }
     }
-    track_sensor_read(SensorDefines::SENSOR_FAULT_SPS30, sps30_error_count, sps30_ok);
+    track_sensor_read(SensorDefines::SENSOR_FAULT_SPS30, sps30_error_count,
+                      sps30_ok);
   }
 
   if (!(sensor_fault_mask & SensorDefines::SENSOR_FAULT_SCD30)) {
@@ -681,7 +684,8 @@ unsigned long read_all_sensors() {
         last_scd30_update = millis();
       }
     }
-    track_sensor_read(SensorDefines::SENSOR_FAULT_SCD30, scd30_error_count, scd30_ok);
+    track_sensor_read(SensorDefines::SENSOR_FAULT_SCD30, scd30_error_count,
+                      scd30_ok);
   }
 
   if (millis() - last_scd30_update > SCD30_INVALIDATE_TIMEOUT_MS) {
@@ -692,16 +696,19 @@ unsigned long read_all_sensors() {
 
   bool scd30_has_data =
       (last_scd30_update > 0 && !isnan(current_temp_c) && !isnan(current_humi));
-  bool scd30_warmup_expired = (millis() >= SensorDefines::SCD30_WARMUP_TIMEOUT_MS);
+  bool scd30_warmup_expired =
+      (millis() >= SensorDefines::SCD30_WARMUP_TIMEOUT_MS);
 
   uint16_t rh = SensorDefines::SGP41_DEFAULT_RH_TICKS;
   uint16_t temp = SensorDefines::SGP41_DEFAULT_TEMP_TICKS;
 
-  if (scd30_has_data && current_humi >= SensorDefines::SCD30_HUMI_MIN_VALID_PCT &&
+  if (scd30_has_data &&
+      current_humi >= SensorDefines::SCD30_HUMI_MIN_VALID_PCT &&
       current_humi <= SensorDefines::SCD30_HUMI_MAX_VALID_PCT) {
     rh = static_cast<uint16_t>(current_humi * 65535.0f / 100.0f);
   }
-  if (scd30_has_data && current_temp_c >= SensorDefines::SCD30_TEMP_MIN_VALID_C &&
+  if (scd30_has_data &&
+      current_temp_c >= SensorDefines::SCD30_TEMP_MIN_VALID_C &&
       current_temp_c <= SensorDefines::SCD30_TEMP_MAX_VALID_C) {
     temp = static_cast<uint16_t>((current_temp_c + 45.0f) * 65535.0f / 175.0f);
   }
@@ -719,12 +726,13 @@ unsigned long read_all_sensors() {
   } else {
     Wire.setClock(I2C_FAST_SPEED);
     temp_uval = sgp41_sensor.measureRawSignals(rh, temp, current_voc_raw,
-                                                current_nox_raw);
+                                               current_nox_raw);
     if (temp_uval != 0) {
       send_error_response(E_SGP41_MEASUREMENT_ERROR_1);
     }
     Wire.setClock(I2C_NORMAL_SPEED);
-    track_sensor_read(SensorDefines::SENSOR_FAULT_SGP41, sgp41_error_count, temp_uval == 0);
+    track_sensor_read(SensorDefines::SENSOR_FAULT_SGP41, sgp41_error_count,
+                      temp_uval == 0);
 
     if (temp_uval != 0 || (!scd30_has_data && !scd30_warmup_expired)) {
       current_voc_raw = 0;
