@@ -2,6 +2,9 @@
 #include "NanoCommands.h"
 #include "Logger.h"
 #include "SerialMutex.h"
+#ifdef ENABLE_TASK_WATCHDOG
+#include <esp_task_wdt.h>
+#endif
 
 //#define I2C_BRIDGE_DEBUG // Uncomment for debug output
 
@@ -31,6 +34,14 @@ uint8_t I2CBridge::beginRequest() {
 }
 
 bool I2CBridge::waitForResponse(uint8_t seq, Result& result, uint32_t timeout_ms) {
+#ifdef ENABLE_TASK_WATCHDOG
+    // An operation retries up to 3 waits and a sensor pass chains several operations:
+    // feed the caller's watchdog before each wait, so slow replies can't add up past
+    // its timeout. Silently skipped for a task the watchdog doesn't watch.
+    if (esp_task_wdt_status(NULL) == ESP_OK) {
+        esp_task_wdt_reset();
+    }
+#endif
     TickType_t start = xTaskGetTickCount();
     TickType_t timeout = pdMS_TO_TICKS(timeout_ms);
     TickType_t elapsed;
