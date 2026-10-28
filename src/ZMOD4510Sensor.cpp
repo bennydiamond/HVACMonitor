@@ -7,7 +7,9 @@ ZMOD4510Sensor::ZMOD4510Sensor()
       humidity_pct(50),       // Default to 50% humidity
       state(STATE_IDLE),
       new_data_available(false),
-      measurement_start_time(0)
+      measurement_start_time(0),
+      start_failures(0),
+      last_start_attempt(0)
 {
     memset(&latest_results, 0, sizeof(Results));
     latest_results.valid = false;
@@ -63,7 +65,8 @@ bool ZMOD4510Sensor::startMeasurement() {
     
     int ret = zmod4xxx_start_measurement(&dev);
     if (ret) {
-        logger.errorf("ZMOD4510: Starting measurement failed with error %d", ret);
+        // Logged once per failure streak by process()
+        logger.debugf("ZMOD4510: Starting measurement failed with error %d", ret);
         return false;
     }
     
@@ -74,9 +77,21 @@ bool ZMOD4510Sensor::startMeasurement() {
 void ZMOD4510Sensor::process() {
     switch (state) {
         case STATE_IDLE:
+            if (start_failures > 0 && millis() - last_start_attempt < ZMOD4510_NO2_O3_SAMPLE_TIME) {
+                break;
+            }
+            last_start_attempt = millis();
             if (startMeasurement()) {
+                if (start_failures > 0) {
+                    logger.infof("ZMOD4510: Measurement started again after %lu failed attempts",
+                                 (unsigned long)start_failures);
+                    start_failures = 0;
+                }
                 state = STATE_MEASURING;
                 measurement_start_time = millis();
+            } else if (start_failures++ == 0) {
+                logger.errorf("ZMOD4510: Starting measurement failed; retrying every %u ms",
+                              (unsigned)ZMOD4510_NO2_O3_SAMPLE_TIME);
             }
             break;
 

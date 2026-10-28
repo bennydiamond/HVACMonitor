@@ -74,6 +74,9 @@ private:
     Results latest_results;
     bool new_data_available;
     unsigned long measurement_start_time;
+    // A failed start is retried once per sample period, not on every process() call
+    uint32_t start_failures;
+    unsigned long last_start_attempt;
     
     // Helper methods
     int detect_and_configure();
