@@ -2,7 +2,8 @@
 #include "Logger.h"
 
 ZMOD4510Sensor::ZMOD4510Sensor() 
-    : temperature_degc(-300), // Default to use on-chip temperature sensor
+    : env_data_mux(portMUX_INITIALIZER_UNLOCKED),
+      temperature_degc(-300), // Default to use on-chip temperature sensor
       humidity_pct(50),       // Default to 50% humidity
       state(STATE_IDLE),
       new_data_available(false),
@@ -54,27 +55,29 @@ bool ZMOD4510Sensor::init() {
     return true;
 }
 
-void ZMOD4510Sensor::startMeasurement() {
+bool ZMOD4510Sensor::startMeasurement() {
     if (state != STATE_IDLE) {
         logger.warning("ZMOD4510: Measurement already in progress");
-        return;
+        return false;
     }
     
     int ret = zmod4xxx_start_measurement(&dev);
     if (ret) {
         logger.errorf("ZMOD4510: Starting measurement failed with error %d", ret);
-        return;
+        return false;
     }
     
     logger.debug("ZMOD4510: Measurement started");
+    return true;
 }
 
 void ZMOD4510Sensor::process() {
     switch (state) {
         case STATE_IDLE:
-            startMeasurement();
-            state = STATE_MEASURING;
-            measurement_start_time = millis();
+            if (startMeasurement()) {
+                state = STATE_MEASURING;
+                measurement_start_time = millis();
+            }
             break;
 
         case STATE_MEASURING:
@@ -89,12 +92,17 @@ void ZMOD4510Sensor::process() {
             break;
             
         case STATE_READING_RESULTS:
-            read_and_verify();
-            delay(1);  // Allow for context switch
-            processResults();
-            
-            new_data_available = true;
-            state = STATE_DATA_READY;
+            if (read_and_verify()) {
+                delay(1);  // Allow for context switch
+                processResults();
+                new_data_available = true;
+                state = STATE_DATA_READY;
+            } else {
+                memset(adc_result, 0, sizeof(adc_result));
+                latest_results.valid = false;
+                new_data_available = false;
+                state = STATE_IDLE;
+            }
             break;
             
         case STATE_DATA_READY:
@@ -120,8 +128,10 @@ ZMOD4510Sensor::Results ZMOD4510Sensor::getResults() {
 }
 
 void ZMOD4510Sensor::setEnvironmentalData(float temp_degc, float hum_pct) {
+    taskENTER_CRITICAL(&env_data_mux);
     temperature_degc = temp_degc;
     humidity_pct = hum_pct;
+    taskEXIT_CRITICAL(&env_data_mux);
 }
 
 int ZMOD4510Sensor::detect_and_configure() {
@@ -184,13 +194,13 @@ int ZMOD4510Sensor::detect_and_configure() {
     return 0;
 }
 
-void ZMOD4510Sensor::read_and_verify() {
+bool ZMOD4510Sensor::read_and_verify() {
     int ret;
     
     ret = zmod4xxx_read_status(&dev, &zmod4xxx_status);
     if (ret) {
         logger.errorf("ZMOD4510: Reading sensor status failed with error %d", ret);
-        return;
+        return false;
     }
     
     if (zmod4xxx_status & STATUS_SEQUENCER_RUNNING_MASK) {
@@ -206,28 +216,36 @@ void ZMOD4510Sensor::read_and_verify() {
                 logger.errorf("ZMOD4510: Unknown error %d during measurement", ret);
                 break;
         }
-        return;
+        return false;
     }
     
     ret = zmod4xxx_read_adc_result(&dev, adc_result);
     if (ret) {
         logger.errorf("ZMOD4510: Reading ADC results failed with error %d", ret);
-        return;
+        return false;
     }
     
     ret = zmod4xxx_check_error_event(&dev);
     if (ret) {
         logger.errorf("ZMOD4510: Error event detected after reading ADC: %d", ret);
-        return;
+        return false;
     }
     
     logger.debug("ZMOD4510: ADC results read successfully");
+    return true;
 }
 
 void ZMOD4510Sensor::processResults() {
+    float temp;
+    float humi;
+    taskENTER_CRITICAL(&env_data_mux);
+    temp = temperature_degc;
+    humi = humidity_pct;
+    taskEXIT_CRITICAL(&env_data_mux);
+
     algo_input.adc_result = adc_result;
-    algo_input.humidity_pct = humidity_pct;
-    algo_input.temperature_degc = temperature_degc;
+    algo_input.humidity_pct = humi;
+    algo_input.temperature_degc = temp;
     
     int ret = calc_no2_o3(&algo_handle, &dev, &algo_input, &algo_results);
     

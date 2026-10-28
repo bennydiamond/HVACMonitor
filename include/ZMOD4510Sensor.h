@@ -27,7 +27,7 @@ public:
     bool init();
 
     // Start a measurement cycle (non-blocking)
-    void startMeasurement();
+    bool startMeasurement();
 
     // Process the sensor (call in loop)
     void process();
@@ -65,6 +65,7 @@ private:
     no2_o3_inputs_t algo_input;
     
     // Environmental data
+    portMUX_TYPE env_data_mux;
     float temperature_degc;
     float humidity_pct;
     
@@ -76,6 +77,6 @@ private:
     
     // Helper methods
     int detect_and_configure();
-    void read_and_verify();
+    bool read_and_verify();
     void processResults();
 };
