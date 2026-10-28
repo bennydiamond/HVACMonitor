@@ -144,8 +144,11 @@ void SensorDataProcessor::processPacket(const NanoSensorPacket& pkt) {
     const bool sps30_ok = !(_sensor_fault_mask & SENSOR_FAULT_SPS30);
     const bool scd30_ok = !(_sensor_fault_mask & SENSOR_FAULT_SCD30);
     const bool sgp41_ok = !(_sensor_fault_mask & SENSOR_FAULT_SGP41);
-    const float temp_c = scd30_ok ? pkt.getTemperatureC() : NAN;
-    const float humi_pct = scd30_ok ? pkt.getHumidityPct() : NAN;
+    const bool scd30_has_data = scd30_ok && isValidCO2(pkt.getCo2Ppm()) &&
+                                isValidTemperature(pkt.getTemperatureC()) &&
+                                isValidHumidity(pkt.getHumidityPct());
+    const float temp_c = scd30_has_data ? pkt.getTemperatureC() : NAN;
+    const float humi_pct = scd30_has_data ? pkt.getHumidityPct() : NAN;
 
     // 5. Gas Index Algorithms & Conditioning Tracking
     const bool sgp41_conditioning = pkt.isSgp41Conditioning();
@@ -175,7 +178,7 @@ void SensorDataProcessor::processPacket(const NanoSensorPacket& pkt) {
             _nox_avg.add(nox_index);
         }
     }
-    if (scd30_ok && isValidCO2(pkt.getCo2Ppm())) {
+    if (scd30_has_data) {
         _co2_avg.add(pkt.getCo2Ppm());
     }
 
@@ -257,7 +260,7 @@ void SensorDataProcessor::processPacket(const NanoSensorPacket& pkt) {
         // Invalid values (NaN, or a gas index of 0) are not published
         _ha->publishSensorData(
             _diff_pressure_avg.getAverage(), c, temp_c, humi_pct,
-            scd30_ok ? _co2_avg.getAverage() : NAN,
+            scd30_has_data ? _co2_avg.getAverage() : NAN,
             sgp41_ok ? _voc_avg.getAverage() : 0, sgp41_ok ? _nox_avg.getAverage() : 0, pkt.getFanAmps(),
             sps30_ok ? _pm1_avg.getAverage() : NAN, sps30_ok ? _pm25_avg.getAverage() : NAN,
             sps30_ok ? _pm4_avg.getAverage() : NAN, sps30_ok ? _pm10_avg.getAverage() : NAN,
@@ -266,7 +269,7 @@ void SensorDataProcessor::processPacket(const NanoSensorPacket& pkt) {
     }
 
     // 10. Pass ambient conditions to ESP32 local sensor task for compensation
-    if (_sensorTask && scd30_ok) {
+    if (_sensorTask && scd30_has_data) {
         _sensorTask->setEnvironmentalData(temp_c, humi_pct);
     }
 

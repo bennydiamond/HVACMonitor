@@ -24,7 +24,7 @@
 // ======================================================================
 
 // --- Firmware & Protocol ---
-const char NANO_FIRMWARE_VERSION[] PROGMEM = "1.4.7";
+const char NANO_FIRMWARE_VERSION[] PROGMEM = "1.4.8";
 #define CMD_GET_SENSORS 'S' // Request sensor data
 #define RSP_SENSORS 's'     // Response with sensor data
 #define CMD_GET_VERSION 'V'
@@ -170,9 +170,9 @@ uint16_t pressure_adc_raw = 0;
 float fan_amps = 0.0;
 float compressor_amps = 0.0;
 float geothermal_pump_amps = 0.0;
-float current_co2 = 0.0;
-float current_temp_c = 0.0;
-float current_humi = 0.0;
+float current_co2 = NAN;
+float current_temp_c = NAN;
+float current_humi = NAN;
 uint16_t co_adc_raw = 0;
 uint16_t current_voc_raw = 0;
 uint16_t current_nox_raw = 0;

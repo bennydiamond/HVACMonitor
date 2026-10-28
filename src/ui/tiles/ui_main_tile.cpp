@@ -247,6 +247,12 @@ void UIMainTile::update_geiger_usvh(float usv) {
     ui_set_text_color(usv_icon, color);
 }
 void UIMainTile::update_temp(float temp) {
+    if (isnan(temp)) {
+        ui_set_label_text(temp_label, "--.- °C");
+        ui_set_text_color(temp_label, COLOR_MID);
+        ui_set_text_color(temp_icon, COLOR_MID);
+        return;
+    }
     ui_set_label_text_fmt(temp_label, "%.1f °C", temp);
     
     lv_color_t color;
@@ -263,6 +269,12 @@ void UIMainTile::update_temp(float temp) {
     ui_set_text_color(temp_icon, color);
 }
 void UIMainTile::update_humi(float humi) {
+    if (isnan(humi)) {
+        ui_set_label_text(humi_label, "-- %");
+        ui_set_text_color(humi_label, COLOR_MID);
+        ui_set_text_color(humi_icon, COLOR_MID);
+        return;
+    }
     ui_set_label_text_fmt(humi_label, "%.0f %%", humi);
     
     lv_color_t color;

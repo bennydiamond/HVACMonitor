@@ -85,3 +85,12 @@ inline bool isValidGasIndex(int32_t index) {
 inline bool isValidCO2(float co2) {
     return !isnan(co2) && !isinf(co2) && co2 >= SCD30_CO2_MIN_VALID_PPM && co2 <= SCD30_CO2_MAX_VALID_PPM;
 }
+
+inline bool isValidTemperature(float temp) {
+    return !isnan(temp) && !isinf(temp) && temp >= SCD30_TEMP_MIN_VALID_C && temp <= SCD30_TEMP_MAX_VALID_C;
+}
+
+inline bool isValidHumidity(float humi) {
+    return !isnan(humi) && !isinf(humi) && humi >= SCD30_HUMI_MIN_VALID_PCT && humi <= SCD30_HUMI_MAX_VALID_PCT;
+}
+
