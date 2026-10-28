@@ -24,7 +24,7 @@
 // ======================================================================
 
 // --- Firmware & Protocol ---
-const char NANO_FIRMWARE_VERSION[] PROGMEM = "1.4.9";
+const char NANO_FIRMWARE_VERSION[] PROGMEM = "1.4.10";
 #define CMD_GET_SENSORS 'S' // Request sensor data
 #define RSP_SENSORS 's'     // Response with sensor data
 #define CMD_GET_VERSION 'V'
@@ -465,8 +465,11 @@ void setup() {
     sensor_fault_mask |= SensorDefines::SENSOR_FAULT_SPS30;
   if (!init_scd30())
     sensor_fault_mask |= SensorDefines::SENSOR_FAULT_SCD30;
-  // SGP41 conditioning only runs on true cold boot (Power-On Reset)
-  if (!init_sgp41(last_reset_cause == SensorDefines::RESET_CAUSE_POWER_ON))
+  // SGP41 conditioning runs whenever the sensor may have lost power: on a
+  // power-on or brown-out reset. Tested on the raw flags, since several can be
+  // set together (e.g. PORF and BORF on a slow power ramp) and
+  // last_reset_cause only reports one.
+  if (!init_sgp41(urboot_reset_flags & ((1 << PORF) | (1 << BORF))))
     sensor_fault_mask |= SensorDefines::SENSOR_FAULT_SGP41;
 
   pinMode(LIQUID_LEVEL_SENSOR_PIN, INPUT_PULLUP);
@@ -574,11 +577,20 @@ void loop() {
       uint16_t dummy_voc = 0;
       uint16_t err = sgp41_sensor.executeConditioning(
           SensorDefines::SGP41_DEFAULT_RH_TICKS, SensorDefines::SGP41_DEFAULT_TEMP_TICKS, dummy_voc);
-      Wire.setClock(I2C_NORMAL_SPEED);
       if (err != 0) {
         send_error_response(E_SGP41_CONDITIONING_ERROR_1);
       }
       sgp41_conditioning_remaining--;
+      if (sgp41_conditioning_remaining == 0) {
+        // The heater keeps the conditioning profile until the next command:
+        // switch it to the measurement profile now, not on the next ESP32
+        // query (which may never come), so the 10 s limit holds
+        uint16_t dummy_nox = 0;
+        sgp41_sensor.measureRawSignals(SensorDefines::SGP41_DEFAULT_RH_TICKS,
+                                       SensorDefines::SGP41_DEFAULT_TEMP_TICKS,
+                                       dummy_voc, dummy_nox);
+      }
+      Wire.setClock(I2C_NORMAL_SPEED);
     }
   }
 }
