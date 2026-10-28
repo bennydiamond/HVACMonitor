@@ -3,12 +3,19 @@
 #include <stdint.h>
 #include <math.h>
 
+namespace SensorDefines {
+
 // ==============================================================================
 // Sensor Startup & Timing Constants
 // ==============================================================================
 // SCD30 typical warmup / first measurement period after power-on is ~2-5s.
 // SGP41 holds off publishing readings during this window unless SCD30 responds earlier.
 constexpr unsigned long SCD30_WARMUP_TIMEOUT_MS = 10000;
+
+// Sensor stack blocking command timeouts and expected result codes
+constexpr uint32_t SPS30_INFO_TIMEOUT_MS = 3000;
+constexpr uint32_t SGP41_TEST_TIMEOUT_MS = 4000;
+constexpr uint16_t SGP41_TEST_PASSED_RAW_VALUE = 0xD400;
 
 // ==============================================================================
 // SGP41 VOC & NOx Sensor Validity Ranges
@@ -102,3 +109,4 @@ inline bool isValidHumidity(float humi) {
     return !isnan(humi) && !isinf(humi) && humi >= SCD30_HUMI_MIN_VALID_PCT && humi <= SCD30_HUMI_MAX_VALID_PCT;
 }
 
+} // namespace SensorDefines

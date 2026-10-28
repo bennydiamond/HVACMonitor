@@ -144,9 +144,9 @@ void UISensorStackTile::refresh_status() {
         color = COLOR_HA_BLUE;
     } else if (connected && sensor_faults) {
         snprintf(fault_text, sizeof(fault_text), "Defective:%s%s%s",
-                 (sensor_faults & SENSOR_FAULT_SPS30) ? " SPS30" : "",
-                 (sensor_faults & SENSOR_FAULT_SCD30) ? " SCD30" : "",
-                 (sensor_faults & SENSOR_FAULT_SGP41) ? " SGP41" : "");
+                 (sensor_faults & SensorDefines::SENSOR_FAULT_SPS30) ? " SPS30" : "",
+                 (sensor_faults & SensorDefines::SENSOR_FAULT_SCD30) ? " SCD30" : "",
+                 (sensor_faults & SensorDefines::SENSOR_FAULT_SGP41) ? " SGP41" : "");
         icon = ICON_ALERT;
         text = fault_text;
         color = COLOR_MID;

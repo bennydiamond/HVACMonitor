@@ -155,7 +155,7 @@ void UIGasTile::update_o3(float o3) {
 }
 
 void UIGasTile::update_nox(float nox) {
-    if (!isValidGasIndex((int32_t)nox)) {
+    if (!SensorDefines::isValidGasIndex((int32_t)nox)) {
         ui_set_label_text(nox_label, "NOx: --");
         ui_set_text_color(nox_label, COLOR_MID);
         ui_set_text_color(nox_icon, COLOR_MID);

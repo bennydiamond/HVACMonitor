@@ -3,6 +3,120 @@
 #include <Preferences.h>
 #include "Logger.h"
 
+namespace ConfigLimits {
+    // Wi-Fi string limits
+    inline constexpr size_t MAX_WIFI_SSID_LEN = 32;
+    inline constexpr size_t MIN_WIFI_PASSWORD_LEN = 8;
+    inline constexpr size_t MAX_WIFI_PASSWORD_LEN = 64;
+
+    // MQTT connection and device limits
+    inline constexpr size_t MAX_MQTT_HOST_LEN = 63;
+    inline constexpr size_t MAX_MQTT_USER_LEN = 31;
+    inline constexpr size_t MAX_MQTT_PASSWORD_LEN = 63;
+    inline constexpr size_t MAX_MQTT_DEVICE_ID_LEN = 31;
+    inline constexpr size_t MAX_MQTT_DEVICE_NAME_LEN = 63;
+    inline constexpr int MIN_MQTT_PORT = 1;
+    inline constexpr int MAX_MQTT_PORT = 65535;
+
+    // Environmental gas and particle bounds
+    inline constexpr int MIN_GAS_INDEX = 0;
+    inline constexpr int MAX_GAS_INDEX = 1000; // NO2, O3, NOx, VOC index
+
+    inline constexpr int MIN_CO_PPM = 0;
+    inline constexpr int MAX_CO_PPM = 100;
+
+    inline constexpr int MIN_PM_UG = 0;
+    inline constexpr int MAX_PM_UG = 1000; // PM1.0, PM2.5, PM4.0, PM10 in µg/m³
+
+    inline constexpr int MIN_CO2_PPM = 0;
+    inline constexpr int MAX_CO2_PPM = 10000;
+
+    // Physical sensor bounds
+    inline constexpr float MIN_PRESSURE_PA = 0.0f;
+    inline constexpr float MAX_PRESSURE_PA = 1000.0f;
+
+    inline constexpr float MIN_CURRENT_A = 0.0f;
+    inline constexpr float MAX_CURRENT_A = 100.0f; // Fan, Compressor, Pump
+
+    inline constexpr float MIN_GEIGER_USV_H = 0.0f;
+    inline constexpr float MAX_GEIGER_USV_H = 10.0f;
+
+    inline constexpr float MIN_TEMP_C = -50.0f;
+    inline constexpr float MAX_TEMP_C = 50.0f;
+
+    inline constexpr float MIN_HUMI_PCT = 0.0f;
+    inline constexpr float MAX_HUMI_PCT = 100.0f;
+
+    // UI and system bounds
+    inline constexpr int MIN_INACTIVITY_DELAY_S = 5;
+    inline constexpr int MAX_INACTIVITY_DELAY_S = 120;
+    inline constexpr int INACTIVITY_DELAY_STEP_S = 5;
+
+    inline constexpr int MIN_LOG_LEVEL = 0;
+    inline constexpr int MAX_LOG_LEVEL = 3;
+
+    inline constexpr int MIN_DISPLAY_BRIGHTNESS = 0;
+    inline constexpr int MAX_DISPLAY_BRIGHTNESS = 255;
+
+    inline constexpr int MIN_SWITCH_STATE = 0;
+    inline constexpr int MAX_SWITCH_STATE = 1;
+}
+
+namespace ConfigDefaults {
+    // Application & System Defaults
+    inline constexpr AppLogLevel LOG_LEVEL = APP_LOG_INFO;
+    inline constexpr int INACTIVITY_DELAY = 30; // seconds
+
+    // Physical Sensor & Equipment Threshold Defaults
+    inline constexpr float HIGH_PRESSURE = 150.0f;
+    inline constexpr float FAN_ON_CURRENT = 1.0f;
+    inline constexpr float FAN_OFF_CURRENT = 0.1f;
+    inline constexpr float FAN_HIGH_CURRENT = 2.5f;
+    inline constexpr float COMPRESSOR_ON_CURRENT = 2.0f;
+    inline constexpr float COMPRESSOR_OFF_CURRENT = 0.1f;
+    inline constexpr float COMPRESSOR_HIGH_CURRENT = 15.0f;
+    inline constexpr float PUMP_ON_CURRENT = 1.5f;
+    inline constexpr float PUMP_OFF_CURRENT = 0.1f;
+    inline constexpr float PUMP_HIGH_CURRENT = 5.0f;
+    inline constexpr float PRESSURE_LOW = 70.0f;
+    inline constexpr float PRESSURE_MID = 130.0f;
+    inline constexpr float GEIGER_ABNORMAL_LOW = 0.04f;
+    inline constexpr float GEIGER_ABNORMAL_HIGH = 0.30f;
+    inline constexpr float GEIGER_DANGER_HIGH = 0.90f;
+
+    // Environmental Target & Comfort Defaults
+    inline constexpr float TEMP_COMFORTABLE_LOW = 15.0f;
+    inline constexpr float TEMP_COMFORTABLE_HIGH = 25.0f;
+    inline constexpr float TEMP_ACCEPTABLE_LOW = 10.0f;
+    inline constexpr float TEMP_ACCEPTABLE_HIGH = 30.0f;
+    inline constexpr float HUMI_COMFORTABLE_LOW = 30.0f;
+    inline constexpr float HUMI_COMFORTABLE_HIGH = 60.0f;
+    inline constexpr float HUMI_ACCEPTABLE_LOW = 20.0f;
+    inline constexpr float HUMI_ACCEPTABLE_HIGH = 70.0f;
+
+    // Air Quality Warning & Danger Threshold Defaults
+    inline constexpr int CO2_WARN = 1000;
+    inline constexpr int CO2_DANGER = 2000;
+    inline constexpr int VOC_WARN = 200;
+    inline constexpr int VOC_DANGER = 300;
+    inline constexpr int NO2_WARN = 40;
+    inline constexpr int NO2_DANGER = 100;
+    inline constexpr int O3_WARN = 60;
+    inline constexpr int O3_DANGER = 120;
+    inline constexpr int NOX_WARN = 100;
+    inline constexpr int NOX_DANGER = 200;
+    inline constexpr int CO_WARN = 4;
+    inline constexpr int CO_DANGER = 9;
+    inline constexpr int PM1_WARN = 25;
+    inline constexpr int PM1_DANGER = 35;
+    inline constexpr int PM25_WARN = 25;
+    inline constexpr int PM25_DANGER = 50;
+    inline constexpr int PM4_WARN = 35;
+    inline constexpr int PM4_DANGER = 60;
+    inline constexpr int PM10_WARN = 50;
+    inline constexpr int PM10_DANGER = 100;
+}
+
 class ConfigManager {
 public:
     ConfigManager();
@@ -146,14 +260,14 @@ private:
     int co2WarnThreshold, co2DangerThreshold, vocWarnThreshold, vocDangerThreshold;
     int no2WarnThreshold, no2DangerThreshold, o3WarnThreshold, o3DangerThreshold, noxWarnThreshold, noxDangerThreshold, coWarnThreshold, coDangerThreshold;
     int pm1WarnThreshold, pm1DangerThreshold, pm25WarnThreshold, pm25DangerThreshold, pm4WarnThreshold, pm4DangerThreshold, pm10WarnThreshold, pm10DangerThreshold;
-    char mqttHost[64];
+    char mqttHost[ConfigLimits::MAX_MQTT_HOST_LEN + 1];
     int mqttPort;
-    char mqttUser[32];
-    char mqttPassword[64];
-    char mqttDeviceId[32];
-    char mqttDeviceName[64];
-    char wifiSsid[33];
-    char wifiPassword[65];
+    char mqttUser[ConfigLimits::MAX_MQTT_USER_LEN + 1];
+    char mqttPassword[ConfigLimits::MAX_MQTT_PASSWORD_LEN + 1];
+    char mqttDeviceId[ConfigLimits::MAX_MQTT_DEVICE_ID_LEN + 1];
+    char mqttDeviceName[ConfigLimits::MAX_MQTT_DEVICE_NAME_LEN + 1];
+    char wifiSsid[ConfigLimits::MAX_WIFI_SSID_LEN + 1];
+    char wifiPassword[ConfigLimits::MAX_WIFI_PASSWORD_LEN + 1];
     
     // NVS Keys
     static const char* KEY_LOG_LEVEL;
@@ -209,61 +323,6 @@ private:
     static const char* KEY_PM4_DANGER;
     static const char* KEY_PM10_WARN;
     static const char* KEY_PM10_DANGER;
-    
-    // Default values
-    static const AppLogLevel DEFAULT_LOG_LEVEL;
-    static const float DEFAULT_HIGH_PRESSURE_THRESHOLD;
-    static const float DEFAULT_FAN_ON_CURRENT_THRESHOLD;
-    static const float DEFAULT_FAN_OFF_CURRENT_THRESHOLD;
-    static const float DEFAULT_FAN_HIGH_CURRENT_THRESHOLD;
-    static const float DEFAULT_COMPRESSOR_ON_CURRENT_THRESHOLD;
-    static const float DEFAULT_COMPRESSOR_OFF_CURRENT_THRESHOLD;
-    static const float DEFAULT_COMPRESSOR_HIGH_CURRENT_THRESHOLD;
-    static const float DEFAULT_PUMP_ON_CURRENT_THRESHOLD;
-    static const float DEFAULT_PUMP_OFF_CURRENT_THRESHOLD;
-    static const float DEFAULT_PUMP_HIGH_CURRENT_THRESHOLD;
-    static const float DEFAULT_PRESSURE_LOW_THRESHOLD;
-    static const float DEFAULT_PRESSURE_MID_THRESHOLD;
-    static const float DEFAULT_GEIGER_ABNORMAL_LOW_THRESHOLD;
-    static const float DEFAULT_GEIGER_ABNORMAL_HIGH_THRESHOLD;
-    static const float DEFAULT_GEIGER_DANGER_HIGH_THRESHOLD;
-    static const float DEFAULT_TEMP_COMFORTABLE_LOW;
-    static const float DEFAULT_TEMP_COMFORTABLE_HIGH;
-    static const float DEFAULT_TEMP_ACCEPTABLE_LOW;
-    static const float DEFAULT_TEMP_ACCEPTABLE_HIGH;
-    static const float DEFAULT_HUMI_COMFORTABLE_LOW;
-    static const float DEFAULT_HUMI_COMFORTABLE_HIGH;
-    static const float DEFAULT_HUMI_ACCEPTABLE_LOW;
-    static const float DEFAULT_HUMI_ACCEPTABLE_HIGH;
-    static const int DEFAULT_INACTIVITY_TIMER_DELAY;
-    static const char* DEFAULT_WIFI_SSID;
-    static const char* DEFAULT_WIFI_PASSWORD;
-    static const char* DEFAULT_MQTT_HOST;
-    static const int DEFAULT_MQTT_PORT;
-    static const char* DEFAULT_MQTT_USER;
-    static const char* DEFAULT_MQTT_PASSWORD;
-    static const char* DEFAULT_MQTT_DEVICE_ID;
-    static const char* DEFAULT_MQTT_DEVICE_NAME;
-    static const int DEFAULT_CO2_WARN_THRESHOLD;
-    static const int DEFAULT_CO2_DANGER_THRESHOLD;
-    static const int DEFAULT_VOC_WARN_THRESHOLD;
-    static const int DEFAULT_VOC_DANGER_THRESHOLD;
-    static const int DEFAULT_NO2_WARN_THRESHOLD;
-    static const int DEFAULT_NO2_DANGER_THRESHOLD;
-    static const int DEFAULT_O3_WARN_THRESHOLD;
-    static const int DEFAULT_O3_DANGER_THRESHOLD;
-    static const int DEFAULT_NOX_WARN_THRESHOLD;
-    static const int DEFAULT_NOX_DANGER_THRESHOLD;
-    static const int DEFAULT_CO_WARN_THRESHOLD;
-    static const int DEFAULT_CO_DANGER_THRESHOLD;
-    static const int DEFAULT_PM1_WARN_THRESHOLD;
-    static const int DEFAULT_PM1_DANGER_THRESHOLD;
-    static const int DEFAULT_PM25_WARN_THRESHOLD;
-    static const int DEFAULT_PM25_DANGER_THRESHOLD;
-    static const int DEFAULT_PM4_WARN_THRESHOLD;
-    static const int DEFAULT_PM4_DANGER_THRESHOLD;
-    static const int DEFAULT_PM10_WARN_THRESHOLD;
-    static const int DEFAULT_PM10_DANGER_THRESHOLD;
 };
 
 // Thread-safe accessor class for ConfigManager

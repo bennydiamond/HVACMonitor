@@ -511,8 +511,8 @@ void HomeAssistantManager::init(const char* firmware_version) {
     _scd30ForceCalNumber.setIcon("mdi:tune-variant");
     _scd30ForceCalNumber.setEntityCategory(entity_category_config);
     _scd30ForceCalNumber.setUnitOfMeasurement("ppm");
-    _scd30ForceCalNumber.setMin(SCD30_FORCECAL_MIN_PPM);
-    _scd30ForceCalNumber.setMax(SCD30_FORCECAL_MAX_PPM);
+    _scd30ForceCalNumber.setMin(SensorDefines::SCD30_FORCECAL_MIN_PPM);
+    _scd30ForceCalNumber.setMax(SensorDefines::SCD30_FORCECAL_MAX_PPM);
     _scd30ForceCalNumber.setStep(1);
     _scd30ForceCalNumber.onCommand(onScd30ForceCalCommand);
     
@@ -520,9 +520,9 @@ void HomeAssistantManager::init(const char* firmware_version) {
     _inactivityTimerDelay.setIcon("mdi:timer");
     _inactivityTimerDelay.setEntityCategory(entity_category_config);
     _inactivityTimerDelay.setUnitOfMeasurement("s");
-    _inactivityTimerDelay.setMin(10);
-    _inactivityTimerDelay.setMax(120);
-    _inactivityTimerDelay.setStep(5);
+    _inactivityTimerDelay.setMin(ConfigLimits::MIN_INACTIVITY_DELAY_S);
+    _inactivityTimerDelay.setMax(ConfigLimits::MAX_INACTIVITY_DELAY_S);
+    _inactivityTimerDelay.setStep(ConfigLimits::INACTIVITY_DELAY_STEP_S);
     _inactivityTimerDelay.onCommand(onInactivityTimerDelayCommand);
 
     _esp32FreeRamSensor.setName("ESP32 Free RAM");
@@ -743,7 +743,7 @@ void HomeAssistantManager::publishFanCurrent(float amps, unsigned long currentTi
 }
 
 void HomeAssistantManager::publishCO2(float co2, unsigned long currentTime) {
-    if (!isValidCO2(co2)) return; // Do not publish during sensor warmup or if invalid
+    if (!SensorDefines::isValidCO2(co2)) return; // Do not publish during sensor warmup or if invalid
     char data_str[16];
     bool is_first = (_lastCo2PublishTime == 0);
     bool co2_fast = (currentTime - _lastCo2PublishTime >= FAST_INTERVAL_10S_MS && fabs(co2 - _lastPublishedCo2) >= CO2_FAST_DELTA_PPM);
@@ -768,7 +768,7 @@ void HomeAssistantManager::publishCO(float co_ppm, unsigned long currentTime) {
 }
 
 void HomeAssistantManager::publishVOC(int32_t voc_index, unsigned long currentTime) {
-    if (!isValidGasIndex(voc_index)) return; // Do not publish during sensor warmup/blackout
+    if (!SensorDefines::isValidGasIndex(voc_index)) return; // Do not publish during sensor warmup/blackout
     char data_str[16];
     bool is_first = (_lastVocPublishTime == 0);
     bool voc_fast = (currentTime - _lastVocPublishTime >= FAST_INTERVAL_10S_MS && abs(voc_index - _lastPublishedVocIndex) >= VOC_FAST_DELTA);
@@ -782,7 +782,7 @@ void HomeAssistantManager::publishVOC(int32_t voc_index, unsigned long currentTi
 }
 
 void HomeAssistantManager::publishNOx(int32_t nox_index, unsigned long currentTime) {
-    if (!isValidGasIndex(nox_index)) return; // Do not publish during sensor warmup/blackout
+    if (!SensorDefines::isValidGasIndex(nox_index)) return; // Do not publish during sensor warmup/blackout
     char data_str[16];
     bool is_first = (_lastNOxPublishTime == 0);
     bool nox_fast = (currentTime - _lastNOxPublishTime >= FAST_INTERVAL_10S_MS && abs(nox_index - _lastPublishedNOxIndex) >= NOX_FAST_DELTA);
@@ -1127,7 +1127,7 @@ void HomeAssistantManager::onStateCommand(bool state, HALight* sender) {
     if (!_instance) return;
     if (state) {
         uint8_t brightness = sender->getCurrentBrightness();
-        if (brightness == 0) brightness = 255; 
+        if (brightness == 0) brightness = ConfigLimits::MAX_DISPLAY_BRIGHTNESS; 
         UITask::getInstance().set_brightness(brightness);
     } else {
         UITask::getInstance().set_brightness(0);
@@ -1151,9 +1151,9 @@ void HomeAssistantManager::updateScd30AutoCalState(bool state) {
 
 void HomeAssistantManager::onScd30ForceCalCommand(HANumeric number, HANumber* sender) {
     int32_t ppm_raw = number.toInt32();
-    if (ppm_raw < SCD30_FORCECAL_MIN_PPM || ppm_raw > SCD30_FORCECAL_MAX_PPM) {
+    if (ppm_raw < SensorDefines::SCD30_FORCECAL_MIN_PPM || ppm_raw > SensorDefines::SCD30_FORCECAL_MAX_PPM) {
         logger.warningf("Rejected out-of-range SCD30 Force Cal from Home Assistant: %d ppm (allowed %u-%u)",
-                        ppm_raw, SCD30_FORCECAL_MIN_PPM, SCD30_FORCECAL_MAX_PPM);
+                        ppm_raw, SensorDefines::SCD30_FORCECAL_MIN_PPM, SensorDefines::SCD30_FORCECAL_MAX_PPM);
         sender->setState(sender->getCurrentState());
         return;
     }
@@ -1179,8 +1179,9 @@ void HomeAssistantManager::updateBacklightState(bool state, uint8_t brightness) 
 void HomeAssistantManager::onInactivityTimerDelayCommand(HANumeric number, HANumber* sender) {
     if (_instance) {
         int32_t delay = number.toInt32();
-        if (delay < 10 || delay > 120) {
-            logger.warningf("Rejected out-of-range inactivity timer delay from Home Assistant: %d (allowed 10-120)", delay);
+        if (delay < ConfigLimits::MIN_INACTIVITY_DELAY_S || delay > ConfigLimits::MAX_INACTIVITY_DELAY_S) {
+            logger.warningf("Rejected out-of-range inactivity timer delay from Home Assistant: %d (allowed %d-%d)",
+                            delay, ConfigLimits::MIN_INACTIVITY_DELAY_S, ConfigLimits::MAX_INACTIVITY_DELAY_S);
             ConfigManagerAccessor config;
             sender->setState(static_cast<int32_t>(config->getInactivityTimerDelay()));
             return;

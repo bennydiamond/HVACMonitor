@@ -67,223 +67,169 @@ const char *ConfigManager::KEY_PM4_DANGER = "pm4_danger_ui";
 const char *ConfigManager::KEY_PM10_WARN = "pm10_warn_ui";
 const char *ConfigManager::KEY_PM10_DANGER = "pm10_danger_ui";
 
-// --- Define Default Values ---
-const AppLogLevel ConfigManager::DEFAULT_LOG_LEVEL = APP_LOG_INFO;
-const float ConfigManager::DEFAULT_HIGH_PRESSURE_THRESHOLD = 150.0f;
-const float ConfigManager::DEFAULT_FAN_ON_CURRENT_THRESHOLD = 1.0f;
-const float ConfigManager::DEFAULT_FAN_OFF_CURRENT_THRESHOLD = 0.1f;
-const float ConfigManager::DEFAULT_FAN_HIGH_CURRENT_THRESHOLD = 2.5f;
-const float ConfigManager::DEFAULT_COMPRESSOR_ON_CURRENT_THRESHOLD = 2.0f;
-const float ConfigManager::DEFAULT_COMPRESSOR_OFF_CURRENT_THRESHOLD = 0.1f;
-const float ConfigManager::DEFAULT_COMPRESSOR_HIGH_CURRENT_THRESHOLD = 15.0f;
-const float ConfigManager::DEFAULT_PUMP_ON_CURRENT_THRESHOLD = 1.5f;
-const float ConfigManager::DEFAULT_PUMP_OFF_CURRENT_THRESHOLD = 0.1f;
-const float ConfigManager::DEFAULT_PUMP_HIGH_CURRENT_THRESHOLD = 5.0f;
-const float ConfigManager::DEFAULT_PRESSURE_LOW_THRESHOLD = 70.0f;
-const float ConfigManager::DEFAULT_PRESSURE_MID_THRESHOLD = 130.0f;
-const float ConfigManager::DEFAULT_GEIGER_ABNORMAL_LOW_THRESHOLD = 0.04f;
-const float ConfigManager::DEFAULT_GEIGER_ABNORMAL_HIGH_THRESHOLD = 0.30f;
-const float ConfigManager::DEFAULT_GEIGER_DANGER_HIGH_THRESHOLD = 0.90f;
-const float ConfigManager::DEFAULT_TEMP_COMFORTABLE_LOW = 15.0f;
-const float ConfigManager::DEFAULT_TEMP_COMFORTABLE_HIGH = 25.0f;
-const float ConfigManager::DEFAULT_TEMP_ACCEPTABLE_LOW = 10.0f;
-const float ConfigManager::DEFAULT_TEMP_ACCEPTABLE_HIGH = 30.0f;
-const float ConfigManager::DEFAULT_HUMI_COMFORTABLE_LOW = 30.0f;
-const float ConfigManager::DEFAULT_HUMI_COMFORTABLE_HIGH = 60.0f;
-const float ConfigManager::DEFAULT_HUMI_ACCEPTABLE_LOW = 20.0f;
-const float ConfigManager::DEFAULT_HUMI_ACCEPTABLE_HIGH = 70.0f;
-const int ConfigManager::DEFAULT_INACTIVITY_TIMER_DELAY = 30; // 30 seconds
-const char *ConfigManager::DEFAULT_WIFI_SSID = WIFI_SSID;
-const char *ConfigManager::DEFAULT_WIFI_PASSWORD = WIFI_PASSWORD;
-const char *ConfigManager::DEFAULT_MQTT_HOST = MQTT_HOST;
-const int ConfigManager::DEFAULT_MQTT_PORT = MQTT_PORT;
-const char *ConfigManager::DEFAULT_MQTT_USER = MQTT_USER;
-const char *ConfigManager::DEFAULT_MQTT_PASSWORD = MQTT_PASSWORD;
-const char *ConfigManager::DEFAULT_MQTT_DEVICE_ID = MQTT_DEVICE_ID;
-const char *ConfigManager::DEFAULT_MQTT_DEVICE_NAME = MQTT_DEVICE_NAME;
-const int ConfigManager::DEFAULT_CO2_WARN_THRESHOLD = 1000;
-const int ConfigManager::DEFAULT_CO2_DANGER_THRESHOLD = 2000;
-const int ConfigManager::DEFAULT_VOC_WARN_THRESHOLD = 200;
-const int ConfigManager::DEFAULT_VOC_DANGER_THRESHOLD = 300;
-const int ConfigManager::DEFAULT_NO2_WARN_THRESHOLD = 40;
-const int ConfigManager::DEFAULT_NO2_DANGER_THRESHOLD = 100;
-const int ConfigManager::DEFAULT_O3_WARN_THRESHOLD = 60;
-const int ConfigManager::DEFAULT_O3_DANGER_THRESHOLD = 120;
-const int ConfigManager::DEFAULT_NOX_WARN_THRESHOLD = 100;
-const int ConfigManager::DEFAULT_NOX_DANGER_THRESHOLD = 200;
-const int ConfigManager::DEFAULT_CO_WARN_THRESHOLD = 4;
-const int ConfigManager::DEFAULT_CO_DANGER_THRESHOLD = 9;
-const int ConfigManager::DEFAULT_PM1_WARN_THRESHOLD = 25;
-const int ConfigManager::DEFAULT_PM1_DANGER_THRESHOLD = 35;
-const int ConfigManager::DEFAULT_PM25_WARN_THRESHOLD = 25;
-const int ConfigManager::DEFAULT_PM25_DANGER_THRESHOLD = 50;
-const int ConfigManager::DEFAULT_PM4_WARN_THRESHOLD = 35;
-const int ConfigManager::DEFAULT_PM4_DANGER_THRESHOLD = 60;
-const int ConfigManager::DEFAULT_PM10_WARN_THRESHOLD = 50;
-const int ConfigManager::DEFAULT_PM10_DANGER_THRESHOLD = 100;
 
 void ConfigManager::init() {
   if (!preferences.begin("hvac-config", false)) {
     logger.error(
         "Failed to initialize NVS for ConfigManager. Using default values.");
     // Manually set defaults if NVS fails to open
-    logLevel = DEFAULT_LOG_LEVEL;
-    highPressureThreshold = DEFAULT_HIGH_PRESSURE_THRESHOLD;
-    fanOnCurrentThreshold = DEFAULT_FAN_ON_CURRENT_THRESHOLD;
-    fanOffCurrentThreshold = DEFAULT_FAN_OFF_CURRENT_THRESHOLD;
-    fanHighCurrentThreshold = DEFAULT_FAN_HIGH_CURRENT_THRESHOLD;
-    compressorOnCurrentThreshold = DEFAULT_COMPRESSOR_ON_CURRENT_THRESHOLD;
-    compressorOffCurrentThreshold = DEFAULT_COMPRESSOR_OFF_CURRENT_THRESHOLD;
-    compressorHighCurrentThreshold = DEFAULT_COMPRESSOR_HIGH_CURRENT_THRESHOLD;
-    pumpOnCurrentThreshold = DEFAULT_PUMP_ON_CURRENT_THRESHOLD;
-    pumpOffCurrentThreshold = DEFAULT_PUMP_OFF_CURRENT_THRESHOLD;
-    pumpHighCurrentThreshold = DEFAULT_PUMP_HIGH_CURRENT_THRESHOLD;
-    pressureLowThreshold = DEFAULT_PRESSURE_LOW_THRESHOLD;
-    pressureMidThreshold = DEFAULT_PRESSURE_MID_THRESHOLD;
-    geigerAbnormalLowThreshold = DEFAULT_GEIGER_ABNORMAL_LOW_THRESHOLD;
-    geigerAbnormalHighThreshold = DEFAULT_GEIGER_ABNORMAL_HIGH_THRESHOLD;
-    geigerDangerHighThreshold = DEFAULT_GEIGER_DANGER_HIGH_THRESHOLD;
-    tempComfortableLow = DEFAULT_TEMP_COMFORTABLE_LOW;
-    tempComfortableHigh = DEFAULT_TEMP_COMFORTABLE_HIGH;
-    tempAcceptableLow = DEFAULT_TEMP_ACCEPTABLE_LOW;
-    tempAcceptableHigh = DEFAULT_TEMP_ACCEPTABLE_HIGH;
-    humiComfortableLow = DEFAULT_HUMI_COMFORTABLE_LOW;
-    humiComfortableHigh = DEFAULT_HUMI_COMFORTABLE_HIGH;
-    humiAcceptableLow = DEFAULT_HUMI_ACCEPTABLE_LOW;
-    humiAcceptableHigh = DEFAULT_HUMI_ACCEPTABLE_HIGH;
-    inactivityTimerDelay = DEFAULT_INACTIVITY_TIMER_DELAY;
-    co2WarnThreshold = DEFAULT_CO2_WARN_THRESHOLD;
-    co2DangerThreshold = DEFAULT_CO2_DANGER_THRESHOLD;
-    vocWarnThreshold = DEFAULT_VOC_WARN_THRESHOLD;
-    vocDangerThreshold = DEFAULT_VOC_DANGER_THRESHOLD;
-    no2WarnThreshold = DEFAULT_NO2_WARN_THRESHOLD;
-    no2DangerThreshold = DEFAULT_NO2_DANGER_THRESHOLD;
-    o3WarnThreshold = DEFAULT_O3_WARN_THRESHOLD;
-    o3DangerThreshold = DEFAULT_O3_DANGER_THRESHOLD;
-    noxWarnThreshold = DEFAULT_NOX_WARN_THRESHOLD;
-    noxDangerThreshold = DEFAULT_NOX_DANGER_THRESHOLD;
-    coWarnThreshold = DEFAULT_CO_WARN_THRESHOLD;
-    coDangerThreshold = DEFAULT_CO_DANGER_THRESHOLD;
-    pm1WarnThreshold = DEFAULT_PM1_WARN_THRESHOLD;
-    pm1DangerThreshold = DEFAULT_PM1_DANGER_THRESHOLD;
-    pm25WarnThreshold = DEFAULT_PM25_WARN_THRESHOLD;
-    pm25DangerThreshold = DEFAULT_PM25_DANGER_THRESHOLD;
-    pm4WarnThreshold = DEFAULT_PM4_WARN_THRESHOLD;
-    pm4DangerThreshold = DEFAULT_PM4_DANGER_THRESHOLD;
-    pm10WarnThreshold = DEFAULT_PM10_WARN_THRESHOLD;
-    pm10DangerThreshold = DEFAULT_PM10_DANGER_THRESHOLD;
-    strcpy(wifiSsid, DEFAULT_WIFI_SSID);
-    strcpy(wifiPassword, DEFAULT_WIFI_PASSWORD);
-    strcpy(mqttHost, DEFAULT_MQTT_HOST);
-    mqttPort = DEFAULT_MQTT_PORT;
-    strcpy(mqttUser, DEFAULT_MQTT_USER);
-    strcpy(mqttPassword, DEFAULT_MQTT_PASSWORD);
-    strcpy(mqttDeviceId, DEFAULT_MQTT_DEVICE_ID);
-    strcpy(mqttDeviceName, DEFAULT_MQTT_DEVICE_NAME);
+    logLevel = ConfigDefaults::LOG_LEVEL;
+    highPressureThreshold = ConfigDefaults::HIGH_PRESSURE;
+    fanOnCurrentThreshold = ConfigDefaults::FAN_ON_CURRENT;
+    fanOffCurrentThreshold = ConfigDefaults::FAN_OFF_CURRENT;
+    fanHighCurrentThreshold = ConfigDefaults::FAN_HIGH_CURRENT;
+    compressorOnCurrentThreshold = ConfigDefaults::COMPRESSOR_ON_CURRENT;
+    compressorOffCurrentThreshold = ConfigDefaults::COMPRESSOR_OFF_CURRENT;
+    compressorHighCurrentThreshold = ConfigDefaults::COMPRESSOR_HIGH_CURRENT;
+    pumpOnCurrentThreshold = ConfigDefaults::PUMP_ON_CURRENT;
+    pumpOffCurrentThreshold = ConfigDefaults::PUMP_OFF_CURRENT;
+    pumpHighCurrentThreshold = ConfigDefaults::PUMP_HIGH_CURRENT;
+    pressureLowThreshold = ConfigDefaults::PRESSURE_LOW;
+    pressureMidThreshold = ConfigDefaults::PRESSURE_MID;
+    geigerAbnormalLowThreshold = ConfigDefaults::GEIGER_ABNORMAL_LOW;
+    geigerAbnormalHighThreshold = ConfigDefaults::GEIGER_ABNORMAL_HIGH;
+    geigerDangerHighThreshold = ConfigDefaults::GEIGER_DANGER_HIGH;
+    tempComfortableLow = ConfigDefaults::TEMP_COMFORTABLE_LOW;
+    tempComfortableHigh = ConfigDefaults::TEMP_COMFORTABLE_HIGH;
+    tempAcceptableLow = ConfigDefaults::TEMP_ACCEPTABLE_LOW;
+    tempAcceptableHigh = ConfigDefaults::TEMP_ACCEPTABLE_HIGH;
+    humiComfortableLow = ConfigDefaults::HUMI_COMFORTABLE_LOW;
+    humiComfortableHigh = ConfigDefaults::HUMI_COMFORTABLE_HIGH;
+    humiAcceptableLow = ConfigDefaults::HUMI_ACCEPTABLE_LOW;
+    humiAcceptableHigh = ConfigDefaults::HUMI_ACCEPTABLE_HIGH;
+    inactivityTimerDelay = ConfigDefaults::INACTIVITY_DELAY;
+    co2WarnThreshold = ConfigDefaults::CO2_WARN;
+    co2DangerThreshold = ConfigDefaults::CO2_DANGER;
+    vocWarnThreshold = ConfigDefaults::VOC_WARN;
+    vocDangerThreshold = ConfigDefaults::VOC_DANGER;
+    no2WarnThreshold = ConfigDefaults::NO2_WARN;
+    no2DangerThreshold = ConfigDefaults::NO2_DANGER;
+    o3WarnThreshold = ConfigDefaults::O3_WARN;
+    o3DangerThreshold = ConfigDefaults::O3_DANGER;
+    noxWarnThreshold = ConfigDefaults::NOX_WARN;
+    noxDangerThreshold = ConfigDefaults::NOX_DANGER;
+    coWarnThreshold = ConfigDefaults::CO_WARN;
+    coDangerThreshold = ConfigDefaults::CO_DANGER;
+    pm1WarnThreshold = ConfigDefaults::PM1_WARN;
+    pm1DangerThreshold = ConfigDefaults::PM1_DANGER;
+    pm25WarnThreshold = ConfigDefaults::PM25_WARN;
+    pm25DangerThreshold = ConfigDefaults::PM25_DANGER;
+    pm4WarnThreshold = ConfigDefaults::PM4_WARN;
+    pm4DangerThreshold = ConfigDefaults::PM4_DANGER;
+    pm10WarnThreshold = ConfigDefaults::PM10_WARN;
+    pm10DangerThreshold = ConfigDefaults::PM10_DANGER;
+    strcpy(wifiSsid, WIFI_SSID);
+    strcpy(wifiPassword, WIFI_PASSWORD);
+    strcpy(mqttHost, MQTT_HOST);
+    mqttPort = MQTT_PORT;
+    strcpy(mqttUser, MQTT_USER);
+    strcpy(mqttPassword, MQTT_PASSWORD);
+    strcpy(mqttDeviceId, MQTT_DEVICE_ID);
+    strcpy(mqttDeviceName, MQTT_DEVICE_NAME);
     return;
   }
 
   logLevel = static_cast<AppLogLevel>(
-      preferences.getUChar(KEY_LOG_LEVEL, DEFAULT_LOG_LEVEL));
+      preferences.getUChar(KEY_LOG_LEVEL, ConfigDefaults::LOG_LEVEL));
 
   logger.info("ConfigManager initializing and loading values from NVS...");
 
   // Load physical thresholds
   highPressureThreshold =
-      preferences.getFloat(KEY_HIGH_PRESSURE, DEFAULT_HIGH_PRESSURE_THRESHOLD);
+      preferences.getFloat(KEY_HIGH_PRESSURE, ConfigDefaults::HIGH_PRESSURE);
   fanOnCurrentThreshold =
-      preferences.getFloat(KEY_FAN_ON, DEFAULT_FAN_ON_CURRENT_THRESHOLD);
+      preferences.getFloat(KEY_FAN_ON, ConfigDefaults::FAN_ON_CURRENT);
   fanOffCurrentThreshold =
-      preferences.getFloat(KEY_FAN_OFF, DEFAULT_FAN_OFF_CURRENT_THRESHOLD);
+      preferences.getFloat(KEY_FAN_OFF, ConfigDefaults::FAN_OFF_CURRENT);
   fanHighCurrentThreshold =
-      preferences.getFloat(KEY_FAN_HIGH, DEFAULT_FAN_HIGH_CURRENT_THRESHOLD);
+      preferences.getFloat(KEY_FAN_HIGH, ConfigDefaults::FAN_HIGH_CURRENT);
   compressorOnCurrentThreshold = preferences.getFloat(
-      KEY_COMPRESSOR_ON, DEFAULT_COMPRESSOR_ON_CURRENT_THRESHOLD);
+      KEY_COMPRESSOR_ON, ConfigDefaults::COMPRESSOR_ON_CURRENT);
   compressorOffCurrentThreshold = preferences.getFloat(
-      KEY_COMPRESSOR_OFF, DEFAULT_COMPRESSOR_OFF_CURRENT_THRESHOLD);
+      KEY_COMPRESSOR_OFF, ConfigDefaults::COMPRESSOR_OFF_CURRENT);
   compressorHighCurrentThreshold = preferences.getFloat(
-      KEY_COMPRESSOR_HIGH, DEFAULT_COMPRESSOR_HIGH_CURRENT_THRESHOLD);
+      KEY_COMPRESSOR_HIGH, ConfigDefaults::COMPRESSOR_HIGH_CURRENT);
   pumpOnCurrentThreshold =
-      preferences.getFloat(KEY_PUMP_ON, DEFAULT_PUMP_ON_CURRENT_THRESHOLD);
+      preferences.getFloat(KEY_PUMP_ON, ConfigDefaults::PUMP_ON_CURRENT);
   pumpOffCurrentThreshold =
-      preferences.getFloat(KEY_PUMP_OFF, DEFAULT_PUMP_OFF_CURRENT_THRESHOLD);
+      preferences.getFloat(KEY_PUMP_OFF, ConfigDefaults::PUMP_OFF_CURRENT);
   pumpHighCurrentThreshold =
-      preferences.getFloat(KEY_PUMP_HIGH, DEFAULT_PUMP_HIGH_CURRENT_THRESHOLD);
+      preferences.getFloat(KEY_PUMP_HIGH, ConfigDefaults::PUMP_HIGH_CURRENT);
 
   // Load UI thresholds
   pressureLowThreshold =
-      preferences.getFloat(KEY_P_LOW, DEFAULT_PRESSURE_LOW_THRESHOLD);
+      preferences.getFloat(KEY_P_LOW, ConfigDefaults::PRESSURE_LOW);
   pressureMidThreshold =
-      preferences.getFloat(KEY_P_MID, DEFAULT_PRESSURE_MID_THRESHOLD);
+      preferences.getFloat(KEY_P_MID, ConfigDefaults::PRESSURE_MID);
   geigerAbnormalLowThreshold = preferences.getFloat(
-      KEY_GEIGER_ABNORMAL_LOW, DEFAULT_GEIGER_ABNORMAL_LOW_THRESHOLD);
+      KEY_GEIGER_ABNORMAL_LOW, ConfigDefaults::GEIGER_ABNORMAL_LOW);
   geigerAbnormalHighThreshold = preferences.getFloat(
-      KEY_GEIGER_ABNORMAL_HIGH, DEFAULT_GEIGER_ABNORMAL_HIGH_THRESHOLD);
+      KEY_GEIGER_ABNORMAL_HIGH, ConfigDefaults::GEIGER_ABNORMAL_HIGH);
   geigerDangerHighThreshold = preferences.getFloat(
-      KEY_GEIGER_DANGER_HIGH, DEFAULT_GEIGER_DANGER_HIGH_THRESHOLD);
+      KEY_GEIGER_DANGER_HIGH, ConfigDefaults::GEIGER_DANGER_HIGH);
   tempComfortableLow = preferences.getFloat(KEY_TEMP_COMFORTABLE_LOW,
-                                            DEFAULT_TEMP_COMFORTABLE_LOW);
+                                            ConfigDefaults::TEMP_COMFORTABLE_LOW);
   tempComfortableHigh = preferences.getFloat(KEY_TEMP_COMFORTABLE_HIGH,
-                                             DEFAULT_TEMP_COMFORTABLE_HIGH);
+                                             ConfigDefaults::TEMP_COMFORTABLE_HIGH);
   tempAcceptableLow = preferences.getFloat(KEY_TEMP_ACCEPTABLE_LOW,
-                                           DEFAULT_TEMP_ACCEPTABLE_LOW);
+                                           ConfigDefaults::TEMP_ACCEPTABLE_LOW);
   tempAcceptableHigh = preferences.getFloat(KEY_TEMP_ACCEPTABLE_HIGH,
-                                            DEFAULT_TEMP_ACCEPTABLE_HIGH);
+                                            ConfigDefaults::TEMP_ACCEPTABLE_HIGH);
   humiComfortableLow = preferences.getFloat(KEY_HUMI_COMFORTABLE_LOW,
-                                            DEFAULT_HUMI_COMFORTABLE_LOW);
+                                            ConfigDefaults::HUMI_COMFORTABLE_LOW);
   humiComfortableHigh = preferences.getFloat(KEY_HUMI_COMFORTABLE_HIGH,
-                                             DEFAULT_HUMI_COMFORTABLE_HIGH);
+                                             ConfigDefaults::HUMI_COMFORTABLE_HIGH);
   humiAcceptableLow = preferences.getFloat(KEY_HUMI_ACCEPTABLE_LOW,
-                                           DEFAULT_HUMI_ACCEPTABLE_LOW);
+                                           ConfigDefaults::HUMI_ACCEPTABLE_LOW);
   humiAcceptableHigh = preferences.getFloat(KEY_HUMI_ACCEPTABLE_HIGH,
-                                            DEFAULT_HUMI_ACCEPTABLE_HIGH);
+                                            ConfigDefaults::HUMI_ACCEPTABLE_HIGH);
 
   inactivityTimerDelay = preferences.getInt(KEY_INACTIVITY_TIMER_DELAY,
-                                            DEFAULT_INACTIVITY_TIMER_DELAY);
+                                            ConfigDefaults::INACTIVITY_DELAY);
   co2WarnThreshold =
-      preferences.getInt(KEY_CO2_WARN, DEFAULT_CO2_WARN_THRESHOLD);
+      preferences.getInt(KEY_CO2_WARN, ConfigDefaults::CO2_WARN);
   co2DangerThreshold =
-      preferences.getInt(KEY_CO2_DANGER, DEFAULT_CO2_DANGER_THRESHOLD);
+      preferences.getInt(KEY_CO2_DANGER, ConfigDefaults::CO2_DANGER);
   vocWarnThreshold =
-      preferences.getInt(KEY_VOC_WARN, DEFAULT_VOC_WARN_THRESHOLD);
+      preferences.getInt(KEY_VOC_WARN, ConfigDefaults::VOC_WARN);
   vocDangerThreshold =
-      preferences.getInt(KEY_VOC_DANGER, DEFAULT_VOC_DANGER_THRESHOLD);
+      preferences.getInt(KEY_VOC_DANGER, ConfigDefaults::VOC_DANGER);
   no2WarnThreshold =
-      preferences.getInt(KEY_NO2_WARN, DEFAULT_NO2_WARN_THRESHOLD);
+      preferences.getInt(KEY_NO2_WARN, ConfigDefaults::NO2_WARN);
   no2DangerThreshold =
-      preferences.getInt(KEY_NO2_DANGER, DEFAULT_NO2_DANGER_THRESHOLD);
-  o3WarnThreshold = preferences.getInt(KEY_O3_WARN, DEFAULT_O3_WARN_THRESHOLD);
+      preferences.getInt(KEY_NO2_DANGER, ConfigDefaults::NO2_DANGER);
+  o3WarnThreshold = preferences.getInt(KEY_O3_WARN, ConfigDefaults::O3_WARN);
   o3DangerThreshold =
-      preferences.getInt(KEY_O3_DANGER, DEFAULT_O3_DANGER_THRESHOLD);
+      preferences.getInt(KEY_O3_DANGER, ConfigDefaults::O3_DANGER);
   noxWarnThreshold =
-      preferences.getInt(KEY_NOX_WARN, DEFAULT_NOX_WARN_THRESHOLD);
+      preferences.getInt(KEY_NOX_WARN, ConfigDefaults::NOX_WARN);
   noxDangerThreshold =
-      preferences.getInt(KEY_NOX_DANGER, DEFAULT_NOX_DANGER_THRESHOLD);
-  coWarnThreshold = preferences.getInt(KEY_CO_WARN, DEFAULT_CO_WARN_THRESHOLD);
+      preferences.getInt(KEY_NOX_DANGER, ConfigDefaults::NOX_DANGER);
+  coWarnThreshold = preferences.getInt(KEY_CO_WARN, ConfigDefaults::CO_WARN);
   coDangerThreshold =
-      preferences.getInt(KEY_CO_DANGER, DEFAULT_CO_DANGER_THRESHOLD);
+      preferences.getInt(KEY_CO_DANGER, ConfigDefaults::CO_DANGER);
   pm1WarnThreshold =
-      preferences.getInt(KEY_PM1_WARN, DEFAULT_PM1_WARN_THRESHOLD);
+      preferences.getInt(KEY_PM1_WARN, ConfigDefaults::PM1_WARN);
   pm1DangerThreshold =
-      preferences.getInt(KEY_PM1_DANGER, DEFAULT_PM1_DANGER_THRESHOLD);
+      preferences.getInt(KEY_PM1_DANGER, ConfigDefaults::PM1_DANGER);
   pm25WarnThreshold =
-      preferences.getInt(KEY_PM25_WARN, DEFAULT_PM25_WARN_THRESHOLD);
+      preferences.getInt(KEY_PM25_WARN, ConfigDefaults::PM25_WARN);
   pm25DangerThreshold =
-      preferences.getInt(KEY_PM25_DANGER, DEFAULT_PM25_DANGER_THRESHOLD);
+      preferences.getInt(KEY_PM25_DANGER, ConfigDefaults::PM25_DANGER);
   pm4WarnThreshold =
-      preferences.getInt(KEY_PM4_WARN, DEFAULT_PM4_WARN_THRESHOLD);
+      preferences.getInt(KEY_PM4_WARN, ConfigDefaults::PM4_WARN);
   pm4DangerThreshold =
-      preferences.getInt(KEY_PM4_DANGER, DEFAULT_PM4_DANGER_THRESHOLD);
+      preferences.getInt(KEY_PM4_DANGER, ConfigDefaults::PM4_DANGER);
   pm10WarnThreshold =
-      preferences.getInt(KEY_PM10_WARN, DEFAULT_PM10_WARN_THRESHOLD);
+      preferences.getInt(KEY_PM10_WARN, ConfigDefaults::PM10_WARN);
   pm10DangerThreshold =
-      preferences.getInt(KEY_PM10_DANGER, DEFAULT_PM10_DANGER_THRESHOLD);
+      preferences.getInt(KEY_PM10_DANGER, ConfigDefaults::PM10_DANGER);
 
   // Load WiFi configuration with validation
   size_t rawSsidLen =
       preferences.getString(KEY_WIFI_SSID, wifiSsid, sizeof(wifiSsid));
   size_t ssidLen = (rawSsidLen > 0) ? strlen(wifiSsid) : 0;
-  bool validSsid = (ssidLen > 0 && ssidLen <= 32);
+  bool validSsid = (ssidLen > 0 && ssidLen <= ConfigLimits::MAX_WIFI_SSID_LEN);
   if (validSsid) {
     bool allSpaces = true;
     for (size_t i = 0; i < ssidLen; i++) {
@@ -301,47 +247,47 @@ void ConfigManager::init() {
           "Invalid WiFi SSID in NVS (length %u); falling back to default.",
           ssidLen);
     }
-    snprintf(wifiSsid, sizeof(wifiSsid), "%s", DEFAULT_WIFI_SSID);
+    snprintf(wifiSsid, sizeof(wifiSsid), "%s", WIFI_SSID);
   }
 
   size_t rawPassLen = preferences.getString(KEY_WIFI_PASSWORD, wifiPassword,
                                             sizeof(wifiPassword));
   // If password is not set in NVS (rawPassLen == 0), fall back to default
   if (rawPassLen == 0) {
-    snprintf(wifiPassword, sizeof(wifiPassword), "%s", DEFAULT_WIFI_PASSWORD);
+    snprintf(wifiPassword, sizeof(wifiPassword), "%s", WIFI_PASSWORD);
   } else {
     // Password exists in NVS: check actual string length (excluding null
     // terminator)
     size_t passLen = strlen(wifiPassword);
     // Valid password is 0 (open network) or 8-64 characters
-    if (passLen > 0 && (passLen < 8 || passLen > 64)) {
+    if (passLen > 0 && (passLen < ConfigLimits::MIN_WIFI_PASSWORD_LEN || passLen > ConfigLimits::MAX_WIFI_PASSWORD_LEN)) {
       logger.warningf(
           "WiFi password invalid in NVS (length %u); falling back to default.",
           passLen);
-      snprintf(wifiPassword, sizeof(wifiPassword), "%s", DEFAULT_WIFI_PASSWORD);
+      snprintf(wifiPassword, sizeof(wifiPassword), "%s", WIFI_PASSWORD);
     }
   }
 
   // Load MQTT configuration
   if (preferences.getString(KEY_MQTT_HOST, mqttHost, sizeof(mqttHost)) == 0) {
-    snprintf(mqttHost, sizeof(mqttHost), "%s", DEFAULT_MQTT_HOST);
+    snprintf(mqttHost, sizeof(mqttHost), "%s", MQTT_HOST);
   }
-  mqttPort = preferences.getInt(KEY_MQTT_PORT, DEFAULT_MQTT_PORT);
+  mqttPort = preferences.getInt(KEY_MQTT_PORT, MQTT_PORT);
   if (preferences.getString(KEY_MQTT_USER, mqttUser, sizeof(mqttUser)) == 0) {
-    snprintf(mqttUser, sizeof(mqttUser), "%s", DEFAULT_MQTT_USER);
+    snprintf(mqttUser, sizeof(mqttUser), "%s", MQTT_USER);
   }
   if (preferences.getString(KEY_MQTT_PASSWORD, mqttPassword,
                             sizeof(mqttPassword)) == 0) {
-    snprintf(mqttPassword, sizeof(mqttPassword), "%s", DEFAULT_MQTT_PASSWORD);
+    snprintf(mqttPassword, sizeof(mqttPassword), "%s", MQTT_PASSWORD);
   }
   if (preferences.getString(KEY_MQTT_DEVICE_ID, mqttDeviceId,
                             sizeof(mqttDeviceId)) == 0) {
-    snprintf(mqttDeviceId, sizeof(mqttDeviceId), "%s", DEFAULT_MQTT_DEVICE_ID);
+    snprintf(mqttDeviceId, sizeof(mqttDeviceId), "%s", MQTT_DEVICE_ID);
   }
   if (preferences.getString(KEY_MQTT_DEVICE_NAME, mqttDeviceName,
                             sizeof(mqttDeviceName)) == 0) {
     snprintf(mqttDeviceName, sizeof(mqttDeviceName), "%s",
-             DEFAULT_MQTT_DEVICE_NAME);
+             MQTT_DEVICE_NAME);
   }
 
   // Log NVS status
@@ -901,8 +847,9 @@ bool ConfigManager::setWifiSsid(const char *value) {
   if (!value)
     return false;
   size_t len = strlen(value);
-  if (len == 0 || len > 32) {
-    logger.errorf("Rejected invalid WiFi SSID (length %u, max 32)", len);
+  if (len == 0 || len > ConfigLimits::MAX_WIFI_SSID_LEN) {
+    logger.errorf("Rejected invalid WiFi SSID (length %u, max %u)", len,
+                  (unsigned)ConfigLimits::MAX_WIFI_SSID_LEN);
     return false;
   }
   if (strcmp(wifiSsid, value) != 0) {
@@ -922,9 +869,10 @@ bool ConfigManager::setWifiPassword(const char *value) {
   if (!value)
     return false;
   size_t len = strlen(value);
-  if (len > 0 && (len < 8 || len > 64)) {
+  if (len > 0 && (len < ConfigLimits::MIN_WIFI_PASSWORD_LEN || len > ConfigLimits::MAX_WIFI_PASSWORD_LEN)) {
     logger.errorf(
-        "Rejected invalid WiFi password (length %u, must be 0 or 8-64)", len);
+        "Rejected invalid WiFi password (length %u, must be 0 or %u-%u)", len,
+        (unsigned)ConfigLimits::MIN_WIFI_PASSWORD_LEN, (unsigned)ConfigLimits::MAX_WIFI_PASSWORD_LEN);
     return false;
   }
   if (strcmp(wifiPassword, value) != 0) {
@@ -945,18 +893,20 @@ bool ConfigManager::setWifiCredentials(const char *ssid, const char *password,
   if (!ssid)
     return false;
   size_t ssidLen = strlen(ssid);
-  if (ssidLen == 0 || ssidLen > 32) {
-    logger.errorf("Rejected invalid WiFi SSID (length %u, max 32)", ssidLen);
+  if (ssidLen == 0 || ssidLen > ConfigLimits::MAX_WIFI_SSID_LEN) {
+    logger.errorf("Rejected invalid WiFi SSID (length %u, max %u)", ssidLen,
+                  (unsigned)ConfigLimits::MAX_WIFI_SSID_LEN);
     return false;
   }
   if (updatePassword) {
     if (!password)
       return false;
     size_t passLen = strlen(password);
-    if (passLen > 0 && (passLen < 8 || passLen > 64)) {
+    if (passLen > 0 && (passLen < ConfigLimits::MIN_WIFI_PASSWORD_LEN || passLen > ConfigLimits::MAX_WIFI_PASSWORD_LEN)) {
       logger.errorf(
-          "Rejected invalid WiFi password (length %u, must be 0 or 8-64)",
-          passLen);
+          "Rejected invalid WiFi password (length %u, must be 0 or %u-%u)",
+          passLen, (unsigned)ConfigLimits::MIN_WIFI_PASSWORD_LEN,
+          (unsigned)ConfigLimits::MAX_WIFI_PASSWORD_LEN);
       return false;
     }
   }

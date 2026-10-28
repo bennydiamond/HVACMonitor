@@ -189,7 +189,7 @@ void UIMainTile::update_pressure(float p) {
 }
 
 void UIMainTile::update_co2(float co2) {
-    if (!isValidCO2(co2)) {
+    if (!SensorDefines::isValidCO2(co2)) {
         ui_set_label_text(co2_label, "-- ppm");
         ui_set_text_color(co2_label, COLOR_MID);
         ui_set_text_color(co2_icon, COLOR_MID);
@@ -206,7 +206,7 @@ void UIMainTile::update_co2(float co2) {
 }
 
 void UIMainTile::update_voc(int32_t voc) {
-    if (!isValidGasIndex(voc)) {
+    if (!SensorDefines::isValidGasIndex(voc)) {
         ui_set_label_text(voc_label, "VOC: --");
         ui_set_text_color(voc_label, COLOR_MID);
         ui_set_text_color(voc_icon, COLOR_MID);

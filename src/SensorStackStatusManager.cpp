@@ -34,11 +34,11 @@ void SensorStackStatusManager::begin(UITask* ui, HomeAssistantManager* ha) {
 
 const char* SensorStackStatusManager::resetCauseToString(uint8_t code) {
     switch (code) {
-        case RESET_CAUSE_POWER_ON:  return "Power-On";
-        case RESET_CAUSE_EXTERNAL:  return "External";
-        case RESET_CAUSE_BROWN_OUT: return "Brown-Out";
-        case RESET_CAUSE_WATCHDOG:  return "Watchdog";
-        case RESET_CAUSE_UNKNOWN:
+        case SensorDefines::RESET_CAUSE_POWER_ON:  return "Power-On";
+        case SensorDefines::RESET_CAUSE_EXTERNAL:  return "External";
+        case SensorDefines::RESET_CAUSE_BROWN_OUT: return "Brown-Out";
+        case SensorDefines::RESET_CAUSE_WATCHDOG:  return "Watchdog";
+        case SensorDefines::RESET_CAUSE_UNKNOWN:
         default: return "Unknown";
     }
 }
@@ -66,9 +66,9 @@ void SensorStackStatusManager::setSensorFaultMask(uint8_t mask) {
     _sensor_fault_mask = mask;
 
     static const struct { uint8_t bit; const char* name; const char* readings; } sensors[] = {
-        { SENSOR_FAULT_SPS30, "SPS30", "particulate matter" },
-        { SENSOR_FAULT_SCD30, "SCD30", "CO2, temperature and humidity" },
-        { SENSOR_FAULT_SGP41, "SGP41", "VOC and NOx" },
+        { SensorDefines::SENSOR_FAULT_SPS30, "SPS30", "particulate matter" },
+        { SensorDefines::SENSOR_FAULT_SCD30, "SCD30", "CO2, temperature and humidity" },
+        { SensorDefines::SENSOR_FAULT_SGP41, "SGP41", "VOC and NOx" },
     };
     for (const auto& s : sensors) {
         if (!(changed & s.bit)) continue;
@@ -389,7 +389,7 @@ bool SensorStackStatusManager::processScd30ForceCalPayload(char* payload) {
     if (!token) return false;
     uint16_t actual_value = strtol(token, nullptr, 16);
 
-    if (set_result == 0 && read_result == 0 && isValidForceCal(actual_value)) {
+    if (set_result == 0 && read_result == 0 && SensorDefines::isValidForceCal(actual_value)) {
         logger.debugf("SCD30 Force Calibration Set: SetResult=%d, ReadResult=%d, ActualValue=%u ppm",
                       set_result, read_result, actual_value);
         setScd30ForceCalValue(actual_value);

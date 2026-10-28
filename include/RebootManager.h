@@ -12,6 +12,10 @@ public:
     // Access the singleton instance
     static RebootManager& getInstance();
 
+    // Reboot delay constants
+    static constexpr uint32_t WEB_REBOOT_DELAY_MS = 2000;
+    static constexpr uint32_t OTA_REBOOT_DELAY_MS = 500;
+
     // Centralized method to request a reboot with logging, state flushing, and controlled delay
     void requestReboot(const char* reason, uint32_t delayMs = 500);
 

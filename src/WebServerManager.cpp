@@ -12,6 +12,7 @@
 #include <esp_flash.h>
 #include <esp_image_format.h>
 #include <esp_task_wdt.h>
+#include "Esp32Architecture.h"
 
 #include "LiveDashboardData.h"
 #include "MainTaskEvents.h"
@@ -32,6 +33,24 @@
 extern "C" esp_err_t
 esp_flash_set_dangerous_write_protection(esp_flash_t *chip, const bool protect);
 
+namespace {
+// Minimum free heap memory thresholds for handling incoming HTTP requests
+constexpr size_t MIN_FREE_HEAP_STATUS_BYTES = 8000;
+constexpr size_t MIN_FREE_HEAP_CONFIG_UPDATE_BYTES = 12000;
+
+// HTTP streaming template chunk and JSON buffer reserve sizing
+constexpr size_t TEMPLATE_CHUNK_SIZE = 512;
+constexpr size_t JSON_STATUS_BUFFER_RESERVE_BYTES = 1500;
+
+
+// JSON telemetry fallback sentinels when sensors are uninitialized, missing or disconnected
+constexpr float JSON_FALLBACK_MISSING_VALUE = -1.0f;
+constexpr float JSON_FALLBACK_MISSING_TEMP_C = -999.0f;
+constexpr float JSON_FALLBACK_ZERO = 0.0f;
+
+// Configuration limits and bounds imported from ConfigLimits
+} // namespace
+
 WebServer server(80);
 char WebServerManager::_firmware_version[16] = {0};
 
@@ -45,7 +64,7 @@ static bool s_nano_failed = false;
 static NanoFlasher::Uploader *s_nano_uploader = nullptr;
 
 static bool s_app_header_checked = false;
-static uint8_t s_app_header_buf[0x24] = {0};
+static uint8_t s_app_header_buf[Esp32Architecture::IMAGE_HEADER_SIZE] = {0};
 static size_t s_app_header_len = 0;
 
 enum class UploadState { Idle, InProgress, Success, Failed, Aborted };
@@ -60,7 +79,7 @@ static void streamTemplate(const char *html_template, F resolver) {
   server.sendHeader("Connection", "close");
   server.send(200, "text/html", "");
 
-  char chunk[512];
+  char chunk[TEMPLATE_CHUNK_SIZE];
   size_t chunk_pos = 0;
 
   auto flush_chunk = [&]() {
@@ -279,7 +298,7 @@ void WebServerManager::init(const char *firmware_version) {
                 String(targetName) + " updated successfully! Rebooting...";
             server.send(200, "text/plain", successMsg);
             RebootManager::getInstance().requestReboot(
-                "Web OTA update complete", 500);
+                "Web OTA update complete", RebootManager::OTA_REBOOT_DELAY_MS);
           }
           return;
         }
@@ -393,7 +412,7 @@ static void appendFloat(String &out, float val, int decimals, float fallback) {
 
 void WebServerManager::handleApiStatus() {
   size_t freeHeap = ESP.getFreeHeap();
-  if (freeHeap < 8000) {
+  if (freeHeap < MIN_FREE_HEAP_STATUS_BYTES) {
     logger.warningf("Low memory (%u bytes), rejecting /api/status", freeHeap);
     server.send(503, "application/json", "{\"error\":\"low memory\"}");
     return;
@@ -402,20 +421,36 @@ void WebServerManager::handleApiStatus() {
   LiveDashboardData data;
   get_live_dashboard_data(data);
 
-  // Read configured thresholds
-  int co2_w = 1000, co2_d = 1500;
-  int voc_w = 250, voc_d = 400;
-  int nox_w = 10, nox_d = 20;
-  int pm1_w = 25, pm1_d = 50;
-  int pm25_w = 35, pm25_d = 75;
-  int pm4_w = 50, pm4_d = 100;
-  int pm10_w = 50, pm10_d = 150;
-  int co_w = 9, co_d = 25;
-  int o3_w = 100, o3_d = 180;
-  int no2_w = 100, no2_d = 200;
-  float fan_off = 0.5f;
-  float temp_cl = 15.0f, temp_ch = 25.0f, temp_al = 10.0f, temp_ah = 30.0f;
-  float humi_cl = 30.0f, humi_ch = 60.0f, humi_al = 20.0f, humi_ah = 70.0f;
+  // Read configured thresholds (initialized to defaults in case ConfigManager read is interrupted)
+  int co2_w = ConfigDefaults::CO2_WARN;
+  int co2_d = ConfigDefaults::CO2_DANGER;
+  int voc_w = ConfigDefaults::VOC_WARN;
+  int voc_d = ConfigDefaults::VOC_DANGER;
+  int nox_w = ConfigDefaults::NOX_WARN;
+  int nox_d = ConfigDefaults::NOX_DANGER;
+  int pm1_w = ConfigDefaults::PM1_WARN;
+  int pm1_d = ConfigDefaults::PM1_DANGER;
+  int pm25_w = ConfigDefaults::PM25_WARN;
+  int pm25_d = ConfigDefaults::PM25_DANGER;
+  int pm4_w = ConfigDefaults::PM4_WARN;
+  int pm4_d = ConfigDefaults::PM4_DANGER;
+  int pm10_w = ConfigDefaults::PM10_WARN;
+  int pm10_d = ConfigDefaults::PM10_DANGER;
+  int co_w = ConfigDefaults::CO_WARN;
+  int co_d = ConfigDefaults::CO_DANGER;
+  int o3_w = ConfigDefaults::O3_WARN;
+  int o3_d = ConfigDefaults::O3_DANGER;
+  int no2_w = ConfigDefaults::NO2_WARN;
+  int no2_d = ConfigDefaults::NO2_DANGER;
+  float fan_off = ConfigDefaults::FAN_OFF_CURRENT;
+  float temp_cl = ConfigDefaults::TEMP_COMFORTABLE_LOW;
+  float temp_ch = ConfigDefaults::TEMP_COMFORTABLE_HIGH;
+  float temp_al = ConfigDefaults::TEMP_ACCEPTABLE_LOW;
+  float temp_ah = ConfigDefaults::TEMP_ACCEPTABLE_HIGH;
+  float humi_cl = ConfigDefaults::HUMI_COMFORTABLE_LOW;
+  float humi_ch = ConfigDefaults::HUMI_COMFORTABLE_HIGH;
+  float humi_al = ConfigDefaults::HUMI_ACCEPTABLE_LOW;
+  float humi_ah = ConfigDefaults::HUMI_ACCEPTABLE_HIGH;
 
   {
     ConfigManagerAccessor config;
@@ -451,7 +486,7 @@ void WebServerManager::handleApiStatus() {
   }
 
   String out;
-  out.reserve(1500);
+  out.reserve(JSON_STATUS_BUFFER_RESERVE_BYTES);
 
   // Section: iaq
   out += "{\"iaq\":{\"epa_aqi\":";
@@ -459,52 +494,52 @@ void WebServerManager::handleApiStatus() {
   out += ",\"fast_aqi\":";
   out += data.fast_aqi;
   out += ",\"co2\":";
-  appendFloat(out, data.co2_ppm, 1, -1.0f);
+  appendFloat(out, data.co2_ppm, 1, JSON_FALLBACK_MISSING_VALUE);
   out += ",\"voc\":";
   out += (long)data.voc_index;
   out += ",\"nox\":";
   out += (long)data.nox_index;
   out += ",\"pm1\":";
-  appendFloat(out, data.pm1_ug, 1, -1.0f);
+  appendFloat(out, data.pm1_ug, 1, JSON_FALLBACK_MISSING_VALUE);
   out += ",\"pm25\":";
-  appendFloat(out, data.pm25_ug, 1, -1.0f);
+  appendFloat(out, data.pm25_ug, 1, JSON_FALLBACK_MISSING_VALUE);
   out += ",\"pm4\":";
-  appendFloat(out, data.pm4_ug, 1, -1.0f);
+  appendFloat(out, data.pm4_ug, 1, JSON_FALLBACK_MISSING_VALUE);
   out += ",\"pm10\":";
-  appendFloat(out, data.pm10_ug, 1, -1.0f);
+  appendFloat(out, data.pm10_ug, 1, JSON_FALLBACK_MISSING_VALUE);
   out += ",\"t\":";
-  appendFloat(out, data.temperature_c, 1, -999.0f);
+  appendFloat(out, data.temperature_c, 1, JSON_FALLBACK_MISSING_TEMP_C);
   out += ",\"h\":";
-  appendFloat(out, data.humidity_pct, 1, -1.0f);
+  appendFloat(out, data.humidity_pct, 1, JSON_FALLBACK_MISSING_VALUE);
   out += ",\"baro\":";
-  appendFloat(out, data.baro_pressure_hpa, 1, -1.0f);
+  appendFloat(out, data.baro_pressure_hpa, 1, JSON_FALLBACK_MISSING_VALUE);
   out += ",\"co\":";
   out += data.co_ppm;
   out += ",\"o3\":";
-  appendFloat(out, data.o3_ug, 1, -1.0f);
+  appendFloat(out, data.o3_ug, 1, JSON_FALLBACK_MISSING_VALUE);
   out += ",\"no2\":";
-  appendFloat(out, data.no2_ug, 1, -1.0f);
+  appendFloat(out, data.no2_ug, 1, JSON_FALLBACK_MISSING_VALUE);
   out += ",\"usv\":";
-  appendFloat(out, data.geiger_usv_h, 2, -1.0f);
+  appendFloat(out, data.geiger_usv_h, 2, JSON_FALLBACK_MISSING_VALUE);
   out += ",\"cpm\":";
   out += data.geiger_cpm;
   out += "},";
 
   // Section: hvac
   out += "\"hvac\":{\"fp\":";
-  appendFloat(out, data.filter_pressure_pa, 1, 0.0f);
+  appendFloat(out, data.filter_pressure_pa, 1, JSON_FALLBACK_ZERO);
   out += ",\"dp\":";
-  appendFloat(out, data.diff_pressure_pa, 1, 0.0f);
+  appendFloat(out, data.diff_pressure_pa, 1, JSON_FALLBACK_ZERO);
   out += ",\"hp\":";
   out += data.is_pressure_high ? "true" : "false";
   out += ",\"fa\":";
-  appendFloat(out, data.fan_amps, 2, 0.0f);
+  appendFloat(out, data.fan_amps, 2, JSON_FALLBACK_ZERO);
   out += ",\"fs\":";
   out += (unsigned int)data.fan_status;
   out += ",\"ca\":";
-  appendFloat(out, data.compressor_amps, 2, 0.0f);
+  appendFloat(out, data.compressor_amps, 2, JSON_FALLBACK_ZERO);
   out += ",\"pa\":";
-  appendFloat(out, data.pump_amps, 2, 0.0f);
+  appendFloat(out, data.pump_amps, 2, JSON_FALLBACK_ZERO);
   out += ",\"water\":";
   out += data.water_detected ? "true" : "false";
   out += "},";
@@ -614,23 +649,31 @@ void WebServerManager::handleApiStatus() {
   out += ",\"no2_d\":";
   out += no2_d;
   out += ",\"fan_off\":";
-  appendFloat(out, fan_off, 1, 0.5f);
+  appendFloat(out, fan_off, 1, ConfigDefaults::FAN_OFF_CURRENT);
   out += ",\"t_cl\":";
-  appendFloat(out, temp_cl, 1, 15.0f);
+  appendFloat(out, temp_cl, 1, ConfigDefaults::TEMP_COMFORTABLE_LOW);
   out += ",\"t_ch\":";
-  appendFloat(out, temp_ch, 1, 25.0f);
+  appendFloat(out, temp_ch, 1, ConfigDefaults::TEMP_COMFORTABLE_HIGH);
   out += ",\"t_al\":";
-  appendFloat(out, temp_al, 1, 10.0f);
+  appendFloat(out, temp_al, 1, ConfigDefaults::TEMP_ACCEPTABLE_LOW);
   out += ",\"t_ah\":";
-  appendFloat(out, temp_ah, 1, 30.0f);
+  appendFloat(out, temp_ah, 1, ConfigDefaults::TEMP_ACCEPTABLE_HIGH);
+  out += ",\"h_cl\":";
+  appendFloat(out, humi_cl, 1, ConfigDefaults::HUMI_COMFORTABLE_LOW);
+  out += ",\"h_ch\":";
+  appendFloat(out, humi_ch, 1, ConfigDefaults::HUMI_COMFORTABLE_HIGH);
+  out += ",\"h_al\":";
+  appendFloat(out, humi_al, 1, ConfigDefaults::HUMI_ACCEPTABLE_LOW);
+  out += ",\"h_ah\":";
+  appendFloat(out, humi_ah, 1, ConfigDefaults::HUMI_ACCEPTABLE_HIGH);
   out += ",\"humi_cl\":";
-  appendFloat(out, humi_cl, 1, 30.0f);
+  appendFloat(out, humi_cl, 1, ConfigDefaults::HUMI_COMFORTABLE_LOW);
   out += ",\"humi_ch\":";
-  appendFloat(out, humi_ch, 1, 60.0f);
+  appendFloat(out, humi_ch, 1, ConfigDefaults::HUMI_COMFORTABLE_HIGH);
   out += ",\"humi_al\":";
-  appendFloat(out, humi_al, 1, 20.0f);
+  appendFloat(out, humi_al, 1, ConfigDefaults::HUMI_ACCEPTABLE_LOW);
   out += ",\"humi_ah\":";
-  appendFloat(out, humi_ah, 1, 70.0f);
+  appendFloat(out, humi_ah, 1, ConfigDefaults::HUMI_ACCEPTABLE_HIGH);
   out += "}}";
 
   server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
@@ -690,7 +733,7 @@ static bool parseStrictFloat(const String &str, float &outVal, float minVal, flo
 void WebServerManager::handleConfigUpdate() {
   // Check available memory before processing
   size_t freeHeap = ESP.getFreeHeap();
-  if (freeHeap < 12000) {
+  if (freeHeap < MIN_FREE_HEAP_CONFIG_UPDATE_BYTES) {
     logger.warningf(
         "Low memory (free=%u, min=%u, max=%u bytes), rejecting config update",
         freeHeap, ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
@@ -714,14 +757,15 @@ void WebServerManager::handleConfigUpdate() {
       server.send(400, "text/plain", "SSID cannot be empty");
       return;
     }
-    if (ssid.length() > 32) {
+    if (ssid.length() > ConfigLimits::MAX_WIFI_SSID_LEN) {
       server.send(400, "text/plain", "SSID cannot exceed 32 characters");
       return;
     }
     if (isOpen) {
       password = "";
     } else if (password.length() > 0) {
-      if (password.length() < 8 || password.length() > 64) {
+      if (password.length() < ConfigLimits::MIN_WIFI_PASSWORD_LEN ||
+          password.length() > ConfigLimits::MAX_WIFI_PASSWORD_LEN) {
         server.send(
             400, "text/plain",
             "Password must be 8 to 64 characters (or check open network)");
@@ -749,7 +793,7 @@ void WebServerManager::handleConfigUpdate() {
                 "Wi-Fi configuration saved successfully. Rebooting device...");
 
     RebootManager::getInstance().requestReboot("Wi-Fi configuration updated",
-                                               2000);
+                                               RebootManager::WEB_REBOOT_DELAY_MS);
     return;
   }
 
@@ -774,20 +818,22 @@ void WebServerManager::handleConfigUpdate() {
       return;
     }
 
-    if (host.length() > 63 || user.length() > 31 || deviceId.length() > 31 ||
-        deviceName.length() > 63) {
+    if (host.length() > ConfigLimits::MAX_MQTT_HOST_LEN ||
+        user.length() > ConfigLimits::MAX_MQTT_USER_LEN ||
+        deviceId.length() > ConfigLimits::MAX_MQTT_DEVICE_ID_LEN ||
+        deviceName.length() > ConfigLimits::MAX_MQTT_DEVICE_NAME_LEN) {
       server.send(400, "text/plain",
                   "One or more fields exceed maximum length");
       return;
     }
 
-    if (password.length() > 63) {
+    if (password.length() > ConfigLimits::MAX_MQTT_PASSWORD_LEN) {
       server.send(400, "text/plain", "Password cannot exceed 63 characters");
       return;
     }
 
     int portNum = 0;
-    if (!parseStrictInt(port, portNum, 1, 65535)) {
+    if (!parseStrictInt(port, portNum, ConfigLimits::MIN_MQTT_PORT, ConfigLimits::MAX_MQTT_PORT)) {
       server.send(400, "text/plain", "Invalid port number (1-65535)");
       return;
     }
@@ -814,7 +860,7 @@ void WebServerManager::handleConfigUpdate() {
                 "Configuration saved successfully. Rebooting device...");
 
     RebootManager::getInstance().requestReboot("MQTT configuration updated",
-                                               2000);
+                                               RebootManager::WEB_REBOOT_DELAY_MS);
     return;
   }
 
@@ -830,7 +876,7 @@ void WebServerManager::handleConfigUpdate() {
     }
     if (action == "sps30_info") {
       logger.info("SPS30 info query requested via Web Server");
-      if (query_sps30_info_blocking(3000)) {
+      if (query_sps30_info_blocking(SensorDefines::SPS30_INFO_TIMEOUT_MS)) {
         const SPS30DeviceInfo &info = get_sps30_device_info();
         char resp[128];
         snprintf(resp, sizeof(resp),
@@ -848,10 +894,10 @@ void WebServerManager::handleConfigUpdate() {
     }
     if (action == "sgp41_test") {
       logger.info("SGP41 self-test requested via Web Server");
-      if (run_sgp41_test_blocking(4000)) {
+      if (run_sgp41_test_blocking(SensorDefines::SGP41_TEST_TIMEOUT_MS)) {
         const SGP41TestResult &res = get_sgp41_test_result();
         char resp[96];
-        if (res.ret_status == 0 && res.raw_value == 0xD400) {
+        if (res.ret_status == 0 && res.raw_value == SensorDefines::SGP41_TEST_PASSED_RAW_VALUE) {
           snprintf(resp, sizeof(resp), "OK / Passed (Value: 0x%04X, Status: 0)",
                    res.raw_value);
         } else {
@@ -877,7 +923,7 @@ void WebServerManager::handleConfigUpdate() {
       server.sendHeader("Connection", "close");
       server.send(200, "text/plain", "Device rebooting in 2 seconds...");
       RebootManager::getInstance().requestReboot("Web System page reboot",
-                                                 2000);
+                                                 RebootManager::WEB_REBOOT_DELAY_MS);
       return;
     }
     server.send(400, "text/plain", "Unknown action");
@@ -926,12 +972,12 @@ void WebServerManager::handleConfigUpdate() {
     };
 
     if (section == "no2") {
-      if (type == "warn" && parseStrictInt(valueStr, intVal, 0, 1000)) {
+      if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_GAS_INDEX, ConfigLimits::MAX_GAS_INDEX)) {
         if (validateWarnDanger(intVal, config->getNo2DangerThreshold(), true))
           config->setNo2WarnThreshold(intVal);
         else
           ok = false;
-      } else if (type == "danger" && parseStrictInt(valueStr, intVal, 0, 1000)) {
+      } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_GAS_INDEX, ConfigLimits::MAX_GAS_INDEX)) {
         if (validateWarnDanger(config->getNo2WarnThreshold(), intVal, false))
           config->setNo2DangerThreshold(intVal);
         else
@@ -940,12 +986,12 @@ void WebServerManager::handleConfigUpdate() {
         ok = false;
       }
     } else if (section == "o3") {
-      if (type == "warn" && parseStrictInt(valueStr, intVal, 0, 1000)) {
+      if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_GAS_INDEX, ConfigLimits::MAX_GAS_INDEX)) {
         if (validateWarnDanger(intVal, config->getO3DangerThreshold(), true))
           config->setO3WarnThreshold(intVal);
         else
           ok = false;
-      } else if (type == "danger" && parseStrictInt(valueStr, intVal, 0, 1000)) {
+      } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_GAS_INDEX, ConfigLimits::MAX_GAS_INDEX)) {
         if (validateWarnDanger(config->getO3WarnThreshold(), intVal, false))
           config->setO3DangerThreshold(intVal);
         else
@@ -954,12 +1000,12 @@ void WebServerManager::handleConfigUpdate() {
         ok = false;
       }
     } else if (section == "nox") {
-      if (type == "warn" && parseStrictInt(valueStr, intVal, 0, 1000)) {
+      if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_GAS_INDEX, ConfigLimits::MAX_GAS_INDEX)) {
         if (validateWarnDanger(intVal, config->getNoxDangerThreshold(), true))
           config->setNoxWarnThreshold(intVal);
         else
           ok = false;
-      } else if (type == "danger" && parseStrictInt(valueStr, intVal, 0, 1000)) {
+      } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_GAS_INDEX, ConfigLimits::MAX_GAS_INDEX)) {
         if (validateWarnDanger(config->getNoxWarnThreshold(), intVal, false))
           config->setNoxDangerThreshold(intVal);
         else
@@ -968,12 +1014,12 @@ void WebServerManager::handleConfigUpdate() {
         ok = false;
       }
     } else if (section == "co") {
-      if (type == "warn" && parseStrictInt(valueStr, intVal, 0, 100)) {
+      if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_CO_PPM, ConfigLimits::MAX_CO_PPM)) {
         if (validateWarnDanger(intVal, config->getCoDangerThreshold(), true))
           config->setCoWarnThreshold(intVal);
         else
           ok = false;
-      } else if (type == "danger" && parseStrictInt(valueStr, intVal, 0, 100)) {
+      } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_CO_PPM, ConfigLimits::MAX_CO_PPM)) {
         if (validateWarnDanger(config->getCoWarnThreshold(), intVal, false))
           config->setCoDangerThreshold(intVal);
         else
@@ -982,12 +1028,12 @@ void WebServerManager::handleConfigUpdate() {
         ok = false;
       }
     } else if (section == "pm1") {
-      if (type == "warn" && parseStrictInt(valueStr, intVal, 0, 1000)) {
+      if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_PM_UG, ConfigLimits::MAX_PM_UG)) {
         if (validateWarnDanger(intVal, config->getPm1DangerThreshold(), true))
           config->setPm1WarnThreshold(intVal);
         else
           ok = false;
-      } else if (type == "danger" && parseStrictInt(valueStr, intVal, 0, 1000)) {
+      } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_PM_UG, ConfigLimits::MAX_PM_UG)) {
         if (validateWarnDanger(config->getPm1WarnThreshold(), intVal, false))
           config->setPm1DangerThreshold(intVal);
         else
@@ -996,12 +1042,12 @@ void WebServerManager::handleConfigUpdate() {
         ok = false;
       }
     } else if (section == "pm25") {
-      if (type == "warn" && parseStrictInt(valueStr, intVal, 0, 1000)) {
+      if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_PM_UG, ConfigLimits::MAX_PM_UG)) {
         if (validateWarnDanger(intVal, config->getPm25DangerThreshold(), true))
           config->setPm25WarnThreshold(intVal);
         else
           ok = false;
-      } else if (type == "danger" && parseStrictInt(valueStr, intVal, 0, 1000)) {
+      } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_PM_UG, ConfigLimits::MAX_PM_UG)) {
         if (validateWarnDanger(config->getPm25WarnThreshold(), intVal, false))
           config->setPm25DangerThreshold(intVal);
         else
@@ -1010,12 +1056,12 @@ void WebServerManager::handleConfigUpdate() {
         ok = false;
       }
     } else if (section == "pm4") {
-      if (type == "warn" && parseStrictInt(valueStr, intVal, 0, 1000)) {
+      if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_PM_UG, ConfigLimits::MAX_PM_UG)) {
         if (validateWarnDanger(intVal, config->getPm4DangerThreshold(), true))
           config->setPm4WarnThreshold(intVal);
         else
           ok = false;
-      } else if (type == "danger" && parseStrictInt(valueStr, intVal, 0, 1000)) {
+      } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_PM_UG, ConfigLimits::MAX_PM_UG)) {
         if (validateWarnDanger(config->getPm4WarnThreshold(), intVal, false))
           config->setPm4DangerThreshold(intVal);
         else
@@ -1024,12 +1070,12 @@ void WebServerManager::handleConfigUpdate() {
         ok = false;
       }
     } else if (section == "pm10") {
-      if (type == "warn" && parseStrictInt(valueStr, intVal, 0, 1000)) {
+      if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_PM_UG, ConfigLimits::MAX_PM_UG)) {
         if (validateWarnDanger(intVal, config->getPm10DangerThreshold(), true))
           config->setPm10WarnThreshold(intVal);
         else
           ok = false;
-      } else if (type == "danger" && parseStrictInt(valueStr, intVal, 0, 1000)) {
+      } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_PM_UG, ConfigLimits::MAX_PM_UG)) {
         if (validateWarnDanger(config->getPm10WarnThreshold(), intVal, false))
           config->setPm10DangerThreshold(intVal);
         else
@@ -1038,12 +1084,12 @@ void WebServerManager::handleConfigUpdate() {
         ok = false;
       }
     } else if (section == "co2") {
-      if (type == "warn" && parseStrictInt(valueStr, intVal, 0, 10000)) {
+      if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_CO2_PPM, ConfigLimits::MAX_CO2_PPM)) {
         if (validateWarnDanger(intVal, config->getCo2DangerThreshold(), true))
           config->setCo2WarnThreshold(intVal);
         else
           ok = false;
-      } else if (type == "danger" && parseStrictInt(valueStr, intVal, 0, 10000)) {
+      } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_CO2_PPM, ConfigLimits::MAX_CO2_PPM)) {
         if (validateWarnDanger(config->getCo2WarnThreshold(), intVal, false))
           config->setCo2DangerThreshold(intVal);
         else
@@ -1052,21 +1098,21 @@ void WebServerManager::handleConfigUpdate() {
         ok = false;
       }
     } else if (section == "pressure") {
-      if (type == "low" && parseStrictFloat(valueStr, floatVal, 0.0f, 1000.0f)) {
+      if (type == "low" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_PRESSURE_PA, ConfigLimits::MAX_PRESSURE_PA)) {
         if (floatVal > config->getPressureMidThreshold()) {
           ok = false;
           errorMsg = "Low threshold cannot exceed Mid threshold";
         } else {
           config->setPressureLowThreshold(floatVal);
         }
-      } else if (type == "mid" && parseStrictFloat(valueStr, floatVal, 0.0f, 1000.0f)) {
+      } else if (type == "mid" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_PRESSURE_PA, ConfigLimits::MAX_PRESSURE_PA)) {
         if (floatVal < config->getPressureLowThreshold() || floatVal > config->getHighPressureThreshold()) {
           ok = false;
           errorMsg = "Mid threshold must be between Low and High thresholds";
         } else {
           config->setPressureMidThreshold(floatVal);
         }
-      } else if (type == "high" && parseStrictFloat(valueStr, floatVal, 0.0f, 1000.0f)) {
+      } else if (type == "high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_PRESSURE_PA, ConfigLimits::MAX_PRESSURE_PA)) {
         if (floatVal < config->getPressureMidThreshold()) {
           ok = false;
           errorMsg = "High threshold cannot be lower than Mid threshold";
@@ -1077,17 +1123,17 @@ void WebServerManager::handleConfigUpdate() {
         ok = false;
       }
     } else if (section == "fan") {
-      if (type == "off" && parseStrictFloat(valueStr, floatVal, 0.0f, 100.0f)) {
+      if (type == "off" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
         if (validateOffOnHigh(floatVal, config->getFanOnCurrentThreshold(), config->getFanHighCurrentThreshold(), "off"))
           config->setFanOffCurrentThreshold(floatVal);
         else
           ok = false;
-      } else if (type == "on" && parseStrictFloat(valueStr, floatVal, 0.0f, 100.0f)) {
+      } else if (type == "on" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
         if (validateOffOnHigh(config->getFanOffCurrentThreshold(), floatVal, config->getFanHighCurrentThreshold(), "on"))
           config->setFanOnCurrentThreshold(floatVal);
         else
           ok = false;
-      } else if (type == "high" && parseStrictFloat(valueStr, floatVal, 0.0f, 100.0f)) {
+      } else if (type == "high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
         if (validateOffOnHigh(config->getFanOffCurrentThreshold(), config->getFanOnCurrentThreshold(), floatVal, "high"))
           config->setFanHighCurrentThreshold(floatVal);
         else
@@ -1096,17 +1142,17 @@ void WebServerManager::handleConfigUpdate() {
         ok = false;
       }
     } else if (section == "compressor") {
-      if (type == "off" && parseStrictFloat(valueStr, floatVal, 0.0f, 100.0f)) {
+      if (type == "off" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
         if (validateOffOnHigh(floatVal, config->getCompressorOnCurrentThreshold(), config->getCompressorHighCurrentThreshold(), "off"))
           config->setCompressorOffCurrentThreshold(floatVal);
         else
           ok = false;
-      } else if (type == "on" && parseStrictFloat(valueStr, floatVal, 0.0f, 100.0f)) {
+      } else if (type == "on" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
         if (validateOffOnHigh(config->getCompressorOffCurrentThreshold(), floatVal, config->getCompressorHighCurrentThreshold(), "on"))
           config->setCompressorOnCurrentThreshold(floatVal);
         else
           ok = false;
-      } else if (type == "high" && parseStrictFloat(valueStr, floatVal, 0.0f, 100.0f)) {
+      } else if (type == "high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
         if (validateOffOnHigh(config->getCompressorOffCurrentThreshold(), config->getCompressorOnCurrentThreshold(), floatVal, "high"))
           config->setCompressorHighCurrentThreshold(floatVal);
         else
@@ -1115,17 +1161,17 @@ void WebServerManager::handleConfigUpdate() {
         ok = false;
       }
     } else if (section == "pump") {
-      if (type == "off" && parseStrictFloat(valueStr, floatVal, 0.0f, 100.0f)) {
+      if (type == "off" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
         if (validateOffOnHigh(floatVal, config->getPumpOnCurrentThreshold(), config->getPumpHighCurrentThreshold(), "off"))
           config->setPumpOffCurrentThreshold(floatVal);
         else
           ok = false;
-      } else if (type == "on" && parseStrictFloat(valueStr, floatVal, 0.0f, 100.0f)) {
+      } else if (type == "on" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
         if (validateOffOnHigh(config->getPumpOffCurrentThreshold(), floatVal, config->getPumpHighCurrentThreshold(), "on"))
           config->setPumpOnCurrentThreshold(floatVal);
         else
           ok = false;
-      } else if (type == "high" && parseStrictFloat(valueStr, floatVal, 0.0f, 100.0f)) {
+      } else if (type == "high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
         if (validateOffOnHigh(config->getPumpOffCurrentThreshold(), config->getPumpOnCurrentThreshold(), floatVal, "high"))
           config->setPumpHighCurrentThreshold(floatVal);
         else
@@ -1134,21 +1180,21 @@ void WebServerManager::handleConfigUpdate() {
         ok = false;
       }
     } else if (section == "geiger") {
-      if (type == "abnormal_low" && parseStrictFloat(valueStr, floatVal, 0.0f, 10.0f)) {
+      if (type == "abnormal_low" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_GEIGER_USV_H, ConfigLimits::MAX_GEIGER_USV_H)) {
         if (floatVal > config->getGeigerAbnormalHighThreshold()) {
           ok = false;
           errorMsg = "Abnormal Low cannot exceed Abnormal High threshold";
         } else {
           config->setGeigerAbnormalLowThreshold(floatVal);
         }
-      } else if (type == "abnormal_high" && parseStrictFloat(valueStr, floatVal, 0.0f, 10.0f)) {
+      } else if (type == "abnormal_high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_GEIGER_USV_H, ConfigLimits::MAX_GEIGER_USV_H)) {
         if (floatVal < config->getGeigerAbnormalLowThreshold() || floatVal > config->getGeigerDangerHighThreshold()) {
           ok = false;
           errorMsg = "Abnormal High must be between Abnormal Low and Danger High thresholds";
         } else {
           config->setGeigerAbnormalHighThreshold(floatVal);
         }
-      } else if (type == "danger_high" && parseStrictFloat(valueStr, floatVal, 0.0f, 10.0f)) {
+      } else if (type == "danger_high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_GEIGER_USV_H, ConfigLimits::MAX_GEIGER_USV_H)) {
         if (floatVal < config->getGeigerAbnormalHighThreshold()) {
           ok = false;
           errorMsg = "Danger High cannot be lower than Abnormal High threshold";
@@ -1159,28 +1205,28 @@ void WebServerManager::handleConfigUpdate() {
         ok = false;
       }
     } else if (section == "temp") {
-      if (type == "acceptable_low" && parseStrictFloat(valueStr, floatVal, -50.0f, 50.0f)) {
+      if (type == "acceptable_low" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_TEMP_C, ConfigLimits::MAX_TEMP_C)) {
         if (floatVal > config->getTempComfortableLow()) {
           ok = false;
           errorMsg = "Acceptable Low cannot exceed Comfortable Low";
         } else {
           config->setTempAcceptableLow(floatVal);
         }
-      } else if (type == "comfortable_low" && parseStrictFloat(valueStr, floatVal, -50.0f, 50.0f)) {
+      } else if (type == "comfortable_low" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_TEMP_C, ConfigLimits::MAX_TEMP_C)) {
         if (floatVal < config->getTempAcceptableLow() || floatVal > config->getTempComfortableHigh()) {
           ok = false;
           errorMsg = "Comfortable Low must be between Acceptable Low and Comfortable High";
         } else {
           config->setTempComfortableLow(floatVal);
         }
-      } else if (type == "comfortable_high" && parseStrictFloat(valueStr, floatVal, -50.0f, 50.0f)) {
+      } else if (type == "comfortable_high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_TEMP_C, ConfigLimits::MAX_TEMP_C)) {
         if (floatVal < config->getTempComfortableLow() || floatVal > config->getTempAcceptableHigh()) {
           ok = false;
           errorMsg = "Comfortable High must be between Comfortable Low and Acceptable High";
         } else {
           config->setTempComfortableHigh(floatVal);
         }
-      } else if (type == "acceptable_high" && parseStrictFloat(valueStr, floatVal, -50.0f, 50.0f)) {
+      } else if (type == "acceptable_high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_TEMP_C, ConfigLimits::MAX_TEMP_C)) {
         if (floatVal < config->getTempComfortableHigh()) {
           ok = false;
           errorMsg = "Acceptable High cannot be lower than Comfortable High";
@@ -1191,28 +1237,28 @@ void WebServerManager::handleConfigUpdate() {
         ok = false;
       }
     } else if (section == "humi") {
-      if (type == "acceptable_low" && parseStrictFloat(valueStr, floatVal, 0.0f, 100.0f)) {
+      if (type == "acceptable_low" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_HUMI_PCT, ConfigLimits::MAX_HUMI_PCT)) {
         if (floatVal > config->getHumiComfortableLow()) {
           ok = false;
           errorMsg = "Acceptable Low cannot exceed Comfortable Low";
         } else {
           config->setHumiAcceptableLow(floatVal);
         }
-      } else if (type == "comfortable_low" && parseStrictFloat(valueStr, floatVal, 0.0f, 100.0f)) {
+      } else if (type == "comfortable_low" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_HUMI_PCT, ConfigLimits::MAX_HUMI_PCT)) {
         if (floatVal < config->getHumiAcceptableLow() || floatVal > config->getHumiComfortableHigh()) {
           ok = false;
           errorMsg = "Comfortable Low must be between Acceptable Low and Comfortable High";
         } else {
           config->setHumiComfortableLow(floatVal);
         }
-      } else if (type == "comfortable_high" && parseStrictFloat(valueStr, floatVal, 0.0f, 100.0f)) {
+      } else if (type == "comfortable_high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_HUMI_PCT, ConfigLimits::MAX_HUMI_PCT)) {
         if (floatVal < config->getHumiComfortableLow() || floatVal > config->getHumiAcceptableHigh()) {
           ok = false;
           errorMsg = "Comfortable High must be between Comfortable Low and Acceptable High";
         } else {
           config->setHumiComfortableHigh(floatVal);
         }
-      } else if (type == "acceptable_high" && parseStrictFloat(valueStr, floatVal, 0.0f, 100.0f)) {
+      } else if (type == "acceptable_high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_HUMI_PCT, ConfigLimits::MAX_HUMI_PCT)) {
         if (floatVal < config->getHumiComfortableHigh()) {
           ok = false;
           errorMsg = "Acceptable High cannot be lower than Comfortable High";
@@ -1223,7 +1269,7 @@ void WebServerManager::handleConfigUpdate() {
         ok = false;
       }
     } else if (section == "inactivity") {
-      if (type == "timer_delay" && parseStrictInt(valueStr, intVal, 5, 120)) {
+      if (type == "timer_delay" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_INACTIVITY_DELAY_S, ConfigLimits::MAX_INACTIVITY_DELAY_S)) {
         config->setInactivityTimerDelay(intVal);
         HomeAssistantManager *ha = HomeAssistantManager::getInstance();
         if (ha)
@@ -1232,7 +1278,7 @@ void WebServerManager::handleConfigUpdate() {
         ok = false;
       }
     } else if (section == "log") {
-      if (type == "level" && parseStrictInt(valueStr, intVal, 0, 3)) {
+      if (type == "level" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_LOG_LEVEL, ConfigLimits::MAX_LOG_LEVEL)) {
         AppLogLevel level = static_cast<AppLogLevel>(intVal);
         config->setLogLevel(level);
         logger.setLogLevel(level);
@@ -1244,31 +1290,31 @@ void WebServerManager::handleConfigUpdate() {
         ok = false;
       }
     } else if (section == "mqtt") {
-      if (type == "host" && valueStr.length() > 0 && valueStr.length() <= 63)
+      if (type == "host" && valueStr.length() > 0 && valueStr.length() <= ConfigLimits::MAX_MQTT_HOST_LEN)
         config->setMqttHost(valueStr.c_str());
-      else if (type == "port" && parseStrictInt(valueStr, intVal, 1, 65535))
+      else if (type == "port" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_MQTT_PORT, ConfigLimits::MAX_MQTT_PORT))
         config->setMqttPort(intVal);
-      else if (type == "user" && valueStr.length() <= 31)
+      else if (type == "user" && valueStr.length() <= ConfigLimits::MAX_MQTT_USER_LEN)
         config->setMqttUser(valueStr.c_str());
-      else if (type == "password" && valueStr.length() <= 63) {
+      else if (type == "password" && valueStr.length() <= ConfigLimits::MAX_MQTT_PASSWORD_LEN) {
         if (valueStr.length() > 0) {
           config->setMqttPassword(valueStr.c_str());
         }
       } else if (type == "device_id" && valueStr.length() > 0 &&
-                 valueStr.length() <= 31)
+                 valueStr.length() <= ConfigLimits::MAX_MQTT_DEVICE_ID_LEN)
         config->setMqttDeviceId(valueStr.c_str());
       else if (type == "device_name" && valueStr.length() > 0 &&
-                 valueStr.length() <= 63)
+                 valueStr.length() <= ConfigLimits::MAX_MQTT_DEVICE_NAME_LEN)
         config->setMqttDeviceName(valueStr.c_str());
       else
         ok = false;
     } else if (section == "voc") {
-      if (type == "warn" && parseStrictInt(valueStr, intVal, 0, 1000)) {
+      if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_GAS_INDEX, ConfigLimits::MAX_GAS_INDEX)) {
         if (validateWarnDanger(intVal, config->getVocDangerThreshold(), true))
           config->setVocWarnThreshold(intVal);
         else
           ok = false;
-      } else if (type == "danger" && parseStrictInt(valueStr, intVal, 0, 1000)) {
+      } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_GAS_INDEX, ConfigLimits::MAX_GAS_INDEX)) {
         if (validateWarnDanger(config->getVocWarnThreshold(), intVal, false))
           config->setVocDangerThreshold(intVal);
         else
@@ -1277,16 +1323,16 @@ void WebServerManager::handleConfigUpdate() {
         ok = false;
       }
     } else if (section == "display") {
-      if (type == "brightness" && parseStrictInt(valueStr, intVal, 0, 255)) {
+      if (type == "brightness" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_DISPLAY_BRIGHTNESS, ConfigLimits::MAX_DISPLAY_BRIGHTNESS)) {
         uint8_t b = static_cast<uint8_t>(intVal);
         UITask::getInstance().set_brightness(b);
         HomeAssistantManager *ha = HomeAssistantManager::getInstance();
         if (ha)
           ha->updateBacklightState(b > 0, b);
         logger.infof("Display brightness set to %u via Web Server", b);
-      } else if (type == "backlight" && parseStrictInt(valueStr, intVal, 0, 1)) {
+      } else if (type == "backlight" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_SWITCH_STATE, ConfigLimits::MAX_SWITCH_STATE)) {
         uint8_t curB = UITask::getInstance().get_brightness();
-        uint8_t newB = (intVal != 0) ? (curB == 0 ? 255 : curB) : 0;
+        uint8_t newB = (intVal != 0) ? (curB == 0 ? ConfigLimits::MAX_DISPLAY_BRIGHTNESS : curB) : 0;
         UITask::getInstance().set_brightness(newB);
         HomeAssistantManager *ha = HomeAssistantManager::getInstance();
         if (ha)
@@ -1297,7 +1343,7 @@ void WebServerManager::handleConfigUpdate() {
         ok = false;
       }
     } else if (section == "scd30") {
-      if (type == "autocal" && parseStrictInt(valueStr, intVal, 0, 1)) {
+      if (type == "autocal" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_SWITCH_STATE, ConfigLimits::MAX_SWITCH_STATE)) {
         bool enabled = (intVal != 0);
         send_command_to_nano_with_param(CMD_SET_SCD30_AUTOCAL,
                                         enabled ? '1' : '0');
@@ -1308,7 +1354,7 @@ void WebServerManager::handleConfigUpdate() {
         logger.infof("SCD30 AutoCalibration set to %s via Web Server",
                      enabled ? "ON" : "OFF");
       } else if (type == "forcecal" &&
-                 parseStrictInt(valueStr, intVal, SCD30_FORCECAL_MIN_PPM, SCD30_FORCECAL_MAX_PPM)) {
+                 parseStrictInt(valueStr, intVal, SensorDefines::SCD30_FORCECAL_MIN_PPM, SensorDefines::SCD30_FORCECAL_MAX_PPM)) {
         uint16_t ppm = static_cast<uint16_t>(intVal);
         char cmd_str[8];
         snprintf(cmd_str, sizeof(cmd_str), "%c%u", CMD_SET_SCD30_FORCECAL, ppm);
@@ -1392,7 +1438,7 @@ void WebServerManager::handleUpload() {
       s_bootloader_failed = false;
       if (!s_bootloader_buf) {
         s_bootloader_buf =
-            (uint8_t *)malloc(0x7000); // Max size between 0x1000 and 0x8000
+            (uint8_t *)malloc(Esp32Architecture::BOOTLOADER_STAGING_BUFFER_SIZE); // Max size between 0x1000 and 0x8000
       }
       if (!s_bootloader_buf) {
         s_bootloader_failed = true;
@@ -1420,12 +1466,12 @@ void WebServerManager::handleUpload() {
                                     s_upload_error_msg)) {
           s_nano_failed = true;
           logger.errorf("[Web OTA] Nano firmware upload write error: %s",
-                        s_upload_error_msg.c_str());
+                         s_upload_error_msg.c_str());
         }
       }
     } else if (s_is_bootloader_update) {
       if (!s_bootloader_failed) {
-        if (s_bootloader_received + upload.currentSize > 0x7000) {
+        if (s_bootloader_received + upload.currentSize > Esp32Architecture::BOOTLOADER_STAGING_BUFFER_SIZE) {
           s_bootloader_failed = true;
           s_upload_error_msg =
               "Bootloader binary exceeds partition table boundary (28KB max)";
@@ -1456,18 +1502,18 @@ void WebServerManager::handleUpload() {
                           "is 0x%02X (expected 0x%02X)!",
                           s_app_header_buf[0], ESP_IMAGE_HEADER_MAGIC);
           } else {
-            uint32_t word_at_0x20 = 0;
-            memcpy(&word_at_0x20, s_app_header_buf + 0x20,
-                   sizeof(word_at_0x20));
-            if (word_at_0x20 != ESP_APP_DESC_MAGIC_WORD) {
+            uint32_t word_at_app_desc = 0;
+            memcpy(&word_at_app_desc, s_app_header_buf + Esp32Architecture::APP_DESC_OFFSET,
+                   sizeof(word_at_app_desc));
+            if (word_at_app_desc != ESP_APP_DESC_MAGIC_WORD) {
               Update.abort();
               s_upload_state = UploadState::Failed;
               s_upload_error_msg = "Validation rejected: file is missing "
                                    "Application Descriptor. Did you upload a "
                                    "bootloader to the firmware target?";
               logger.errorf("[Web OTA] Firmware validation rejected: word at "
-                            "0x20 is 0x%08X (expected 0x%08X)!",
-                            word_at_0x20, ESP_APP_DESC_MAGIC_WORD);
+                            "0x%02X is 0x%08X (expected 0x%08X)!",
+                            (unsigned)Esp32Architecture::APP_DESC_OFFSET, word_at_app_desc, ESP_APP_DESC_MAGIC_WORD);
             }
           }
         }
@@ -1533,7 +1579,7 @@ void WebServerManager::handleUpload() {
         logger.infof(
             "[Web OTA] Bootloader upload finished (%u bytes). Verifying...",
             s_bootloader_received);
-        if (s_bootloader_received < 4096) {
+        if (s_bootloader_received < Esp32Architecture::BOOTLOADER_MIN_SIZE_BYTES) {
           s_bootloader_failed = true;
           s_upload_state = UploadState::Failed;
           s_upload_error_msg = "Bootloader image is too small (< 4KB)";
@@ -1551,16 +1597,16 @@ void WebServerManager::handleUpload() {
           // 3. Entry point address range: bootloader entry points to IRAM
           // (0x4007xxxx - 0x40085xxx)
           bool entry_in_bl_range =
-              (hdr->entry_addr >= 0x40078000 && hdr->entry_addr <= 0x40085FFF);
+              (hdr->entry_addr >= Esp32Architecture::IRAM_ENTRY_ADDR_MIN && hdr->entry_addr <= Esp32Architecture::IRAM_ENTRY_ADDR_MAX);
 
           // 4. Must NOT contain the Application Descriptor magic word
           // (0xABCD5432) at offset 0x20
-          uint32_t word_at_0x20 = 0;
-          if (s_bootloader_received >= 0x24) {
-            memcpy(&word_at_0x20, s_bootloader_buf + 0x20,
-                   sizeof(word_at_0x20));
+          uint32_t word_at_app_desc = 0;
+          if (s_bootloader_received >= Esp32Architecture::IMAGE_HEADER_SIZE) {
+            memcpy(&word_at_app_desc, s_bootloader_buf + Esp32Architecture::APP_DESC_OFFSET,
+                   sizeof(word_at_app_desc));
           }
-          bool has_app_desc = (word_at_0x20 == ESP_APP_DESC_MAGIC_WORD);
+          bool has_app_desc = (word_at_app_desc == ESP_APP_DESC_MAGIC_WORD);
 
           if (!has_magic) {
             s_bootloader_failed = true;
@@ -1595,15 +1641,15 @@ void WebServerManager::handleUpload() {
           } else {
             // All 4 detection points passed! Flash bootloader to offset 0x1000
             // Align erase size up to 4KB sector boundary
-            size_t erase_len = ((s_bootloader_received + 4095) / 4096) * 4096;
-            logger.infof("[Web OTA] Erasing flash at 0x1000 (%u bytes)...",
-                         erase_len);
+            size_t erase_len = ((s_bootloader_received + Esp32Architecture::FLASH_SECTOR_SIZE - 1) / Esp32Architecture::FLASH_SECTOR_SIZE) * Esp32Architecture::FLASH_SECTOR_SIZE;
+            logger.infof("[Web OTA] Erasing flash at 0x%X (%u bytes)...",
+                         (unsigned)Esp32Architecture::BOOTLOADER_FLASH_OFFSET, erase_len);
 
             // Temporarily disable dangerous write protection for bootloader
             // region (0x1000)
             esp_flash_set_dangerous_write_protection(esp_flash_default_chip,
                                                      false);
-            esp_err_t err = esp_flash_erase_region(NULL, 0x1000, erase_len);
+            esp_err_t err = esp_flash_erase_region(NULL, Esp32Architecture::BOOTLOADER_FLASH_OFFSET, erase_len);
             if (err != ESP_OK) {
               esp_flash_set_dangerous_write_protection(esp_flash_default_chip,
                                                        true);
@@ -1615,10 +1661,9 @@ void WebServerManager::handleUpload() {
                   "[Web OTA] esp_flash_erase_region failed: 0x%x (%s)", err,
                   esp_err_to_name(err));
             } else {
-              logger.infof("[Web OTA] Writing bootloader to flash at 0x1000 "
-                           "(%u bytes)...",
-                           s_bootloader_received);
-              err = esp_flash_write(NULL, s_bootloader_buf, 0x1000,
+              logger.infof("[Web OTA] Writing bootloader to flash at 0x%X (%u bytes)...",
+                           (unsigned)Esp32Architecture::BOOTLOADER_FLASH_OFFSET, s_bootloader_received);
+              err = esp_flash_write(NULL, s_bootloader_buf, Esp32Architecture::BOOTLOADER_FLASH_OFFSET,
                                     s_bootloader_received);
               esp_flash_set_dangerous_write_protection(esp_flash_default_chip,
                                                        true);
@@ -1633,8 +1678,8 @@ void WebServerManager::handleUpload() {
                 // Verify the written bootloader in flash
                 esp_image_metadata_t meta = {};
                 const esp_partition_pos_t part_pos = {
-                    .offset = 0x1000,
-                    .size = 0x7000,
+                    .offset = Esp32Architecture::BOOTLOADER_FLASH_OFFSET,
+                    .size = Esp32Architecture::BOOTLOADER_STAGING_BUFFER_SIZE,
                 };
                 err =
                     esp_image_verify(ESP_IMAGE_VERIFY_SILENT, &part_pos, &meta);
@@ -2038,9 +2083,9 @@ void WebServerManager::handleConfigSystem() {
 void WebServerManager::handleConfigMaintenance() {
   HomeAssistantManager *ha = HomeAssistantManager::getInstance();
   bool autoCalState = ha ? ha->getScd30AutoCalState() : false;
-  uint16_t forceCalValue = ha ? ha->getScd30ForceCalValue() : 400;
+  uint16_t forceCalValue = ha ? ha->getScd30ForceCalValue() : SensorDefines::SCD30_FORCECAL_MIN_PPM;
   if (forceCalValue == 0)
-    forceCalValue = 400;
+    forceCalValue = SensorDefines::SCD30_FORCECAL_MIN_PPM;
 
   streamTemplate(config_maintenance_html,
                  [&](const char *key, char *buf, size_t len) -> bool {

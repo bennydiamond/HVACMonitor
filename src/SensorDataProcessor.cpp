@@ -68,18 +68,18 @@ void SensorDataProcessor::setSensorFaultMask(uint8_t mask) {
     }
 
     // Drop what was collected before the fault, so nothing stale is shown or published
-    if (new_faults & SENSOR_FAULT_SPS30) {
+    if (new_faults & SensorDefines::SENSOR_FAULT_SPS30) {
         _pm1_avg.clear();
         _pm25_avg.clear();
         _pm4_avg.clear();
         _pm10_avg.clear();
     }
-    if (new_faults & SENSOR_FAULT_SCD30) {
+    if (new_faults & SensorDefines::SENSOR_FAULT_SCD30) {
         _co2_avg.clear();
         _live_temp_c = NAN;
         _live_humi_pct = NAN;
     }
-    if (new_faults & SENSOR_FAULT_SGP41) {
+    if (new_faults & SensorDefines::SENSOR_FAULT_SGP41) {
         _voc_avg.clear();
         _nox_avg.clear();
     }
@@ -141,12 +141,12 @@ void SensorDataProcessor::processPacket(const NanoSensorPacket& pkt) {
     }
 
     // Sensors the SensorStack flagged as not responding: their values are placeholders, ignore them
-    const bool sps30_ok = !(_sensor_fault_mask & SENSOR_FAULT_SPS30);
-    const bool scd30_ok = !(_sensor_fault_mask & SENSOR_FAULT_SCD30);
-    const bool sgp41_ok = !(_sensor_fault_mask & SENSOR_FAULT_SGP41);
-    const bool scd30_has_data = scd30_ok && isValidCO2(pkt.getCo2Ppm()) &&
-                                isValidTemperature(pkt.getTemperatureC()) &&
-                                isValidHumidity(pkt.getHumidityPct());
+    const bool sps30_ok = !(_sensor_fault_mask & SensorDefines::SENSOR_FAULT_SPS30);
+    const bool scd30_ok = !(_sensor_fault_mask & SensorDefines::SENSOR_FAULT_SCD30);
+    const bool sgp41_ok = !(_sensor_fault_mask & SensorDefines::SENSOR_FAULT_SGP41);
+    const bool scd30_has_data = scd30_ok && SensorDefines::isValidCO2(pkt.getCo2Ppm()) &&
+                                SensorDefines::isValidTemperature(pkt.getTemperatureC()) &&
+                                SensorDefines::isValidHumidity(pkt.getHumidityPct());
     const float temp_c = scd30_has_data ? pkt.getTemperatureC() : NAN;
     const float humi_pct = scd30_has_data ? pkt.getHumidityPct() : NAN;
 
@@ -166,15 +166,15 @@ void SensorDataProcessor::processPacket(const NanoSensorPacket& pkt) {
 
     int32_t voc_index = 0;
     int32_t nox_index = 0;
-    if (sgp41_ok && !sgp41_conditioning && isValidVocRaw(pkt.getVocRaw())) {
+    if (sgp41_ok && !sgp41_conditioning && SensorDefines::isValidVocRaw(pkt.getVocRaw())) {
         voc_index = _voc_algorithm.process(pkt.getVocRaw());
-        if (isValidGasIndex(voc_index)) {
+        if (SensorDefines::isValidGasIndex(voc_index)) {
             _voc_avg.add(voc_index);
         }
     }
-    if (sgp41_ok && !sgp41_conditioning && isValidNoxRaw(pkt.getNoxRaw())) {
+    if (sgp41_ok && !sgp41_conditioning && SensorDefines::isValidNoxRaw(pkt.getNoxRaw())) {
         nox_index = _nox_algorithm.process(pkt.getNoxRaw());
-        if (isValidGasIndex(nox_index)) {
+        if (SensorDefines::isValidGasIndex(nox_index)) {
             _nox_avg.add(nox_index);
         }
     }

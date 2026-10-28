@@ -348,10 +348,10 @@ void NanoUartBridge::processPacket(char *packet) {
       // A sensor the SensorStack initialized again: its info was last read
       // while it was missing, so ask again (SGP41 has no info query)
       uint8_t recovered = previous_faults & ~faults;
-      if (recovered & SENSOR_FAULT_SPS30) {
+      if (recovered & SensorDefines::SENSOR_FAULT_SPS30) {
         sendCommand(CMD_GET_SPS30_INFO);
       }
-      if (recovered & SENSOR_FAULT_SCD30) {
+      if (recovered & SensorDefines::SENSOR_FAULT_SCD30) {
         sendCommand(CMD_GET_SCD30_INFO);
       }
       if (first_time_flag == 0) {

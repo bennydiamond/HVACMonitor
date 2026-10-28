@@ -1,5 +1,7 @@
 #pragma once
 
+#include "SensorDefines.h"
+
 // --- Protocol Definitions ---
 #define CMD_GET_SENSORS        'S' // Request sensor data (changed from CMD_BROADCAST_SENSORS)
 #define RSP_SENSORS            's' // Response with sensor data
@@ -61,5 +63,5 @@ struct SGP41TestResult {
 
 const SPS30DeviceInfo& get_sps30_device_info();
 const SGP41TestResult& get_sgp41_test_result();
-bool query_sps30_info_blocking(uint32_t timeout_ms = 3000);
-bool run_sgp41_test_blocking(uint32_t timeout_ms = 4000);
+bool query_sps30_info_blocking(uint32_t timeout_ms = SensorDefines::SPS30_INFO_TIMEOUT_MS);
+bool run_sgp41_test_blocking(uint32_t timeout_ms = SensorDefines::SGP41_TEST_TIMEOUT_MS);

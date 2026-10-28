@@ -421,12 +421,12 @@ void track_sensor_read(uint8_t fault_bit, uint8_t &error_count, bool ok) {
 
 // One quick attempt per faulty sensor: an absent sensor NACKs right away
 void retry_faulty_sensors() {
-  if ((sensor_fault_mask & SENSOR_FAULT_SPS30) && init_sps30(1))
-    sensor_fault_mask &= ~SENSOR_FAULT_SPS30;
-  if ((sensor_fault_mask & SENSOR_FAULT_SCD30) && init_scd30())
-    sensor_fault_mask &= ~SENSOR_FAULT_SCD30;
-  if ((sensor_fault_mask & SENSOR_FAULT_SGP41) && init_sgp41(true))
-    sensor_fault_mask &= ~SENSOR_FAULT_SGP41;
+  if ((sensor_fault_mask & SensorDefines::SENSOR_FAULT_SPS30) && init_sps30(1))
+    sensor_fault_mask &= ~SensorDefines::SENSOR_FAULT_SPS30;
+  if ((sensor_fault_mask & SensorDefines::SENSOR_FAULT_SCD30) && init_scd30())
+    sensor_fault_mask &= ~SensorDefines::SENSOR_FAULT_SCD30;
+  if ((sensor_fault_mask & SensorDefines::SENSOR_FAULT_SGP41) && init_sgp41(true))
+    sensor_fault_mask &= ~SensorDefines::SENSOR_FAULT_SGP41;
 }
 
 volatile uint8_t urboot_reset_flags __attribute__((section(".noinit")));
@@ -439,15 +439,15 @@ void setup() {
   Serial.begin(SERIAL_BAUD_RATE);
 
   if (urboot_reset_flags & (1 << 3))
-    last_reset_cause = RESET_CAUSE_WATCHDOG;
+    last_reset_cause = SensorDefines::RESET_CAUSE_WATCHDOG;
   else if (urboot_reset_flags & (1 << 2))
-    last_reset_cause = RESET_CAUSE_BROWN_OUT;
+    last_reset_cause = SensorDefines::RESET_CAUSE_BROWN_OUT;
   else if (urboot_reset_flags & (1 << 1))
-    last_reset_cause = RESET_CAUSE_EXTERNAL;
+    last_reset_cause = SensorDefines::RESET_CAUSE_EXTERNAL;
   else if (urboot_reset_flags & (1 << 0))
-    last_reset_cause = RESET_CAUSE_POWER_ON;
+    last_reset_cause = SensorDefines::RESET_CAUSE_POWER_ON;
   else
-    last_reset_cause = RESET_CAUSE_UNKNOWN;
+    last_reset_cause = SensorDefines::RESET_CAUSE_UNKNOWN;
 
   pinMode(DEBUG_LED_PIN, OUTPUT);
   digitalWrite(DEBUG_LED_PIN, HIGH);
@@ -462,12 +462,12 @@ void setup() {
   // A sensor that fails to initialize is flagged and skipped, never waited on:
   // setup() must always reach loop() so the ESP32 link (and OTA) keeps working.
   if (!init_sps30(SPS30_PROBE_ATTEMPTS))
-    sensor_fault_mask |= SENSOR_FAULT_SPS30;
+    sensor_fault_mask |= SensorDefines::SENSOR_FAULT_SPS30;
   if (!init_scd30())
-    sensor_fault_mask |= SENSOR_FAULT_SCD30;
+    sensor_fault_mask |= SensorDefines::SENSOR_FAULT_SCD30;
   // SGP41 conditioning only runs on true cold boot (Power-On Reset)
-  if (!init_sgp41(last_reset_cause == RESET_CAUSE_POWER_ON))
-    sensor_fault_mask |= SENSOR_FAULT_SGP41;
+  if (!init_sgp41(last_reset_cause == SensorDefines::RESET_CAUSE_POWER_ON))
+    sensor_fault_mask |= SensorDefines::SENSOR_FAULT_SGP41;
 
   pinMode(LIQUID_LEVEL_SENSOR_PIN, INPUT_PULLUP);
 
@@ -565,7 +565,7 @@ void loop() {
   // Autonomous 1 Hz SGP41 conditioning (10 steps = exactly 10 seconds)
   // following cold boot or reconnect
   if (sgp41_conditioning_remaining > 0 && !in_command) {
-    if (sensor_fault_mask & SENSOR_FAULT_SGP41) {
+    if (sensor_fault_mask & SensorDefines::SENSOR_FAULT_SGP41) {
       sgp41_conditioning_remaining = 0;
     } else if (current_time - last_sgp41_conditioning_tick >=
                SGP41_CONDITIONING_PERIOD_MS) {
@@ -573,7 +573,7 @@ void loop() {
       Wire.setClock(I2C_FAST_SPEED);
       uint16_t dummy_voc = 0;
       uint16_t err = sgp41_sensor.executeConditioning(
-          SGP41_DEFAULT_RH_TICKS, SGP41_DEFAULT_TEMP_TICKS, dummy_voc);
+          SensorDefines::SGP41_DEFAULT_RH_TICKS, SensorDefines::SGP41_DEFAULT_TEMP_TICKS, dummy_voc);
       Wire.setClock(I2C_NORMAL_SPEED);
       if (err != 0) {
         send_error_response(E_SGP41_CONDITIONING_ERROR_1);
@@ -600,7 +600,7 @@ unsigned long read_all_sensors() {
 
   Wire.setClock(I2C_NORMAL_SPEED);
   // Faulty sensors are skipped: the ESP32 ignores their values
-  if (!(sensor_fault_mask & SENSOR_FAULT_SPS30)) {
+  if (!(sensor_fault_mask & SensorDefines::SENSOR_FAULT_SPS30)) {
     int16_t ret_sps_read = sps30_read_data_ready(&temp_uval);
     bool sps30_ok = (ret_sps_read == 0);
     if (ret_sps_read != 0) {
@@ -613,10 +613,10 @@ unsigned long read_all_sensors() {
         sps30_ok = false;
       }
     }
-    track_sensor_read(SENSOR_FAULT_SPS30, sps30_error_count, sps30_ok);
+    track_sensor_read(SensorDefines::SENSOR_FAULT_SPS30, sps30_error_count, sps30_ok);
   }
 
-  if (!(sensor_fault_mask & SENSOR_FAULT_SCD30)) {
+  if (!(sensor_fault_mask & SensorDefines::SENSOR_FAULT_SCD30)) {
     temp_val = scd30_sensor.getDataReady(temp_uval);
     bool scd30_ok = (temp_val == 0);
     if (temp_val != 0) {
@@ -633,7 +633,7 @@ unsigned long read_all_sensors() {
         last_scd30_update = millis();
       }
     }
-    track_sensor_read(SENSOR_FAULT_SCD30, scd30_error_count, scd30_ok);
+    track_sensor_read(SensorDefines::SENSOR_FAULT_SCD30, scd30_error_count, scd30_ok);
   }
 
   if (millis() - last_scd30_update > SCD30_INVALIDATE_TIMEOUT_MS) {
@@ -644,21 +644,21 @@ unsigned long read_all_sensors() {
 
   bool scd30_has_data =
       (last_scd30_update > 0 && !isnan(current_temp_c) && !isnan(current_humi));
-  bool scd30_warmup_expired = (millis() >= SCD30_WARMUP_TIMEOUT_MS);
+  bool scd30_warmup_expired = (millis() >= SensorDefines::SCD30_WARMUP_TIMEOUT_MS);
 
-  uint16_t rh = SGP41_DEFAULT_RH_TICKS;
-  uint16_t temp = SGP41_DEFAULT_TEMP_TICKS;
+  uint16_t rh = SensorDefines::SGP41_DEFAULT_RH_TICKS;
+  uint16_t temp = SensorDefines::SGP41_DEFAULT_TEMP_TICKS;
 
-  if (scd30_has_data && current_humi >= SCD30_HUMI_MIN_VALID_PCT &&
-      current_humi <= SCD30_HUMI_MAX_VALID_PCT) {
+  if (scd30_has_data && current_humi >= SensorDefines::SCD30_HUMI_MIN_VALID_PCT &&
+      current_humi <= SensorDefines::SCD30_HUMI_MAX_VALID_PCT) {
     rh = static_cast<uint16_t>(current_humi * 65535.0f / 100.0f);
   }
-  if (scd30_has_data && current_temp_c >= SCD30_TEMP_MIN_VALID_C &&
-      current_temp_c <= SCD30_TEMP_MAX_VALID_C) {
+  if (scd30_has_data && current_temp_c >= SensorDefines::SCD30_TEMP_MIN_VALID_C &&
+      current_temp_c <= SensorDefines::SCD30_TEMP_MAX_VALID_C) {
     temp = static_cast<uint16_t>((current_temp_c + 45.0f) * 65535.0f / 175.0f);
   }
 
-  if (sensor_fault_mask & SENSOR_FAULT_SGP41) {
+  if (sensor_fault_mask & SensorDefines::SENSOR_FAULT_SGP41) {
     current_voc_raw = 0;
     current_nox_raw = 0;
     checkAndReportI2cTimeout();
@@ -671,12 +671,12 @@ unsigned long read_all_sensors() {
   } else {
     Wire.setClock(I2C_FAST_SPEED);
     temp_uval = sgp41_sensor.measureRawSignals(rh, temp, current_voc_raw,
-                                               current_nox_raw);
+                                                current_nox_raw);
     if (temp_uval != 0) {
       send_error_response(E_SGP41_MEASUREMENT_ERROR_1);
     }
     Wire.setClock(I2C_NORMAL_SPEED);
-    track_sensor_read(SENSOR_FAULT_SGP41, sgp41_error_count, temp_uval == 0);
+    track_sensor_read(SensorDefines::SENSOR_FAULT_SGP41, sgp41_error_count, temp_uval == 0);
 
     if (temp_uval != 0 || (!scd30_has_data && !scd30_warmup_expired)) {
       current_voc_raw = 0;
@@ -712,7 +712,7 @@ void send_data_packet(unsigned long timestamp) {
 
   char sgp41_str[16];
   if (sgp41_conditioning_remaining > 0 &&
-      !(sensor_fault_mask & SENSOR_FAULT_SGP41)) {
+      !(sensor_fault_mask & SensorDefines::SENSOR_FAULT_SGP41)) {
     strcpy_P(sgp41_str, PSTR("c,c"));
   } else {
     snprintf_P(sgp41_str, sizeof(sgp41_str), PSTR("%u,%u"), current_voc_raw,
@@ -985,7 +985,7 @@ void process_command(const char *buffer) {
     if (data_len > 1) {
       uint_val = atoi(&buffer[1]);
     }
-    if (isValidForceCal(uint_val)) {
+    if (SensorDefines::isValidForceCal(uint_val)) {
       Wire.setClock(I2C_NORMAL_SPEED);
       int_val = scd30_sensor.forceRecalibration(uint_val);
       uint_val2 = scd30_sensor.getForceRecalibrationStatus(uint_val);
