@@ -34,11 +34,11 @@ void SensorStackStatusManager::begin(UITask* ui, HomeAssistantManager* ha) {
 
 const char* SensorStackStatusManager::resetCauseToString(uint8_t code) {
     switch (code) {
-        case 1: return "Power-On";
-        case 2: return "External";
-        case 3: return "Brown-Out";
-        case 4: return "Watchdog";
-        case 0:
+        case RESET_CAUSE_POWER_ON:  return "Power-On";
+        case RESET_CAUSE_EXTERNAL:  return "External";
+        case RESET_CAUSE_BROWN_OUT: return "Brown-Out";
+        case RESET_CAUSE_WATCHDOG:  return "Watchdog";
+        case RESET_CAUSE_UNKNOWN:
         default: return "Unknown";
     }
 }

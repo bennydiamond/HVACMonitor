@@ -47,7 +47,8 @@ SensorDataProcessor::SensorDataProcessor()
       _live_fan_amps(0.0f),
       _live_fan_status(FAN_STATUS_OFF),
       _live_is_pressure_high(false),
-      _live_water_detected(false) {}
+      _live_water_detected(false),
+      _sgp41_was_conditioning(false) {}
 
 void SensorDataProcessor::begin(UITask* ui,
                                HomeAssistantManager* ha,
@@ -146,16 +147,29 @@ void SensorDataProcessor::processPacket(const NanoSensorPacket& pkt) {
     const float temp_c = scd30_ok ? pkt.getTemperatureC() : NAN;
     const float humi_pct = scd30_ok ? pkt.getHumidityPct() : NAN;
 
-    // 5. Gas Index Algorithms
+    // 5. Gas Index Algorithms & Conditioning Tracking
+    const bool sgp41_conditioning = pkt.isSgp41Conditioning();
+    if (sgp41_conditioning && !_sgp41_was_conditioning) {
+        _sgp41_was_conditioning = true;
+        logger.info("SGP41 VOC/NOx sensor entered conditioning phase");
+    } else if (!sgp41_conditioning && _sgp41_was_conditioning) {
+        _sgp41_was_conditioning = false;
+        if (sgp41_ok) {
+            logger.info("SGP41 VOC/NOx sensor conditioning phase complete; normal measurement active");
+        } else {
+            logger.warning("SGP41 VOC/NOx sensor conditioning ended due to sensor fault");
+        }
+    }
+
     int32_t voc_index = 0;
     int32_t nox_index = 0;
-    if (sgp41_ok && isValidVocRaw(pkt.getVocRaw())) {
+    if (sgp41_ok && !sgp41_conditioning && isValidVocRaw(pkt.getVocRaw())) {
         voc_index = _voc_algorithm.process(pkt.getVocRaw());
         if (isValidGasIndex(voc_index)) {
             _voc_avg.add(voc_index);
         }
     }
-    if (sgp41_ok && isValidNoxRaw(pkt.getNoxRaw())) {
+    if (sgp41_ok && !sgp41_conditioning && isValidNoxRaw(pkt.getNoxRaw())) {
         nox_index = _nox_algorithm.process(pkt.getNoxRaw());
         if (isValidGasIndex(nox_index)) {
             _nox_avg.add(nox_index);

@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "SensorDefines.h"
 
 class NanoSensorPacket {
 public:
@@ -10,6 +11,8 @@ public:
 
     bool parse(char* payload);
     bool isValid() const { return _valid; }
+
+    bool isSgp41Conditioning() const { return _sgp41_conditioning; }
 
     unsigned long getTimestamp() const { return _timestamp; }
     uint16_t getPressureAdcRaw() const { return _pressure_adc_raw; }
@@ -48,4 +51,5 @@ private:
     float _pump_amps;
     bool _water_detected;
     uint16_t _co_adc_raw;
+    bool _sgp41_conditioning;
 };

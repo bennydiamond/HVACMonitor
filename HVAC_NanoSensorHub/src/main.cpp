@@ -24,7 +24,7 @@
 // ======================================================================
 
 // --- Firmware & Protocol ---
-const char NANO_FIRMWARE_VERSION[] PROGMEM = "1.4.6";
+const char NANO_FIRMWARE_VERSION[] PROGMEM = "1.4.7";
 #define CMD_GET_SENSORS 'S' // Request sensor data
 #define RSP_SENSORS 's'     // Response with sensor data
 #define CMD_GET_VERSION 'V'
@@ -92,7 +92,7 @@ const char E_SGP41_MEASUREMENT_ERROR_1[] PROGMEM =
 
 // --- PROGMEM Format Strings ---
 const char FMT_DATA_PACKET[] PROGMEM =
-    "%c%lu,%u,%u,%ld,%ld,%ld,%u,%u,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%u,%u";
+    "%c%lu,%u,%u,%ld,%ld,%ld,%s,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%u,%u";
 const char FMT_GET_VERSION[] PROGMEM = "%c%s";
 const char FMT_GET_HEALTH[] PROGMEM = "%c%d,%d,%d,%d";
 const char FMT_SPS30_FW[] PROGMEM = "%d,%u,%u,";
@@ -180,8 +180,15 @@ struct sps30_measurement current_sps_data = {0};
 unsigned long last_scd30_update = 0;
 SensirionI2cScd30 scd30_sensor;
 SensirionI2CSgp41 sgp41_sensor;
+// SGP41 conditioning heats the NOx pixel hotplate to prepare it from cold boot.
+// Sensirion datasheet specifies: "It is recommended to execute the conditioning
+// for 10 s, but 10 s must not be exceeded to avoid damage to the sensing
+// material." Autonomous conditioning runs at 1 Hz in loop() for 10 steps =
+// exactly 10 seconds.
 const uint8_t SGP41_CONDITIONING_STEPS = 10;
-uint8_t conditioning_s = SGP41_CONDITIONING_STEPS;
+const unsigned long SGP41_CONDITIONING_PERIOD_MS = 1000;
+uint8_t sgp41_conditioning_remaining = 0;
+unsigned long last_sgp41_conditioning_tick = 0;
 uint8_t sensor_fault_mask = 0; // SENSOR_FAULT_* bits
 // Consecutive failed reads per sensor (see track_sensor_read())
 uint8_t sps30_error_count = 0;
@@ -386,15 +393,17 @@ bool init_scd30() {
   return scd30_sensor.startPeriodicMeasurement(0) == 0;
 }
 
-bool init_sgp41() {
+bool init_sgp41(bool force_conditioning = false) {
   Wire.setClock(I2C_FAST_SPEED);
   sgp41_sensor.begin(Wire);
   // begin() does not talk to the sensor: read its serial number to check it
   uint16_t serial[3];
   bool ok = (sgp41_sensor.getSerialNumber(serial) == 0);
   Wire.setClock(I2C_NORMAL_SPEED);
-  if (ok)
-    conditioning_s = SGP41_CONDITIONING_STEPS; // a (re)connected SGP41 needs it
+  if (ok && force_conditioning) {
+    sgp41_conditioning_remaining = SGP41_CONDITIONING_STEPS;
+    last_sgp41_conditioning_tick = 0;
+  }
   return ok;
 }
 
@@ -416,7 +425,7 @@ void retry_faulty_sensors() {
     sensor_fault_mask &= ~SENSOR_FAULT_SPS30;
   if ((sensor_fault_mask & SENSOR_FAULT_SCD30) && init_scd30())
     sensor_fault_mask &= ~SENSOR_FAULT_SCD30;
-  if ((sensor_fault_mask & SENSOR_FAULT_SGP41) && init_sgp41())
+  if ((sensor_fault_mask & SENSOR_FAULT_SGP41) && init_sgp41(true))
     sensor_fault_mask &= ~SENSOR_FAULT_SGP41;
 }
 
@@ -430,15 +439,15 @@ void setup() {
   Serial.begin(SERIAL_BAUD_RATE);
 
   if (urboot_reset_flags & (1 << 3))
-    last_reset_cause = 4; // Watchdog
+    last_reset_cause = RESET_CAUSE_WATCHDOG;
   else if (urboot_reset_flags & (1 << 2))
-    last_reset_cause = 3; // Brown-Out
+    last_reset_cause = RESET_CAUSE_BROWN_OUT;
   else if (urboot_reset_flags & (1 << 1))
-    last_reset_cause = 2; // External
+    last_reset_cause = RESET_CAUSE_EXTERNAL;
   else if (urboot_reset_flags & (1 << 0))
-    last_reset_cause = 1; // Power-On
+    last_reset_cause = RESET_CAUSE_POWER_ON;
   else
-    last_reset_cause = 0; // Unknown
+    last_reset_cause = RESET_CAUSE_UNKNOWN;
 
   pinMode(DEBUG_LED_PIN, OUTPUT);
   digitalWrite(DEBUG_LED_PIN, HIGH);
@@ -456,7 +465,8 @@ void setup() {
     sensor_fault_mask |= SENSOR_FAULT_SPS30;
   if (!init_scd30())
     sensor_fault_mask |= SENSOR_FAULT_SCD30;
-  if (!init_sgp41())
+  // SGP41 conditioning only runs on true cold boot (Power-On Reset)
+  if (!init_sgp41(last_reset_cause == RESET_CAUSE_POWER_ON))
     sensor_fault_mask |= SENSOR_FAULT_SGP41;
 
   pinMode(LIQUID_LEVEL_SENSOR_PIN, INPUT_PULLUP);
@@ -551,6 +561,26 @@ void loop() {
   if (!in_command) {
     read_single_adc_channel();
   }
+
+  // Autonomous 1 Hz SGP41 conditioning (10 steps = exactly 10 seconds)
+  // following cold boot or reconnect
+  if (sgp41_conditioning_remaining > 0 && !in_command) {
+    if (sensor_fault_mask & SENSOR_FAULT_SGP41) {
+      sgp41_conditioning_remaining = 0;
+    } else if (current_time - last_sgp41_conditioning_tick >=
+               SGP41_CONDITIONING_PERIOD_MS) {
+      last_sgp41_conditioning_tick = current_time;
+      Wire.setClock(I2C_FAST_SPEED);
+      uint16_t dummy_voc = 0;
+      uint16_t err = sgp41_sensor.executeConditioning(
+          SGP41_DEFAULT_RH_TICKS, SGP41_DEFAULT_TEMP_TICKS, dummy_voc);
+      Wire.setClock(I2C_NORMAL_SPEED);
+      if (err != 0) {
+        send_error_response(E_SGP41_CONDITIONING_ERROR_1);
+      }
+      sgp41_conditioning_remaining--;
+    }
+  }
 }
 
 // ======================================================================
@@ -635,28 +665,23 @@ unsigned long read_all_sensors() {
     return millis();
   }
 
-  if (conditioning_s > 0) {
-    Wire.setClock(I2C_FAST_SPEED);
-    temp_uval = sgp41_sensor.executeConditioning(rh, temp, current_voc_raw);
-    if (temp_uval != 0) {
-      send_error_response(E_SGP41_CONDITIONING_ERROR_1);
-    }
-    conditioning_s--;
+  if (sgp41_conditioning_remaining > 0) {
+    current_voc_raw = 0;
     current_nox_raw = 0;
   } else {
+    Wire.setClock(I2C_FAST_SPEED);
     temp_uval = sgp41_sensor.measureRawSignals(rh, temp, current_voc_raw,
                                                current_nox_raw);
     if (temp_uval != 0) {
       send_error_response(E_SGP41_MEASUREMENT_ERROR_1);
     }
-  }
-  Wire.setClock(I2C_NORMAL_SPEED);
-  track_sensor_read(SENSOR_FAULT_SGP41, sgp41_error_count, temp_uval == 0);
+    Wire.setClock(I2C_NORMAL_SPEED);
+    track_sensor_read(SENSOR_FAULT_SGP41, sgp41_error_count, temp_uval == 0);
 
-  if (temp_uval != 0 || conditioning_s > 0 ||
-      (!scd30_has_data && !scd30_warmup_expired)) {
-    current_voc_raw = 0;
-    current_nox_raw = 0;
+    if (temp_uval != 0 || (!scd30_has_data && !scd30_warmup_expired)) {
+      current_voc_raw = 0;
+      current_nox_raw = 0;
+    }
   }
 
   checkAndReportI2cTimeout();
@@ -685,12 +710,21 @@ void send_data_packet(unsigned long timestamp) {
   long pm4_val = (long)(current_sps_data.mc_4p0 * 10);
   long pm10_val = (long)(current_sps_data.mc_10p0 * 10);
 
+  char sgp41_str[16];
+  if (sgp41_conditioning_remaining > 0 &&
+      !(sensor_fault_mask & SENSOR_FAULT_SGP41)) {
+    strcpy_P(sgp41_str, PSTR("c,c"));
+  } else {
+    snprintf_P(sgp41_str, sizeof(sgp41_str), PSTR("%u,%u"), current_voc_raw,
+               current_nox_raw);
+  }
+
   snprintf_P(tx_command_buffer, sizeof(tx_command_buffer), FMT_DATA_PACKET,
              RSP_SENSORS, timestamp, pressure_adc_raw, pulse_count, t_val,
-             h_val, co2_val, current_voc_raw, current_nox_raw, amps_val,
-             pm1_val, pm25_val, pm4_val, pm10_val,
-             (long)(compressor_amps * 100), (long)(geothermal_pump_amps * 100),
-             liquid_level_sensor_state, co_adc_raw);
+             h_val, co2_val, sgp41_str, amps_val, pm1_val, pm25_val, pm4_val,
+             pm10_val, (long)(compressor_amps * 100),
+             (long)(geothermal_pump_amps * 100), liquid_level_sensor_state,
+             co_adc_raw);
 
   const uint8_t checksum = calculate_checksum(tx_command_buffer);
 

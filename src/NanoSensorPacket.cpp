@@ -20,7 +20,8 @@ NanoSensorPacket::NanoSensorPacket()
       _compressor_amps(0.0f),
       _pump_amps(0.0f),
       _water_detected(false),
-      _co_adc_raw(0) {}
+      _co_adc_raw(0),
+      _sgp41_conditioning(false) {}
 
 NanoSensorPacket::NanoSensorPacket(char* payload)
     : NanoSensorPacket() {
@@ -56,11 +57,21 @@ bool NanoSensorPacket::parse(char* payload) {
 
     token = strtok(NULL, ",");
     if (!token) return false;
-    _voc_raw = static_cast<uint16_t>(strtoul(token, nullptr, 10));
+    if (token[0] == 'c') {
+        _sgp41_conditioning = true;
+        _voc_raw = 0;
+    } else {
+        _voc_raw = static_cast<uint16_t>(strtoul(token, nullptr, 10));
+    }
 
     token = strtok(NULL, ",");
     if (!token) return false;
-    _nox_raw = static_cast<uint16_t>(strtoul(token, nullptr, 10));
+    if (token[0] == 'c') {
+        _sgp41_conditioning = true;
+        _nox_raw = 0;
+    } else {
+        _nox_raw = static_cast<uint16_t>(strtoul(token, nullptr, 10));
+    }
 
     token = strtok(NULL, ",");
     if (!token) return false;
