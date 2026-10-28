@@ -1097,6 +1097,10 @@ void HomeAssistantManager::onGetSgp41SelftestCommand(HAButton* sender) {
 
 void HomeAssistantManager::onLogLevelCommand(int8_t index, HASelect* sender) {
     if (!_instance) return;
+    if (index < 0 || index > 3) {
+        logger.warningf("Rejected invalid log level from Home Assistant: %d (allowed 0-3)", index);
+        return;
+    }
     AppLogLevel level = static_cast<AppLogLevel>(index);
     {
         ConfigManagerAccessor config;
@@ -1145,7 +1149,12 @@ void HomeAssistantManager::updateScd30AutoCalState(bool state) {
 }
 
 void HomeAssistantManager::onScd30ForceCalCommand(HANumeric number, HANumber* sender) {
-    uint16_t ppm_value = (uint16_t)number.toUInt16();
+    int32_t ppm_raw = number.toInt32();
+    if (ppm_raw < 400 || ppm_raw > 2000) {
+        logger.warningf("Rejected out-of-range SCD30 Force Cal from Home Assistant: %d ppm (allowed 400-2000)", ppm_raw);
+        return;
+    }
+    uint16_t ppm_value = static_cast<uint16_t>(ppm_raw);
     logger.infof("SCD30 Force Calibration to %u ppm command from Home Assistant.", ppm_value);
     
     char cmd_with_param[8];
@@ -1167,6 +1176,10 @@ void HomeAssistantManager::updateBacklightState(bool state, uint8_t brightness) 
 void HomeAssistantManager::onInactivityTimerDelayCommand(HANumeric number, HANumber* sender) {
     if (_instance) {
         int delay = number.toInt32();
+        if (delay < 10 || delay > 120) {
+            logger.warningf("Rejected out-of-range inactivity timer delay from Home Assistant: %d (allowed 10-120)", delay);
+            return;
+        }
         ConfigManagerAccessor config;
         config->setInactivityTimerDelay(delay);
         logger.infof("Inactivity timer delay updated to %d seconds via Home Assistant", delay);

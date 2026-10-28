@@ -9,6 +9,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Ar
 .live-pill{display:flex;align-items:center;gap:8px;background:var(--card-sub);padding:6px 12px;border-radius:20px;border:1px solid var(--border)}
 .live-dot{width:8px;height:8px;background-color:var(--good);border-radius:50%;box-shadow:0 0 8px var(--good);animation:pulse 1.8s infinite}
 .live-dot.paused{background-color:var(--text-muted);box-shadow:none;animation:none}
+.live-dot.error{background-color:var(--danger);box-shadow:0 0 8px var(--danger);animation:pulse 1s infinite}
 @keyframes pulse{0%{transform:scale(.95);opacity:.8}50%{transform:scale(1.3);opacity:1}100%{transform:scale(.95);opacity:.8}}
 .summary-bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px}
 .summary-item{background:var(--card);padding:10px 14px;border-radius:8px;border:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;font-size:13px}
@@ -55,7 +56,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Ar
 .config-section{background:var(--card);padding:20px;border-radius:8px;border:1px solid var(--border);margin-bottom:16px}
 .config-section h2{color:var(--accent);font-size:1.1rem;margin-top:0;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:6px}
 .config-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:12px;background:var(--card-sub);padding:10px 14px;border-radius:6px;border:1px solid var(--border)}
-.config-label{flex:1;font-size:13px;color:var(--text)}
+.config-label{flex:1;font-size:13px;color:var(--text);cursor:help}
+.range-hint{display:inline-block;margin-left:8px;padding:2px 7px;font-size:11px;font-weight:600;border-radius:4px;background:rgba(56,189,248,.12);color:var(--accent);border:1px solid rgba(56,189,248,.3);opacity:0;visibility:hidden;transition:opacity .2s ease,visibility .2s ease;pointer-events:none;white-space:nowrap}
+.config-row:hover .range-hint,.config-row:focus-within .range-hint,.config-row.touch-active .range-hint{opacity:1;visibility:visible}
 .config-input{width:150px}
 .config-input-wide{width:240px;max-width:100%}
 .password-wrap{display:flex;position:relative;width:100%;align-items:center}
