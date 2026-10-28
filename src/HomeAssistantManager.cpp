@@ -84,6 +84,9 @@ namespace {
 
     // WiFi
     constexpr int8_t WIFI_RSSI_DELTA_DBM = 5;
+
+    // MQTT: TCP connect timeout to the broker (default 3 s)
+    constexpr uint32_t MQTT_CONNECT_TIMEOUT_MS = 2000;
 }
 
 HomeAssistantManager* HomeAssistantManager::_instance = nullptr;
@@ -546,6 +549,11 @@ void HomeAssistantManager::init(const char* firmware_version) {
     // Configure MQTT client for better stability
     //_mqtt.setBufferSize(1024);
     //_mqtt.setKeepAlive(30);
+
+    // Connecting blocks the main loop: with a broker host that doesn't answer, each
+    // attempt (every 10 s) waits for the TCP connect, then for the broker's reply
+    // (MQTT_SOCKET_TIMEOUT, set in platformio.ini). Both are short on the LAN.
+    _wifiClient.setConnectionTimeout(MQTT_CONNECT_TIMEOUT_MS);
     
     // Safely set up MQTT connection with fallback
     const char* mqttHost = config->getMqttHost();
