@@ -14,9 +14,6 @@
 #define SENSOR_EXPIRE_TIMEOUT_S 300
 #define RANDOM_SUFFIX ""
 #define FORCE_PUBLISH_INTERVAL_MS 120000
-// A source silent for this long is stale: its values are no longer published, so
-// Home Assistant marks them unavailable SENSOR_EXPIRE_TIMEOUT_S after the last one
-#define SENSOR_STALE_TIMEOUT_MS 60000
 
 // Publishing intervals and deadbands
 namespace {
@@ -643,12 +640,8 @@ void HomeAssistantManager::taskLoop() {
         _hasPublishedLogLevel = true;
       }
 
-      auto isFresh = [currentTime](uint32_t updated_ms) {
-        return updated_ms != 0 && currentTime - updated_ms < SENSOR_STALE_TIMEOUT_MS;
-      };
-
       // 2. Publish sensor telemetry
-      if (isFresh(sensorState.nano_updated_ms)) {
+      {
         // Read once, so the config lock isn't held while publishing
         float fanOffThreshold, compressorOffThreshold, pumpOffThreshold;
         {
@@ -678,7 +671,7 @@ void HomeAssistantManager::taskLoop() {
       }
 
       // 3. Publish ZMOD
-      if (isFresh(sensorState.zmod_updated_ms)) {
+      {
         publishO3(sensorState.o3_conc_ug_per_m3, currentTime);
         publishNO2(sensorState.no2_conc_ug_per_m3, currentTime);
         publishFastAQI(sensorState.fast_aqi, currentTime);
@@ -686,19 +679,19 @@ void HomeAssistantManager::taskLoop() {
       }
 
 #ifdef BMP280_ENABLED
-      if (isFresh(sensorState.bmp_updated_ms) && !isnan(sensorState.bmp_pressure_pa)) {
+      if (!isnan(sensorState.bmp_pressure_pa)) {
         publishBMP280Pressure(sensorState.bmp_pressure_pa, currentTime);
       }
-      if (isFresh(sensorState.bmp_updated_ms) && !isnan(sensorState.bmp_temp_c)) {
+      if (!isnan(sensorState.bmp_temp_c)) {
         publishBMP280Temperature(sensorState.bmp_temp_c, currentTime);
       }
 #endif
 
 #ifdef AHT20_ENABLED
-      if (isFresh(sensorState.aht_updated_ms) && !isnan(sensorState.aht_temp_c)) {
+      if (!isnan(sensorState.aht_temp_c)) {
         publishAHT20Temperature(sensorState.aht_temp_c, currentTime);
       }
-      if (isFresh(sensorState.aht_updated_ms) && !isnan(sensorState.aht_humi_pct)) {
+      if (!isnan(sensorState.aht_humi_pct)) {
         publishAHT20Humidity(sensorState.aht_humi_pct, currentTime);
       }
 #endif
