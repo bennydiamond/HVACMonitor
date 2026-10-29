@@ -7,7 +7,6 @@
 #include "ConfigManager.h"
 #include "SensorDefines.h"
 #include "Logger.h"
-#include "ILogPublisher.h"
 #include "SensorDataAccessor.h"
 #include "SystemStatusAccessor.h"
 #include "utils/HADictionary.h"
@@ -23,10 +22,8 @@ public:
     }
 };
 
-class HomeAssistantManager : public ILogPublisher {
+class HomeAssistantManager {
 public:
-    static constexpr const char* MQTT_LOG_TOPIC = "aha/" MQTT_DEVICE_ID "/log";
-
     HomeAssistantManager();
     ~HomeAssistantManager();
     
@@ -34,9 +31,7 @@ public:
 
     void init(const char* firmware_version);
 
-    // ILogPublisher interface implementation
-    void queueLogMessage(AppLogLevel level, const char* message) override;
-    bool isMqttConnected() override;
+    bool isMqttConnected();
 
     // Milliseconds since MqttTask last completed a pass (0 before it started)
     uint32_t msSinceMqttTaskHeartbeat() const {
@@ -45,18 +40,12 @@ public:
     }
 
 private:
-    struct LogQueueEntry {
-        AppLogLevel level;
-        char message[ILogPublisher::MAX_LOG_MESSAGE_LENGTH + 1];
-    };
-
-    // FreeRTOS Task and log queue
+    // FreeRTOS Task
     TaskHandle_t _taskHandle = nullptr;
     // millis() at the end of MqttTask's last pass. MqttTask is not on the task
     // watchdog: its network calls can legitimately block for longer than its
     // timeout (DNS lookup, writes on a weak link), which must not reboot the device
     std::atomic<uint32_t> _taskHeartbeatMs{0};
-    QueueHandle_t _logQueue = nullptr;
 
     char _firmwareVersion[32] = {0};
     char _configurationUrl[56] = {0};
@@ -84,7 +73,6 @@ private:
     static void taskFunction(void* pvParameters);
     void initMqtt();
     void taskLoop();
-    void drainLogQueue();
     void resetAllPublishTimes();
 
     // Entities grouped by what can make their readings unknown in Home Assistant

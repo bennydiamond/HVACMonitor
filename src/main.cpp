@@ -212,7 +212,6 @@ void setup() {
     log_level = config->getLogLevel();
     inactivity_delay = static_cast<int>(config->getInactivityTimerDelay());
   }
-  logger.init(&haManager);
   logger.setLogLevel(log_level);
   {
     // Shared copies of the saved settings, published by MqttTask and shown by the UI

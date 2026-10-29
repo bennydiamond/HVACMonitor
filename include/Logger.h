@@ -3,17 +3,22 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
-#include "ILogPublisher.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/message_buffer.h"
 
 #include <atomic>
 
+enum AppLogLevel {
+    APP_LOG_DEBUG,
+    APP_LOG_INFO,
+    APP_LOG_WARNING,
+    APP_LOG_ERROR
+};
+
 class Logger {
 public:
     Logger();
-    void init(ILogPublisher* publisher = nullptr);
     void loop();
 
     void setLogLevel(AppLogLevel level);
@@ -57,7 +62,6 @@ struct LogMessage {
 #pragma pack(pop)
 
     MessageBufferHandle_t _logStreamBufferHandle = nullptr;
-    ILogPublisher* _logPublisher = nullptr;
 
     // Syslog over TCP (main loop only). A message leaves the queue only into _line, and
     // _line is only released once fully written to an established connection: while

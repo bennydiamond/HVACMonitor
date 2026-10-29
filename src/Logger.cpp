@@ -15,10 +15,6 @@ Logger::Logger() {
     _logStreamBufferHandle = xMessageBufferCreate(LOG_BUFFER_SIZE_BYTES);
 }
 
-void Logger::init(ILogPublisher* publisher) {
-    _logPublisher = publisher;
-}
-
 // Syslog severities (RFC 5424); facility 0 (kern), as the device always used
 static uint8_t syslogSeverity(AppLogLevel level) {
     switch (level) {
@@ -223,10 +219,6 @@ void Logger::loop() {
             }
 
             receivedEntry.message[receivedEntry.msgLen] = '\0';
-
-            if (_logPublisher != nullptr && _logPublisher->isMqttConnected()) {
-                _logPublisher->queueLogMessage(receivedEntry.level, receivedEntry.message);
-            }
 
             _formatLine(receivedEntry.level, receivedEntry.message);
         }

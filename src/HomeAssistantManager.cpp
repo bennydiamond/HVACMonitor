@@ -162,17 +162,12 @@ HomeAssistantManager::HomeAssistantManager()
   _instance = this;
   _configurationUrl[0] = '\0';
   _firmwareVersion[0] = '\0';
-  _logQueue = nullptr;
 }
 
 HomeAssistantManager::~HomeAssistantManager() {
   if (_taskHandle) {
     vTaskDelete(_taskHandle);
     _taskHandle = nullptr;
-  }
-  if (_logQueue) {
-    vQueueDelete(_logQueue);
-    _logQueue = nullptr;
   }
   if (_instance == this) {
     _instance = nullptr;
@@ -183,10 +178,6 @@ void HomeAssistantManager::init(const char *firmware_version) {
   if (firmware_version != nullptr) {
     strncpy(_firmwareVersion, firmware_version, sizeof(_firmwareVersion) - 1);
     _firmwareVersion[sizeof(_firmwareVersion) - 1] = '\0';
-  }
-
-  if (_logQueue == nullptr) {
-    _logQueue = xQueueCreate(8, sizeof(LogQueueEntry));
   }
 
   if (_taskHandle == nullptr) {
@@ -587,8 +578,6 @@ void HomeAssistantManager::taskLoop() {
     }
 
     if (connected) {
-      drainLogQueue();
-
       SystemStatusData sysState;
       {
         SystemStatusAccessor status;
@@ -822,47 +811,6 @@ void HomeAssistantManager::taskLoop() {
     _taskHeartbeatMs.store(millis() | 1); // Never 0 once running
     vTaskDelay(pdMS_TO_TICKS(50));
   }
-}
-
-void HomeAssistantManager::drainLogQueue() {
-  if (!_logQueue || !_mqtt.isConnected())
-    return;
-  LogQueueEntry entry;
-  int count = 0;
-  while (count < 5 && xQueueReceive(_logQueue, &entry, 0) == pdTRUE) {
-    char payload[ILogPublisher::MAX_LOG_MESSAGE_LENGTH + 128];
-    const char *levelStr = "INFO";
-    switch (entry.level) {
-    case APP_LOG_DEBUG:
-      levelStr = "DEBUG";
-      break;
-    case APP_LOG_INFO:
-      levelStr = "INFO";
-      break;
-    case APP_LOG_WARNING:
-      levelStr = "WARNING";
-      break;
-    case APP_LOG_ERROR:
-      levelStr = "ERROR";
-      break;
-    }
-    snprintf(payload, sizeof(payload),
-             "{\"level\": \"%s\", \"message\": \"%s\"}", levelStr,
-             entry.message);
-    _mqtt.publish(MQTT_LOG_TOPIC, payload);
-    count++;
-  }
-}
-
-void HomeAssistantManager::queueLogMessage(AppLogLevel level,
-                                           const char *message) {
-  if (!_logQueue || !message)
-    return;
-  LogQueueEntry entry;
-  entry.level = level;
-  strncpy(entry.message, message, sizeof(entry.message) - 1);
-  entry.message[sizeof(entry.message) - 1] = '\0';
-  xQueueSend(_logQueue, &entry, 0);
 }
 
 void HomeAssistantManager::resetAllPublishTimes() {
