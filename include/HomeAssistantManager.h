@@ -146,6 +146,8 @@ private:
     char _lastPublishedWifiSSID[SystemStatusDefaults::WIFI_SSID_BUFFER_SIZE] = {0};
     char _lastPublishedWifiIP[SystemStatusDefaults::WIFI_IP_BUFFER_SIZE] = {0};
     String _lastPublishedSensorStackVersion;
+    // Empty: not published since the last (re)connect
+    char _lastPublishedResetCause[SystemStatusDefaults::NANO_RESET_CAUSE_BUFFER_SIZE] = {0};
     float _lastPublishedPm1_0 = UNPUBLISHED_FLOAT;
     float _lastPublishedPm2_5 = UNPUBLISHED_FLOAT;
     float _lastPublishedPm4_0 = UNPUBLISHED_FLOAT;

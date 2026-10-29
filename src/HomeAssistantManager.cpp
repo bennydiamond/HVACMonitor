@@ -739,8 +739,12 @@ void HomeAssistantManager::taskLoop() {
           _lastSensorStackFreeRamPublishTime = currentTime;
         }
       }
-      if (sysState.nanoResetCause[0] != '\0') {
+      // HASensor::setValue(const char*) publishes every time: only on change
+      if (sysState.nanoResetCause[0] != '\0' &&
+          strcmp(sysState.nanoResetCause, _lastPublishedResetCause) != 0) {
         _sensorStackResetCauseSensor.setValue(sysState.nanoResetCause);
+        snprintf(_lastPublishedResetCause, sizeof(_lastPublishedResetCause),
+                 "%s", sysState.nanoResetCause);
       }
 
       // 6. Publish ESP32 health
@@ -841,6 +845,7 @@ void HomeAssistantManager::resetAllPublishTimes() {
   _lastGeothermalPumpAmpsPublishTime = 0;
   _lastLiquidLevelPublishTime = 0;
   _lastInactivityTimerDelayPublishTime = 0;
+  _lastPublishedResetCause[0] = '\0';
   _geigerUnavailablePublished = false;
   _vocUnavailablePublished = false;
   _noxUnavailablePublished = false;
