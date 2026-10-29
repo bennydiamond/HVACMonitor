@@ -149,6 +149,7 @@ private:
     char _lastPublishedWifiIP[SystemStatusDefaults::WIFI_IP_BUFFER_SIZE] = {0};
     String _lastPublishedSensorStackVersion;
     // Empty: not published since the last (re)connect
+    uint32_t _lastSeenNanoUpdateMs = 0;
     char _lastPublishedResetCause[SystemStatusDefaults::NANO_RESET_CAUSE_BUFFER_SIZE] = {0};
     float _lastPublishedPm1_0 = UNPUBLISHED_FLOAT;
     float _lastPublishedPm2_5 = UNPUBLISHED_FLOAT;
@@ -203,7 +204,8 @@ private:
     void publishHumidity(float humi, unsigned long currentTime);
     void publishFanCurrent(float amps, float off_threshold, unsigned long currentTime);
     void publishCO2(float co2, unsigned long currentTime);
-    void publishCO(float co_ppm, unsigned long currentTime);
+    // new_packet: co_ppm comes from a packet not seen before
+    void publishCO(float co_ppm, bool new_packet, unsigned long currentTime);
     void publishVOC(int32_t voc_index, unsigned long currentTime);
     void publishNOx(int32_t nox_index, unsigned long currentTime);
     void publishPM(float pm1, float pm25, float pm4, float pm10, unsigned long currentTime);

@@ -52,6 +52,8 @@ constexpr float PUMP_AMPS_STEADY_DELTA_A = 0.15f;
 constexpr float CO2_FAST_DELTA_PPM = 25.0f;
 constexpr float CO2_STEADY_DELTA_PPM = 10.0f;
 constexpr float CO_STEADY_DELTA_PPM = 1.0f;
+// Above this, CO is published with every SensorStack packet (safety alert path)
+constexpr float CO_ALERT_THRESHOLD_PPM = 2.0f;
 constexpr int32_t VOC_FAST_DELTA = 15;
 constexpr int32_t VOC_STEADY_DELTA = 5;
 constexpr int32_t NOX_FAST_DELTA = 5;
@@ -662,7 +664,9 @@ void HomeAssistantManager::taskLoop() {
         publishHumidity(sensorState.humi, currentTime);
         publishFanCurrent(sensorState.fan_amps, fanOffThreshold, currentTime);
         publishCO2(sensorState.co2, currentTime);
-        publishCO(sensorState.co_ppm, currentTime);
+        const bool newNanoPacket = sensorState.nano_updated_ms != _lastSeenNanoUpdateMs;
+        _lastSeenNanoUpdateMs = sensorState.nano_updated_ms;
+        publishCO(sensorState.co_ppm, newNanoPacket, currentTime);
         publishVOC(sensorState.voc_index, currentTime);
         publishNOx(sensorState.nox_index, currentTime);
         publishPM(sensorState.pm1, sensorState.pm25, sensorState.pm4, sensorState.pm10, currentTime);
@@ -1116,14 +1120,19 @@ void HomeAssistantManager::publishCO2(float co2, unsigned long currentTime) {
   }
 }
 
-void HomeAssistantManager::publishCO(float co_ppm, unsigned long currentTime) {
+void HomeAssistantManager::publishCO(float co_ppm, bool new_packet,
+                                     unsigned long currentTime) {
   if (isnan(co_ppm) || co_ppm < 0.0f)
     return;
   bool is_first = (_lastCoPublishTime == 0);
+  // Every packet while CO is above the alert threshold, and once more when it
+  // drops back below, so Home Assistant sees the return to normal
+  bool co_alert = new_packet && (co_ppm > CO_ALERT_THRESHOLD_PPM ||
+                                 _lastPublishedCo > CO_ALERT_THRESHOLD_PPM);
   bool co_steady =
       (currentTime - _lastCoPublishTime >= STEADY_INTERVAL_60S_MS &&
        fabs(co_ppm - _lastPublishedCo) >= CO_STEADY_DELTA_PPM);
-  if (is_first || co_steady ||
+  if (is_first || co_alert || co_steady ||
       (currentTime - _lastCoPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
     _co_sensor.setValue(static_cast<uint16_t>(co_ppm), true);
     _lastPublishedCo = co_ppm;
