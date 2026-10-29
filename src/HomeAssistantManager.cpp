@@ -597,17 +597,20 @@ void HomeAssistantManager::taskLoop() {
       // 1. Process control/polled values from other tasks to HA
       // A new reply from the Nano is published with force, so Home Assistant's
       // control reverts even when a refused request left the value unchanged
+      // Nothing is published before the SensorStack reported the actual settings
       bool autoCalReply = sysState.scd30AutoCalSeq != _lastSeenScd30AutoCalSeq;
-      if (!_hasPublishedScd30AutoCal || autoCalReply ||
-          sysState.scd30AutoCalState != _lastPublishedScd30AutoCal) {
+      if (sysState.scd30CalKnown &&
+          (!_hasPublishedScd30AutoCal || autoCalReply ||
+           sysState.scd30AutoCalState != _lastPublishedScd30AutoCal)) {
         _scd30AutoCalSwitch.setState(sysState.scd30AutoCalState, autoCalReply);
         _lastPublishedScd30AutoCal = sysState.scd30AutoCalState;
         _lastSeenScd30AutoCalSeq = sysState.scd30AutoCalSeq;
         _hasPublishedScd30AutoCal = true;
       }
       bool forceCalReply = sysState.scd30ForceCalSeq != _lastSeenScd30ForceCalSeq;
-      if (!_hasPublishedScd30ForceCal || forceCalReply ||
-          sysState.scd30ForceCalValue != _lastPublishedScd30ForceCal) {
+      if (sysState.scd30CalKnown &&
+          (!_hasPublishedScd30ForceCal || forceCalReply ||
+           sysState.scd30ForceCalValue != _lastPublishedScd30ForceCal)) {
         _scd30ForceCalNumber.setState(sysState.scd30ForceCalValue, forceCalReply);
         _lastPublishedScd30ForceCal = sysState.scd30ForceCalValue;
         _lastSeenScd30ForceCalSeq = sysState.scd30ForceCalSeq;

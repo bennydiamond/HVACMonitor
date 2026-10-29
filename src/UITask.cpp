@@ -312,13 +312,20 @@ void UITask::run() {
 
             // A new reply from the Nano redraws even an unchanged value: the switch
             // may still show a request the Nano refused
-            if (firstRun || sysState.scd30AutoCalState != lastSysState.scd30AutoCalState ||
-                sysState.scd30AutoCalSeq != lastSysState.scd30AutoCalSeq) {
+            // Drawn once the SensorStack reported the actual settings
+            const bool scd30CalRedraw = sysState.scd30CalKnown &&
+                (firstRun || !lastSysState.scd30CalKnown);
+            if (scd30CalRedraw ||
+                (sysState.scd30CalKnown &&
+                 (sysState.scd30AutoCalState != lastSysState.scd30AutoCalState ||
+                  sysState.scd30AutoCalSeq != lastSysState.scd30AutoCalSeq))) {
                 uiUpdater->update_scd30_autocal(sysState.scd30AutoCalState);
             }
 
-            if (firstRun || sysState.scd30ForceCalValue != lastSysState.scd30ForceCalValue ||
-                sysState.scd30ForceCalSeq != lastSysState.scd30ForceCalSeq) {
+            if (scd30CalRedraw ||
+                (sysState.scd30CalKnown &&
+                 (sysState.scd30ForceCalValue != lastSysState.scd30ForceCalValue ||
+                  sysState.scd30ForceCalSeq != lastSysState.scd30ForceCalSeq))) {
                 uiUpdater->update_scd30_forcecal(sysState.scd30ForceCalValue);
             }
 

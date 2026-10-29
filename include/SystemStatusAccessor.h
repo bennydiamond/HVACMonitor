@@ -30,6 +30,9 @@ struct SystemStatusData {
     // every reply to a change request (applied, refused or unconfirmed): consumers
     // compare it with the last one they saw and republish/redraw even when the value
     // did not change, which reverts a control showing the refused request.
+    // false until the SensorStack first reported its SCD30 calibration settings: the
+    // values below are only defaults until then
+    bool scd30CalKnown = false;
     bool scd30AutoCalState = SystemStatusDefaults::SCD30_AUTOCAL_STATE;
     uint8_t scd30AutoCalSeq = 0;
 

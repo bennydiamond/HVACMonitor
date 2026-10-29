@@ -207,6 +207,7 @@ void SensorStackStatusManager::setScd30Info(bool auto_cal, uint16_t force_cal) {
         SystemStatusAccessor shared;
         shared->scd30AutoCalState = auto_cal;
         shared->scd30ForceCalValue = force_cal;
+        shared->scd30CalKnown = true;
     }
 }
 
@@ -214,12 +215,14 @@ void SensorStackStatusManager::setScd30AutoCalState(bool auto_cal) {
     SystemStatusAccessor shared;
     shared->scd30AutoCalState = auto_cal;
     shared->scd30AutoCalSeq++;
+    shared->scd30CalKnown = true;
 }
 
 void SensorStackStatusManager::setScd30ForceCalValue(uint16_t force_cal) {
     SystemStatusAccessor shared;
     shared->scd30ForceCalValue = force_cal;
     shared->scd30ForceCalSeq++;
+    shared->scd30CalKnown = true;
 }
 
 bool SensorStackStatusManager::processHealthPayload(char* payload, int* out_first_time_flag) {
