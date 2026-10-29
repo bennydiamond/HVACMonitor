@@ -51,8 +51,8 @@ const int DEBUG_UPDATE_INTERVAL_MS = 5000;
 const int STACK_CHECK_INTERVAL_MS = 60000;
 
 // Task watchdog timeout. Longer during setup() (Wi-Fi, sensors, tasks starting).
-// MqttTask is watched too: a broker connect attempt is bounded to about 4 s
-// (HomeAssistantManager connect timeout + MQTT_SOCKET_TIMEOUT).
+// MqttTask is not watched: its network calls (DNS lookup, a slow write on a weak
+// link) can legitimately block longer, which must not reboot the device.
 const uint32_t WATCHDOG_TIMEOUT_S = 10;
 const uint32_t WATCHDOG_SETUP_TIMEOUT_S = 30;
 
