@@ -184,6 +184,7 @@ const char *dashboard_page_html =
 <div><span>Free Heap:</span> <span><strong id="val_free_heap">--</strong> bytes</span></div>
 <div><span>Min Free Heap:</span> <span><strong id="val_min_heap">--</strong> bytes</span></div>
 <div><span>Max Alloc Block:</span> <span><strong id="val_max_heap">--</strong> bytes</span></div>
+<div><span>Free IRAM (32-bit only):</span> <span><strong id="val_free_iram">--</strong> bytes</span></div>
 </div>
 </div>
 

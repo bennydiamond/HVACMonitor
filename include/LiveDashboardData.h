@@ -56,6 +56,7 @@ struct LiveDashboardData {
   uint32_t esp32_free_heap = 0;
   uint32_t esp32_min_free_heap = 0;
   uint32_t esp32_max_alloc_heap = 0;
+  uint32_t esp32_free_iram = 0; // 32-bit-only IRAM heap, not part of the free heap
   uint32_t esp32_uptime_seconds = 0;
   char esp32_reset_reason[32] = {0};
   char firmware_version[32] = {0};

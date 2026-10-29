@@ -574,6 +574,7 @@ void get_live_dashboard_data(LiveDashboardData &data) {
   data.esp32_free_heap = HeapStats::freeHeap();
   data.esp32_min_free_heap = HeapStats::minFreeHeap();
   data.esp32_max_alloc_heap = HeapStats::largestFreeBlock();
+  data.esp32_free_iram = HeapStats::freeIram();
   data.esp32_uptime_seconds = millis() / 1000;
   strncpy(data.esp32_reset_reason, get_reset_reason_string(), sizeof(data.esp32_reset_reason) - 1);
   strncpy(data.firmware_version, firmwareVersion(), sizeof(data.firmware_version) - 1);

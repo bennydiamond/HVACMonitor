@@ -599,6 +599,8 @@ void WebServerManager::handleApiStatus() {
   out += (unsigned long)data.esp32_min_free_heap;
   out += ",\"max_alloc\":";
   out += (unsigned long)data.esp32_max_alloc_heap;
+  out += ",\"iram\":";
+  out += (unsigned long)data.esp32_free_iram;
   out += ",\"uptime\":";
   out += (unsigned long)data.esp32_uptime_seconds;
   out += ",\"reset\":";
