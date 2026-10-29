@@ -36,7 +36,13 @@ public:
     // Milliseconds since MqttTask last completed a pass (0 before it started)
     uint32_t msSinceMqttTaskHeartbeat() const {
         uint32_t beat = _taskHeartbeatMs.load();
-        return beat == 0 ? 0 : millis() - beat;
+        if (beat == 0) {
+            return 0;
+        }
+        // Signed: the stored beat can be 1 ms ahead of this millis() (it is
+        // stored as millis() | 1, and MqttTask may store it in between)
+        int32_t age = static_cast<int32_t>(millis() - beat);
+        return age > 0 ? static_cast<uint32_t>(age) : 0;
     }
 
 private:
