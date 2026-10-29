@@ -53,7 +53,10 @@ constexpr float JSON_FALLBACK_ZERO = 0.0f;
 } // namespace
 
 WebServer server(80);
-char WebServerManager::_firmware_version[16] = {0};
+char WebServerManager::_firmware_version[32] = {0};
+// ETag of the static assets: the firmware version, quoted as HTTP requires (it
+// contains spaces and parentheses, e.g. "1.1.1 (a1b2c3d+)")
+static char s_asset_etag[34] = {0}; // _firmware_version + 2 quotes
 
 static bool s_is_bootloader_update = false;
 static uint8_t *s_bootloader_buf = nullptr;
@@ -206,20 +209,21 @@ void WebServerManager::init(const char *firmware_version) {
   strncpy(_firmware_version, firmware_version ? firmware_version : "",
           sizeof(_firmware_version) - 1);
   _firmware_version[sizeof(_firmware_version) - 1] = '\0';
+  snprintf(s_asset_etag, sizeof(s_asset_etag), "\"%s\"", _firmware_version);
 
   // Static assets (no-cache ensures browsers always check for latest asset
   // versions)
   server.on("/style.css", HTTP_GET, []() {
     server.sendHeader("Content-Encoding", "gzip");
     server.sendHeader("Cache-Control", "no-cache");
-    server.sendHeader("ETag", _firmware_version);
+    server.sendHeader("ETag", s_asset_etag);
     server.send_P(200, "text/css", (const char *)style_css_gz,
                   style_css_gz_len);
   });
   server.on("/app.js", HTTP_GET, []() {
     server.sendHeader("Content-Encoding", "gzip");
     server.sendHeader("Cache-Control", "no-cache");
-    server.sendHeader("ETag", _firmware_version);
+    server.sendHeader("ETag", s_asset_etag);
     server.send_P(200, "application/javascript", (const char *)app_js_gz,
                   app_js_gz_len);
   });

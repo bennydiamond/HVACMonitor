@@ -58,7 +58,7 @@ struct LiveDashboardData {
   uint32_t esp32_max_alloc_heap = 0;
   uint32_t esp32_uptime_seconds = 0;
   char esp32_reset_reason[32] = {0};
-  char firmware_version[16] = {0};
+  char firmware_version[32] = {0};
 };
 
 void get_live_dashboard_data(LiveDashboardData &data);

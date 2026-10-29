@@ -3,6 +3,7 @@
 #include "FilterPressureTracker.h"
 #include "GasConcentrationConverter.h"
 #include "HVACMonitor.h"
+#include "FirmwareVersion.h"
 #include "HomeAssistantManager.h"
 #include "I2CBridge.h"
 #include "LGFX_ESP32_2432S022C.h"
@@ -219,7 +220,7 @@ void setup() {
   }
 
   const char *reset_reason = get_reset_reason_string();
-  logger.infof("Firmware Version: %s", HVACMONITOR_FIRMWARE_VERSION);
+  logger.infof("Firmware Version: %s", firmwareVersion());
   logger.infof("Reset Reason: %s", reset_reason);
   FlashMode_t fMode = ESP.getFlashChipMode();
   const char *fModeStr = (fMode == FM_QIO)    ? "QIO"
@@ -250,8 +251,8 @@ void setup() {
   }
 
   setup_wifi();
-  haManager.init(HVACMONITOR_FIRMWARE_VERSION);
-  webServerManager.init(HVACMONITOR_FIRMWARE_VERSION);
+  haManager.init(firmwareVersion());
+  webServerManager.init(firmwareVersion());
   otaManager.init();
 
   sensorTask.init();
@@ -555,5 +556,5 @@ void get_live_dashboard_data(LiveDashboardData &data) {
   data.esp32_max_alloc_heap = ESP.getMaxAllocHeap();
   data.esp32_uptime_seconds = millis() / 1000;
   strncpy(data.esp32_reset_reason, get_reset_reason_string(), sizeof(data.esp32_reset_reason) - 1);
-  strncpy(data.firmware_version, HVACMONITOR_FIRMWARE_VERSION, sizeof(data.firmware_version) - 1);
+  strncpy(data.firmware_version, firmwareVersion(), sizeof(data.firmware_version) - 1);
 }

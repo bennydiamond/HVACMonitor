@@ -11,7 +11,7 @@
 #include "Logger.h"
 #include "ConfigManager.h"
 #include "ResetUtils.h"
-#include "HVACMonitor.h"
+#include "FirmwareVersion.h"
 
 #ifdef ENABLE_TASK_WATCHDOG
 #include "WatchdogManager.h"
@@ -121,19 +121,7 @@ void UITask::run() {
         uiManager->init(tft, touch);
         uiManager->create_widgets();
 
-        char ver_buf[64];
-        FlashMode_t fMode = ESP.getFlashChipMode();
-        const char *fModeStr = (fMode == FM_QIO)    ? "QIO"
-                               : (fMode == FM_QOUT) ? "QOUT"
-                               : (fMode == FM_DIO)  ? "DIO"
-                               : (fMode == FM_DOUT) ? "DOUT"
-                                                    : "?";
-        snprintf(ver_buf, sizeof(ver_buf), "%s (%luM/%luM %s)",
-                 HVACMONITOR_FIRMWARE_VERSION,
-                 (unsigned long)getCpuFrequencyMhz(),
-                 (unsigned long)(ESP.getFlashChipSpeed() / 1000000),
-                 fModeStr);
-        uiUpdater->set_initial_debug_info(ver_buf, get_reset_reason_string());
+        uiUpdater->set_initial_debug_info(firmwareVersion(), get_reset_reason_string());
 
         uiIsInit = true;
         logger.info("UITask initialized.");

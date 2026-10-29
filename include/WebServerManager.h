@@ -8,7 +8,7 @@ public:
     static void handle();
 
 private:
-    static char _firmware_version[16];
+    static char _firmware_version[32];
     
     static void handleRoot();
     static void handleOTA();

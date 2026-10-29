@@ -10,6 +10,9 @@ sdkconfig.*
 dependencies.lock
 managed_components/
 
+# Generated at build time (scripts/git_version.py)
+include/GitVersion.h
+
 # Secrets
 include/secrets.h
 !include/secrets.h.example

@@ -7,6 +7,7 @@
 #include "SystemStatusAccessor.h"
 #include "MainTaskEvents.h"
 #include "TaskPriorities.h"
+#include "FirmwareVersion.h"
 #include <WiFi.h>
 #include <math.h>
 
@@ -158,7 +159,8 @@ HomeAssistantManager::HomeAssistantManager()
       _esp32FreeRamSensor("esp32_free_ram" RANDOM_SUFFIX,
                           HASensorNumber::PrecisionP0),
       _esp32UptimeSensor("esp32_uptime" RANDOM_SUFFIX,
-                         HASensorNumber::PrecisionP0) {
+                         HASensorNumber::PrecisionP0),
+      _firmwareGitHashSensor("firmware_git_hash" RANDOM_SUFFIX) {
   _instance = this;
   _configurationUrl[0] = '\0';
   _firmwareVersion[0] = '\0';
@@ -511,6 +513,11 @@ void HomeAssistantManager::initMqtt() {
   _esp32UptimeSensor.setIcon("mdi:timer-sand");
   _esp32UptimeSensor.setUnitOfMeasurement("s");
   _esp32UptimeSensor.setEntityCategory(entity_category_diagnostic);
+
+  // '+' marks a build with uncommitted changes
+  _firmwareGitHashSensor.setName("Firmware Git Hash");
+  _firmwareGitHashSensor.setIcon("mdi:source-commit");
+  _firmwareGitHashSensor.setEntityCategory(entity_category_diagnostic);
 
   _device.enableSharedAvailability();
   _device.enableLastWill();
@@ -1048,6 +1055,7 @@ void HomeAssistantManager::onMqttConnected() {
                  _instance->_configurationUrl);
   }
 
+  _instance->_firmwareGitHashSensor.setValue(firmwareGitHash());
   _instance->_wifi_ssid.setValue(WIFI_SSID);
   _instance->_wifi_ip.setValue(WiFi.localIP().toString().c_str());
 
