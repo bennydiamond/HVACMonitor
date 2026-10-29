@@ -282,7 +282,7 @@ void dispatch_main_task_event(MainTaskEventNotifier::EventBits event) {
     nanoUartBridge.sendCommand(CMD_SGP41_TEST);
     break;
   case MainTaskEventNotifier::EVT_REBOOT_ESP32:
-    RebootManager::getInstance().requestReboot("Event", 500);
+    RebootManager::getInstance().requestReboot("Reboot event (Home Assistant or screen button)", 500);
     break;
   case MainTaskEventNotifier::EVT_REBOOT_NANO:
     logger.warning("Rebooting SensorStack as requested by event.");

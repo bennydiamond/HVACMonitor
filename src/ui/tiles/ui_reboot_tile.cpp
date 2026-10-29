@@ -1,4 +1,5 @@
 #include "ui/tiles/ui_reboot_tile.h"
+#include "Logger.h"
 #include "SerialMutex.h"
 #include "NanoCommands.h"
 #include <Arduino.h>
@@ -49,6 +50,7 @@ void UIRebootTile::reboot_nano_btn_cb(lv_event_t* e) {
 }
 
 void UIRebootTile::reboot_esp32_btn_cb(lv_event_t* e) {
+    logger.warning("ESP32 reboot requested from the screen.");
     MainTaskEventNotifier::getInstance().sendEvent(MainTaskEventNotifier::EVT_REBOOT_ESP32);
 }
 

@@ -1618,6 +1618,7 @@ void HomeAssistantManager::publishAHT20Humidity(float humi_pct,
 #endif
 
 void HomeAssistantManager::onRebootCommand(HAButton *sender) {
+  logger.warning("ESP32 reboot requested from Home Assistant.");
   sender->setAvailability(false);
   MainTaskEventNotifier::getInstance().sendEvent(MainTaskEventNotifier::EVT_REBOOT_ESP32);
 }
