@@ -11,6 +11,7 @@
 #include "SensorDataAccessor.h"
 #include "SystemStatusAccessor.h"
 #include "utils/HADictionary.h"
+#include <atomic>
 
 // Binary sensor that can also report an unknown state, like HASensor::setValue(nullptr).
 // After setUnknown(), the next setState() must use force: the cached state is unchanged.
@@ -37,6 +38,12 @@ public:
     void queueLogMessage(AppLogLevel level, const char* message) override;
     bool isMqttConnected() override;
 
+    // Milliseconds since MqttTask last completed a pass (0 before it started)
+    uint32_t msSinceMqttTaskHeartbeat() const {
+        uint32_t beat = _taskHeartbeatMs.load();
+        return beat == 0 ? 0 : millis() - beat;
+    }
+
 private:
     struct LogQueueEntry {
         AppLogLevel level;
@@ -45,6 +52,10 @@ private:
 
     // FreeRTOS Task and log queue
     TaskHandle_t _taskHandle = nullptr;
+    // millis() at the end of MqttTask's last pass. MqttTask is not on the task
+    // watchdog: its network calls can legitimately block for longer than its
+    // timeout (DNS lookup, writes on a weak link), which must not reboot the device
+    std::atomic<uint32_t> _taskHeartbeatMs{0};
     QueueHandle_t _logQueue = nullptr;
 
     char _firmwareVersion[32] = {0};

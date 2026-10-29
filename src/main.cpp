@@ -48,14 +48,13 @@ const int WIFI_CHECK_INTERVAL_MS = 10000;
 const int DEBUG_UPDATE_INTERVAL_MS = 5000;
 const int STACK_CHECK_INTERVAL_MS = 60000;
 
-// Watchdog timeouts. An MQTT connect attempt blocks the main loop for up to ~18 s when
-// the broker cannot be reached (TCP connect ~3 s + MQTT_SOCKET_TIMEOUT 15 s, retried
-// every 10 s), and the initial publishing after connecting (entity configs, first
-// values) takes a while too: the longer timeout keeps both from rebooting the device,
-// so it runs standalone without a broker.
+// Task watchdog timeout. Longer during setup() (Wi-Fi, sensors, tasks starting).
+// MQTT runs in its own task, off the watchdog: see MQTT_TASK_STALL_TIMEOUT_MS.
 const uint32_t WATCHDOG_TIMEOUT_S = 10;
-const uint32_t WATCHDOG_MQTT_TIMEOUT_S = 30;
-const unsigned long WATCHDOG_MQTT_GRACE_MS = 60000; // after connecting
+const uint32_t WATCHDOG_SETUP_TIMEOUT_S = 30;
+// MqttTask's network calls can block for a while (DNS, a slow write on a weak link)
+// but never this long: a heartbeat older than this means the task is stuck
+const uint32_t MQTT_TASK_STALL_TIMEOUT_MS = 120000;
 
 unsigned long last_wifi_check_time = 0;
 unsigned long last_debug_update_time = 0;
@@ -188,7 +187,7 @@ void setup() {
 #ifdef ENABLE_TASK_WATCHDOG
   // Panic: a hung task reboots the device (reset reason "Task watchdog" is logged
   // at the next boot); BootloopGuard rolls back a firmware that keeps doing it
-  WatchdogManager::init(WATCHDOG_MQTT_TIMEOUT_S, true);
+  WatchdogManager::init(WATCHDOG_SETUP_TIMEOUT_S, true);
   WatchdogManager::addCurrentTask();
 #endif
 
@@ -259,6 +258,7 @@ void setup() {
 
 #ifdef ENABLE_TASK_WATCHDOG
   WatchdogManager::addCurrentTask();
+  WatchdogManager::setTimeout(WATCHDOG_TIMEOUT_S); // Setup done
 #endif
 }
 
@@ -329,20 +329,22 @@ void loop() {
   }
 
   static bool previous_mqtt_connect_status = false;
-  static unsigned long mqtt_connected_since = 0;
 
   bool ha_conn = haManager.isMqttConnected();
 
   if (previous_mqtt_connect_status != ha_conn) {
     previous_mqtt_connect_status = ha_conn;
-    mqtt_connected_since = millis();
     SystemStatusAccessor()->mqttConnected = ha_conn;
   }
-#ifdef ENABLE_TASK_WATCHDOG
-  // The only place the watchdog timeout changes (setTimeout() ignores unchanged values)
-  bool mqtt_settled = ha_conn && (millis() - mqtt_connected_since >= WATCHDOG_MQTT_GRACE_MS);
-  WatchdogManager::setTimeout(mqtt_settled ? WATCHDOG_TIMEOUT_S : WATCHDOG_MQTT_TIMEOUT_S);
-#endif
+
+  static bool mqtt_stall_reported = false;
+  if (haManager.msSinceMqttTaskHeartbeat() > MQTT_TASK_STALL_TIMEOUT_MS &&
+      !mqtt_stall_reported) {
+    mqtt_stall_reported = true;
+    logger.errorf("MQTT task stuck for more than %lu s; rebooting.",
+                  (unsigned long)(MQTT_TASK_STALL_TIMEOUT_MS / 1000));
+    RebootManager::getInstance().requestReboot("MQTT task stuck");
+  }
   otaManager.handle();
 
   static unsigned long lastHeapCheck = 0;
