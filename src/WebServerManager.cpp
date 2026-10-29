@@ -768,15 +768,17 @@ void WebServerManager::handleConfigUpdate() {
 
     bool updatePassword = isOpen || (password.length() > 0);
 
+    bool saved;
     {
       ConfigManagerAccessor config;
-      if (!config->setWifiCredentials(
-              ssid.c_str(), isOpen ? "" : password.c_str(), updatePassword)) {
-        server.send(
-            400, "text/plain",
-            "Failed to save Wi-Fi configuration (invalid SSID or password)");
-        return;
-      }
+      saved = config->setWifiCredentials(
+          ssid.c_str(), isOpen ? "" : password.c_str(), updatePassword);
+    }
+    if (!saved) {
+      server.send(
+          400, "text/plain",
+          "Failed to save Wi-Fi configuration (invalid SSID or password)");
+      return;
     }
 
     logger.infof("Wi-Fi configuration saved (SSID: %s%s). Rebooting device...",
@@ -831,20 +833,25 @@ void WebServerManager::handleConfigUpdate() {
       return;
     }
 
+    bool missingPassword = false;
     {
       ConfigManagerAccessor config;
-      if (password.length() == 0 && strlen(config->getMqttPassword()) == 0) {
-        server.send(400, "text/plain", "MQTT password is required");
-        return;
+      missingPassword =
+          password.length() == 0 && strlen(config->getMqttPassword()) == 0;
+      if (!missingPassword) {
+        config->setMqttHost(host.c_str());
+        config->setMqttPort(portNum);
+        config->setMqttUser(user.c_str());
+        if (password.length() > 0) {
+          config->setMqttPassword(password.c_str());
+        }
+        config->setMqttDeviceId(deviceId.c_str());
+        config->setMqttDeviceName(deviceName.c_str());
       }
-      config->setMqttHost(host.c_str());
-      config->setMqttPort(portNum);
-      config->setMqttUser(user.c_str());
-      if (password.length() > 0) {
-        config->setMqttPassword(password.c_str());
-      }
-      config->setMqttDeviceId(deviceId.c_str());
-      config->setMqttDeviceName(deviceName.c_str());
+    }
+    if (missingPassword) {
+      server.send(400, "text/plain", "MQTT password is required");
+      return;
     }
 
     logger.info("MQTT device configuration saved. Rebooting device...");
@@ -992,425 +999,428 @@ void WebServerManager::handleConfigUpdate() {
     float floatVal = 0.0f;
     const char *errorMsg = "Invalid value or out of allowed range";
 
-    ConfigManagerAccessor config;
     bool ok = true;
+    {
+      // Released before the reply is sent
+      ConfigManagerAccessor config;
 
-    auto validateWarnDanger = [&](int warnVal, int dangerVal, bool isWarn) -> bool {
-      if (isWarn && warnVal > dangerVal) {
-        errorMsg = "Warning threshold cannot exceed Danger threshold";
-        return false;
-      }
-      if (!isWarn && dangerVal < warnVal) {
-        errorMsg = "Danger threshold cannot be lower than Warning threshold";
-        return false;
-      }
-      return true;
-    };
+      auto validateWarnDanger = [&](int warnVal, int dangerVal, bool isWarn) -> bool {
+        if (isWarn && warnVal > dangerVal) {
+          errorMsg = "Warning threshold cannot exceed Danger threshold";
+          return false;
+        }
+        if (!isWarn && dangerVal < warnVal) {
+          errorMsg = "Danger threshold cannot be lower than Warning threshold";
+          return false;
+        }
+        return true;
+      };
 
-    auto validateOffOnHigh = [&](float offVal, float onVal, float highVal, const String &curType) -> bool {
-      if (curType == "off" && offVal > onVal) {
-        errorMsg = "Off threshold cannot exceed On threshold";
-        return false;
-      }
-      if (curType == "on" && (onVal < offVal || onVal > highVal)) {
-        errorMsg = "On threshold must be between Off and High thresholds";
-        return false;
-      }
-      if (curType == "high" && highVal < onVal) {
-        errorMsg = "High threshold cannot be lower than On threshold";
-        return false;
-      }
-      return true;
-    };
+      auto validateOffOnHigh = [&](float offVal, float onVal, float highVal, const String &curType) -> bool {
+        if (curType == "off" && offVal > onVal) {
+          errorMsg = "Off threshold cannot exceed On threshold";
+          return false;
+        }
+        if (curType == "on" && (onVal < offVal || onVal > highVal)) {
+          errorMsg = "On threshold must be between Off and High thresholds";
+          return false;
+        }
+        if (curType == "high" && highVal < onVal) {
+          errorMsg = "High threshold cannot be lower than On threshold";
+          return false;
+        }
+        return true;
+      };
 
-    if (section == "no2") {
-      if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_GAS_INDEX, ConfigLimits::MAX_GAS_INDEX)) {
-        if (validateWarnDanger(intVal, config->getNo2DangerThreshold(), true))
-          config->setNo2WarnThreshold(intVal);
-        else
-          ok = false;
-      } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_GAS_INDEX, ConfigLimits::MAX_GAS_INDEX)) {
-        if (validateWarnDanger(config->getNo2WarnThreshold(), intVal, false))
-          config->setNo2DangerThreshold(intVal);
-        else
-          ok = false;
-      } else {
-        ok = false;
-      }
-    } else if (section == "o3") {
-      if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_GAS_INDEX, ConfigLimits::MAX_GAS_INDEX)) {
-        if (validateWarnDanger(intVal, config->getO3DangerThreshold(), true))
-          config->setO3WarnThreshold(intVal);
-        else
-          ok = false;
-      } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_GAS_INDEX, ConfigLimits::MAX_GAS_INDEX)) {
-        if (validateWarnDanger(config->getO3WarnThreshold(), intVal, false))
-          config->setO3DangerThreshold(intVal);
-        else
-          ok = false;
-      } else {
-        ok = false;
-      }
-    } else if (section == "nox") {
-      if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_GAS_INDEX, ConfigLimits::MAX_GAS_INDEX)) {
-        if (validateWarnDanger(intVal, config->getNoxDangerThreshold(), true))
-          config->setNoxWarnThreshold(intVal);
-        else
-          ok = false;
-      } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_GAS_INDEX, ConfigLimits::MAX_GAS_INDEX)) {
-        if (validateWarnDanger(config->getNoxWarnThreshold(), intVal, false))
-          config->setNoxDangerThreshold(intVal);
-        else
-          ok = false;
-      } else {
-        ok = false;
-      }
-    } else if (section == "co") {
-      if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_CO_PPM, ConfigLimits::MAX_CO_PPM)) {
-        if (validateWarnDanger(intVal, config->getCoDangerThreshold(), true))
-          config->setCoWarnThreshold(intVal);
-        else
-          ok = false;
-      } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_CO_PPM, ConfigLimits::MAX_CO_PPM)) {
-        if (validateWarnDanger(config->getCoWarnThreshold(), intVal, false))
-          config->setCoDangerThreshold(intVal);
-        else
-          ok = false;
-      } else {
-        ok = false;
-      }
-    } else if (section == "pm1") {
-      if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_PM_UG, ConfigLimits::MAX_PM_UG)) {
-        if (validateWarnDanger(intVal, config->getPm1DangerThreshold(), true))
-          config->setPm1WarnThreshold(intVal);
-        else
-          ok = false;
-      } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_PM_UG, ConfigLimits::MAX_PM_UG)) {
-        if (validateWarnDanger(config->getPm1WarnThreshold(), intVal, false))
-          config->setPm1DangerThreshold(intVal);
-        else
-          ok = false;
-      } else {
-        ok = false;
-      }
-    } else if (section == "pm25") {
-      if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_PM_UG, ConfigLimits::MAX_PM_UG)) {
-        if (validateWarnDanger(intVal, config->getPm25DangerThreshold(), true))
-          config->setPm25WarnThreshold(intVal);
-        else
-          ok = false;
-      } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_PM_UG, ConfigLimits::MAX_PM_UG)) {
-        if (validateWarnDanger(config->getPm25WarnThreshold(), intVal, false))
-          config->setPm25DangerThreshold(intVal);
-        else
-          ok = false;
-      } else {
-        ok = false;
-      }
-    } else if (section == "pm4") {
-      if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_PM_UG, ConfigLimits::MAX_PM_UG)) {
-        if (validateWarnDanger(intVal, config->getPm4DangerThreshold(), true))
-          config->setPm4WarnThreshold(intVal);
-        else
-          ok = false;
-      } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_PM_UG, ConfigLimits::MAX_PM_UG)) {
-        if (validateWarnDanger(config->getPm4WarnThreshold(), intVal, false))
-          config->setPm4DangerThreshold(intVal);
-        else
-          ok = false;
-      } else {
-        ok = false;
-      }
-    } else if (section == "pm10") {
-      if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_PM_UG, ConfigLimits::MAX_PM_UG)) {
-        if (validateWarnDanger(intVal, config->getPm10DangerThreshold(), true))
-          config->setPm10WarnThreshold(intVal);
-        else
-          ok = false;
-      } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_PM_UG, ConfigLimits::MAX_PM_UG)) {
-        if (validateWarnDanger(config->getPm10WarnThreshold(), intVal, false))
-          config->setPm10DangerThreshold(intVal);
-        else
-          ok = false;
-      } else {
-        ok = false;
-      }
-    } else if (section == "co2") {
-      if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_CO2_PPM, ConfigLimits::MAX_CO2_PPM)) {
-        if (validateWarnDanger(intVal, config->getCo2DangerThreshold(), true))
-          config->setCo2WarnThreshold(intVal);
-        else
-          ok = false;
-      } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_CO2_PPM, ConfigLimits::MAX_CO2_PPM)) {
-        if (validateWarnDanger(config->getCo2WarnThreshold(), intVal, false))
-          config->setCo2DangerThreshold(intVal);
-        else
-          ok = false;
-      } else {
-        ok = false;
-      }
-    } else if (section == "pressure") {
-      if (type == "low" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_PRESSURE_PA, ConfigLimits::MAX_PRESSURE_PA)) {
-        if (floatVal > config->getPressureMidThreshold()) {
-          ok = false;
-          errorMsg = "Low threshold cannot exceed Mid threshold";
+      if (section == "no2") {
+        if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_GAS_INDEX, ConfigLimits::MAX_GAS_INDEX)) {
+          if (validateWarnDanger(intVal, config->getNo2DangerThreshold(), true))
+            config->setNo2WarnThreshold(intVal);
+          else
+            ok = false;
+        } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_GAS_INDEX, ConfigLimits::MAX_GAS_INDEX)) {
+          if (validateWarnDanger(config->getNo2WarnThreshold(), intVal, false))
+            config->setNo2DangerThreshold(intVal);
+          else
+            ok = false;
         } else {
-          config->setPressureLowThreshold(floatVal);
-        }
-      } else if (type == "mid" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_PRESSURE_PA, ConfigLimits::MAX_PRESSURE_PA)) {
-        if (floatVal < config->getPressureLowThreshold() || floatVal > config->getHighPressureThreshold()) {
           ok = false;
-          errorMsg = "Mid threshold must be between Low and High thresholds";
-        } else {
-          config->setPressureMidThreshold(floatVal);
         }
-      } else if (type == "high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_PRESSURE_PA, ConfigLimits::MAX_PRESSURE_PA)) {
-        if (floatVal < config->getPressureMidThreshold()) {
+      } else if (section == "o3") {
+        if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_GAS_INDEX, ConfigLimits::MAX_GAS_INDEX)) {
+          if (validateWarnDanger(intVal, config->getO3DangerThreshold(), true))
+            config->setO3WarnThreshold(intVal);
+          else
+            ok = false;
+        } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_GAS_INDEX, ConfigLimits::MAX_GAS_INDEX)) {
+          if (validateWarnDanger(config->getO3WarnThreshold(), intVal, false))
+            config->setO3DangerThreshold(intVal);
+          else
+            ok = false;
+        } else {
           ok = false;
-          errorMsg = "High threshold cannot be lower than Mid threshold";
-        } else {
-          config->setHighPressureThreshold(floatVal);
         }
-      } else {
-        ok = false;
-      }
-    } else if (section == "fan") {
-      if (type == "off" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
-        if (validateOffOnHigh(floatVal, config->getFanOnCurrentThreshold(), config->getFanHighCurrentThreshold(), "off"))
-          config->setFanOffCurrentThreshold(floatVal);
+      } else if (section == "nox") {
+        if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_GAS_INDEX, ConfigLimits::MAX_GAS_INDEX)) {
+          if (validateWarnDanger(intVal, config->getNoxDangerThreshold(), true))
+            config->setNoxWarnThreshold(intVal);
+          else
+            ok = false;
+        } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_GAS_INDEX, ConfigLimits::MAX_GAS_INDEX)) {
+          if (validateWarnDanger(config->getNoxWarnThreshold(), intVal, false))
+            config->setNoxDangerThreshold(intVal);
+          else
+            ok = false;
+        } else {
+          ok = false;
+        }
+      } else if (section == "co") {
+        if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_CO_PPM, ConfigLimits::MAX_CO_PPM)) {
+          if (validateWarnDanger(intVal, config->getCoDangerThreshold(), true))
+            config->setCoWarnThreshold(intVal);
+          else
+            ok = false;
+        } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_CO_PPM, ConfigLimits::MAX_CO_PPM)) {
+          if (validateWarnDanger(config->getCoWarnThreshold(), intVal, false))
+            config->setCoDangerThreshold(intVal);
+          else
+            ok = false;
+        } else {
+          ok = false;
+        }
+      } else if (section == "pm1") {
+        if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_PM_UG, ConfigLimits::MAX_PM_UG)) {
+          if (validateWarnDanger(intVal, config->getPm1DangerThreshold(), true))
+            config->setPm1WarnThreshold(intVal);
+          else
+            ok = false;
+        } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_PM_UG, ConfigLimits::MAX_PM_UG)) {
+          if (validateWarnDanger(config->getPm1WarnThreshold(), intVal, false))
+            config->setPm1DangerThreshold(intVal);
+          else
+            ok = false;
+        } else {
+          ok = false;
+        }
+      } else if (section == "pm25") {
+        if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_PM_UG, ConfigLimits::MAX_PM_UG)) {
+          if (validateWarnDanger(intVal, config->getPm25DangerThreshold(), true))
+            config->setPm25WarnThreshold(intVal);
+          else
+            ok = false;
+        } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_PM_UG, ConfigLimits::MAX_PM_UG)) {
+          if (validateWarnDanger(config->getPm25WarnThreshold(), intVal, false))
+            config->setPm25DangerThreshold(intVal);
+          else
+            ok = false;
+        } else {
+          ok = false;
+        }
+      } else if (section == "pm4") {
+        if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_PM_UG, ConfigLimits::MAX_PM_UG)) {
+          if (validateWarnDanger(intVal, config->getPm4DangerThreshold(), true))
+            config->setPm4WarnThreshold(intVal);
+          else
+            ok = false;
+        } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_PM_UG, ConfigLimits::MAX_PM_UG)) {
+          if (validateWarnDanger(config->getPm4WarnThreshold(), intVal, false))
+            config->setPm4DangerThreshold(intVal);
+          else
+            ok = false;
+        } else {
+          ok = false;
+        }
+      } else if (section == "pm10") {
+        if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_PM_UG, ConfigLimits::MAX_PM_UG)) {
+          if (validateWarnDanger(intVal, config->getPm10DangerThreshold(), true))
+            config->setPm10WarnThreshold(intVal);
+          else
+            ok = false;
+        } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_PM_UG, ConfigLimits::MAX_PM_UG)) {
+          if (validateWarnDanger(config->getPm10WarnThreshold(), intVal, false))
+            config->setPm10DangerThreshold(intVal);
+          else
+            ok = false;
+        } else {
+          ok = false;
+        }
+      } else if (section == "co2") {
+        if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_CO2_PPM, ConfigLimits::MAX_CO2_PPM)) {
+          if (validateWarnDanger(intVal, config->getCo2DangerThreshold(), true))
+            config->setCo2WarnThreshold(intVal);
+          else
+            ok = false;
+        } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_CO2_PPM, ConfigLimits::MAX_CO2_PPM)) {
+          if (validateWarnDanger(config->getCo2WarnThreshold(), intVal, false))
+            config->setCo2DangerThreshold(intVal);
+          else
+            ok = false;
+        } else {
+          ok = false;
+        }
+      } else if (section == "pressure") {
+        if (type == "low" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_PRESSURE_PA, ConfigLimits::MAX_PRESSURE_PA)) {
+          if (floatVal > config->getPressureMidThreshold()) {
+            ok = false;
+            errorMsg = "Low threshold cannot exceed Mid threshold";
+          } else {
+            config->setPressureLowThreshold(floatVal);
+          }
+        } else if (type == "mid" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_PRESSURE_PA, ConfigLimits::MAX_PRESSURE_PA)) {
+          if (floatVal < config->getPressureLowThreshold() || floatVal > config->getHighPressureThreshold()) {
+            ok = false;
+            errorMsg = "Mid threshold must be between Low and High thresholds";
+          } else {
+            config->setPressureMidThreshold(floatVal);
+          }
+        } else if (type == "high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_PRESSURE_PA, ConfigLimits::MAX_PRESSURE_PA)) {
+          if (floatVal < config->getPressureMidThreshold()) {
+            ok = false;
+            errorMsg = "High threshold cannot be lower than Mid threshold";
+          } else {
+            config->setHighPressureThreshold(floatVal);
+          }
+        } else {
+          ok = false;
+        }
+      } else if (section == "fan") {
+        if (type == "off" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
+          if (validateOffOnHigh(floatVal, config->getFanOnCurrentThreshold(), config->getFanHighCurrentThreshold(), "off"))
+            config->setFanOffCurrentThreshold(floatVal);
+          else
+            ok = false;
+        } else if (type == "on" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
+          if (validateOffOnHigh(config->getFanOffCurrentThreshold(), floatVal, config->getFanHighCurrentThreshold(), "on"))
+            config->setFanOnCurrentThreshold(floatVal);
+          else
+            ok = false;
+        } else if (type == "high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
+          if (validateOffOnHigh(config->getFanOffCurrentThreshold(), config->getFanOnCurrentThreshold(), floatVal, "high"))
+            config->setFanHighCurrentThreshold(floatVal);
+          else
+            ok = false;
+        } else {
+          ok = false;
+        }
+      } else if (section == "compressor") {
+        if (type == "off" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
+          if (validateOffOnHigh(floatVal, config->getCompressorOnCurrentThreshold(), config->getCompressorHighCurrentThreshold(), "off"))
+            config->setCompressorOffCurrentThreshold(floatVal);
+          else
+            ok = false;
+        } else if (type == "on" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
+          if (validateOffOnHigh(config->getCompressorOffCurrentThreshold(), floatVal, config->getCompressorHighCurrentThreshold(), "on"))
+            config->setCompressorOnCurrentThreshold(floatVal);
+          else
+            ok = false;
+        } else if (type == "high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
+          if (validateOffOnHigh(config->getCompressorOffCurrentThreshold(), config->getCompressorOnCurrentThreshold(), floatVal, "high"))
+            config->setCompressorHighCurrentThreshold(floatVal);
+          else
+            ok = false;
+        } else {
+          ok = false;
+        }
+      } else if (section == "pump") {
+        if (type == "off" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
+          if (validateOffOnHigh(floatVal, config->getPumpOnCurrentThreshold(), config->getPumpHighCurrentThreshold(), "off"))
+            config->setPumpOffCurrentThreshold(floatVal);
+          else
+            ok = false;
+        } else if (type == "on" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
+          if (validateOffOnHigh(config->getPumpOffCurrentThreshold(), floatVal, config->getPumpHighCurrentThreshold(), "on"))
+            config->setPumpOnCurrentThreshold(floatVal);
+          else
+            ok = false;
+        } else if (type == "high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
+          if (validateOffOnHigh(config->getPumpOffCurrentThreshold(), config->getPumpOnCurrentThreshold(), floatVal, "high"))
+            config->setPumpHighCurrentThreshold(floatVal);
+          else
+            ok = false;
+        } else {
+          ok = false;
+        }
+      } else if (section == "geiger") {
+        if (type == "abnormal_low" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_GEIGER_USV_H, ConfigLimits::MAX_GEIGER_USV_H)) {
+          if (floatVal > config->getGeigerAbnormalHighThreshold()) {
+            ok = false;
+            errorMsg = "Abnormal Low cannot exceed Abnormal High threshold";
+          } else {
+            config->setGeigerAbnormalLowThreshold(floatVal);
+          }
+        } else if (type == "abnormal_high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_GEIGER_USV_H, ConfigLimits::MAX_GEIGER_USV_H)) {
+          if (floatVal < config->getGeigerAbnormalLowThreshold() || floatVal > config->getGeigerDangerHighThreshold()) {
+            ok = false;
+            errorMsg = "Abnormal High must be between Abnormal Low and Danger High thresholds";
+          } else {
+            config->setGeigerAbnormalHighThreshold(floatVal);
+          }
+        } else if (type == "danger_high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_GEIGER_USV_H, ConfigLimits::MAX_GEIGER_USV_H)) {
+          if (floatVal < config->getGeigerAbnormalHighThreshold()) {
+            ok = false;
+            errorMsg = "Danger High cannot be lower than Abnormal High threshold";
+          } else {
+            config->setGeigerDangerHighThreshold(floatVal);
+          }
+        } else {
+          ok = false;
+        }
+      } else if (section == "temp") {
+        if (type == "acceptable_low" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_TEMP_C, ConfigLimits::MAX_TEMP_C)) {
+          if (floatVal > config->getTempComfortableLow()) {
+            ok = false;
+            errorMsg = "Acceptable Low cannot exceed Comfortable Low";
+          } else {
+            config->setTempAcceptableLow(floatVal);
+          }
+        } else if (type == "comfortable_low" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_TEMP_C, ConfigLimits::MAX_TEMP_C)) {
+          if (floatVal < config->getTempAcceptableLow() || floatVal > config->getTempComfortableHigh()) {
+            ok = false;
+            errorMsg = "Comfortable Low must be between Acceptable Low and Comfortable High";
+          } else {
+            config->setTempComfortableLow(floatVal);
+          }
+        } else if (type == "comfortable_high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_TEMP_C, ConfigLimits::MAX_TEMP_C)) {
+          if (floatVal < config->getTempComfortableLow() || floatVal > config->getTempAcceptableHigh()) {
+            ok = false;
+            errorMsg = "Comfortable High must be between Comfortable Low and Acceptable High";
+          } else {
+            config->setTempComfortableHigh(floatVal);
+          }
+        } else if (type == "acceptable_high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_TEMP_C, ConfigLimits::MAX_TEMP_C)) {
+          if (floatVal < config->getTempComfortableHigh()) {
+            ok = false;
+            errorMsg = "Acceptable High cannot be lower than Comfortable High";
+          } else {
+            config->setTempAcceptableHigh(floatVal);
+          }
+        } else {
+          ok = false;
+        }
+      } else if (section == "humi") {
+        if (type == "acceptable_low" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_HUMI_PCT, ConfigLimits::MAX_HUMI_PCT)) {
+          if (floatVal > config->getHumiComfortableLow()) {
+            ok = false;
+            errorMsg = "Acceptable Low cannot exceed Comfortable Low";
+          } else {
+            config->setHumiAcceptableLow(floatVal);
+          }
+        } else if (type == "comfortable_low" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_HUMI_PCT, ConfigLimits::MAX_HUMI_PCT)) {
+          if (floatVal < config->getHumiAcceptableLow() || floatVal > config->getHumiComfortableHigh()) {
+            ok = false;
+            errorMsg = "Comfortable Low must be between Acceptable Low and Comfortable High";
+          } else {
+            config->setHumiComfortableLow(floatVal);
+          }
+        } else if (type == "comfortable_high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_HUMI_PCT, ConfigLimits::MAX_HUMI_PCT)) {
+          if (floatVal < config->getHumiComfortableLow() || floatVal > config->getHumiAcceptableHigh()) {
+            ok = false;
+            errorMsg = "Comfortable High must be between Comfortable Low and Acceptable High";
+          } else {
+            config->setHumiComfortableHigh(floatVal);
+          }
+        } else if (type == "acceptable_high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_HUMI_PCT, ConfigLimits::MAX_HUMI_PCT)) {
+          if (floatVal < config->getHumiComfortableHigh()) {
+            ok = false;
+            errorMsg = "Acceptable High cannot be lower than Comfortable High";
+          } else {
+            config->setHumiAcceptableHigh(floatVal);
+          }
+        } else {
+          ok = false;
+        }
+      } else if (section == "inactivity") {
+        if (type == "timer_delay" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_INACTIVITY_DELAY_S, ConfigLimits::MAX_INACTIVITY_DELAY_S)) {
+          config->setInactivityTimerDelay(intVal);
+          SystemStatusAccessor shared;
+          shared->inactivityTimerDelay = intVal;
+          shared->inactivityTimerDelayForce = true;
+        } else {
+          ok = false;
+        }
+      } else if (section == "log") {
+        if (type == "level" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_LOG_LEVEL, ConfigLimits::MAX_LOG_LEVEL)) {
+          AppLogLevel level = static_cast<AppLogLevel>(intVal);
+          config->setLogLevel(level);
+          logger.setLogLevel(level);
+          SystemStatusAccessor shared;
+          shared->logLevel = level;
+          logger.infof("Log level updated to %d via Web Server", intVal);
+        } else {
+          ok = false;
+        }
+      } else if (section == "mqtt") {
+        if (type == "host" && valueStr.length() > 0 && valueStr.length() <= ConfigLimits::MAX_MQTT_HOST_LEN)
+          config->setMqttHost(valueStr.c_str());
+        else if (type == "port" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_MQTT_PORT, ConfigLimits::MAX_MQTT_PORT))
+          config->setMqttPort(intVal);
+        else if (type == "user" && valueStr.length() <= ConfigLimits::MAX_MQTT_USER_LEN)
+          config->setMqttUser(valueStr.c_str());
+        else if (type == "password" && valueStr.length() <= ConfigLimits::MAX_MQTT_PASSWORD_LEN) {
+          if (valueStr.length() > 0) {
+            config->setMqttPassword(valueStr.c_str());
+          }
+        } else if (type == "device_id" && valueStr.length() > 0 &&
+                   valueStr.length() <= ConfigLimits::MAX_MQTT_DEVICE_ID_LEN)
+          config->setMqttDeviceId(valueStr.c_str());
+        else if (type == "device_name" && valueStr.length() > 0 &&
+                   valueStr.length() <= ConfigLimits::MAX_MQTT_DEVICE_NAME_LEN)
+          config->setMqttDeviceName(valueStr.c_str());
         else
           ok = false;
-      } else if (type == "on" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
-        if (validateOffOnHigh(config->getFanOffCurrentThreshold(), floatVal, config->getFanHighCurrentThreshold(), "on"))
-          config->setFanOnCurrentThreshold(floatVal);
-        else
-          ok = false;
-      } else if (type == "high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
-        if (validateOffOnHigh(config->getFanOffCurrentThreshold(), config->getFanOnCurrentThreshold(), floatVal, "high"))
-          config->setFanHighCurrentThreshold(floatVal);
-        else
-          ok = false;
-      } else {
-        ok = false;
-      }
-    } else if (section == "compressor") {
-      if (type == "off" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
-        if (validateOffOnHigh(floatVal, config->getCompressorOnCurrentThreshold(), config->getCompressorHighCurrentThreshold(), "off"))
-          config->setCompressorOffCurrentThreshold(floatVal);
-        else
-          ok = false;
-      } else if (type == "on" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
-        if (validateOffOnHigh(config->getCompressorOffCurrentThreshold(), floatVal, config->getCompressorHighCurrentThreshold(), "on"))
-          config->setCompressorOnCurrentThreshold(floatVal);
-        else
-          ok = false;
-      } else if (type == "high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
-        if (validateOffOnHigh(config->getCompressorOffCurrentThreshold(), config->getCompressorOnCurrentThreshold(), floatVal, "high"))
-          config->setCompressorHighCurrentThreshold(floatVal);
-        else
-          ok = false;
-      } else {
-        ok = false;
-      }
-    } else if (section == "pump") {
-      if (type == "off" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
-        if (validateOffOnHigh(floatVal, config->getPumpOnCurrentThreshold(), config->getPumpHighCurrentThreshold(), "off"))
-          config->setPumpOffCurrentThreshold(floatVal);
-        else
-          ok = false;
-      } else if (type == "on" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
-        if (validateOffOnHigh(config->getPumpOffCurrentThreshold(), floatVal, config->getPumpHighCurrentThreshold(), "on"))
-          config->setPumpOnCurrentThreshold(floatVal);
-        else
-          ok = false;
-      } else if (type == "high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_CURRENT_A, ConfigLimits::MAX_CURRENT_A)) {
-        if (validateOffOnHigh(config->getPumpOffCurrentThreshold(), config->getPumpOnCurrentThreshold(), floatVal, "high"))
-          config->setPumpHighCurrentThreshold(floatVal);
-        else
-          ok = false;
-      } else {
-        ok = false;
-      }
-    } else if (section == "geiger") {
-      if (type == "abnormal_low" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_GEIGER_USV_H, ConfigLimits::MAX_GEIGER_USV_H)) {
-        if (floatVal > config->getGeigerAbnormalHighThreshold()) {
-          ok = false;
-          errorMsg = "Abnormal Low cannot exceed Abnormal High threshold";
+      } else if (section == "voc") {
+        if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_GAS_INDEX, ConfigLimits::MAX_GAS_INDEX)) {
+          if (validateWarnDanger(intVal, config->getVocDangerThreshold(), true))
+            config->setVocWarnThreshold(intVal);
+          else
+            ok = false;
+        } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_GAS_INDEX, ConfigLimits::MAX_GAS_INDEX)) {
+          if (validateWarnDanger(config->getVocWarnThreshold(), intVal, false))
+            config->setVocDangerThreshold(intVal);
+          else
+            ok = false;
         } else {
-          config->setGeigerAbnormalLowThreshold(floatVal);
+          ok = false;
         }
-      } else if (type == "abnormal_high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_GEIGER_USV_H, ConfigLimits::MAX_GEIGER_USV_H)) {
-        if (floatVal < config->getGeigerAbnormalLowThreshold() || floatVal > config->getGeigerDangerHighThreshold()) {
-          ok = false;
-          errorMsg = "Abnormal High must be between Abnormal Low and Danger High thresholds";
+      } else if (section == "display") {
+        if (type == "brightness" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_DISPLAY_BRIGHTNESS, ConfigLimits::MAX_DISPLAY_BRIGHTNESS)) {
+          uint8_t b = static_cast<uint8_t>(intVal);
+          SystemStatusAccessor shared;
+          shared->backlightState = (b > 0);
+          shared->backlightBrightness = b;
+          logger.infof("Display brightness set to %u via Web Server", b);
+        } else if (type == "backlight" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_SWITCH_STATE, ConfigLimits::MAX_SWITCH_STATE)) {
+          SystemStatusAccessor shared;
+          uint8_t curB = shared->backlightBrightness;
+          uint8_t newB = (intVal != 0) ? (curB == 0 ? ConfigLimits::MAX_DISPLAY_BRIGHTNESS : curB) : 0;
+          shared->backlightState = (intVal != 0);
+          shared->backlightBrightness = newB;
+          logger.infof("Display backlight set to %s via Web Server",
+                       intVal != 0 ? "ON" : "OFF");
         } else {
-          config->setGeigerAbnormalHighThreshold(floatVal);
+          ok = false;
         }
-      } else if (type == "danger_high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_GEIGER_USV_H, ConfigLimits::MAX_GEIGER_USV_H)) {
-        if (floatVal < config->getGeigerAbnormalHighThreshold()) {
-          ok = false;
-          errorMsg = "Danger High cannot be lower than Abnormal High threshold";
+      } else if (section == "scd30") {
+        if (type == "autocal" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_SWITCH_STATE, ConfigLimits::MAX_SWITCH_STATE)) {
+          bool enabled = (intVal != 0);
+          // The state is updated from the SensorStack's reply
+          MainTaskEventNotifier::getInstance().sendEvent(
+              enabled ? MainTaskEventNotifier::EVT_SCD30_AUTOCAL_ON : MainTaskEventNotifier::EVT_SCD30_AUTOCAL_OFF);
+          logger.infof("SCD30 AutoCalibration %s requested via Web Server",
+                       enabled ? "ON" : "OFF");
+        } else if (type == "forcecal" &&
+                   parseStrictInt(valueStr, intVal, SensorDefines::SCD30_FORCECAL_MIN_PPM, SensorDefines::SCD30_FORCECAL_MAX_PPM)) {
+          uint16_t ppm = static_cast<uint16_t>(intVal);
+          SystemStatusAccessor()->scd30ForceCalTarget = ppm;
+          MainTaskEventNotifier::getInstance().sendEvent(MainTaskEventNotifier::EVT_SCD30_FORCECAL);
+          logger.infof("SCD30 Force Calibration to %u ppm requested via Web Server",
+                       ppm);
         } else {
-          config->setGeigerDangerHighThreshold(floatVal);
+          ok = false;
         }
       } else {
         ok = false;
       }
-    } else if (section == "temp") {
-      if (type == "acceptable_low" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_TEMP_C, ConfigLimits::MAX_TEMP_C)) {
-        if (floatVal > config->getTempComfortableLow()) {
-          ok = false;
-          errorMsg = "Acceptable Low cannot exceed Comfortable Low";
-        } else {
-          config->setTempAcceptableLow(floatVal);
-        }
-      } else if (type == "comfortable_low" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_TEMP_C, ConfigLimits::MAX_TEMP_C)) {
-        if (floatVal < config->getTempAcceptableLow() || floatVal > config->getTempComfortableHigh()) {
-          ok = false;
-          errorMsg = "Comfortable Low must be between Acceptable Low and Comfortable High";
-        } else {
-          config->setTempComfortableLow(floatVal);
-        }
-      } else if (type == "comfortable_high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_TEMP_C, ConfigLimits::MAX_TEMP_C)) {
-        if (floatVal < config->getTempComfortableLow() || floatVal > config->getTempAcceptableHigh()) {
-          ok = false;
-          errorMsg = "Comfortable High must be between Comfortable Low and Acceptable High";
-        } else {
-          config->setTempComfortableHigh(floatVal);
-        }
-      } else if (type == "acceptable_high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_TEMP_C, ConfigLimits::MAX_TEMP_C)) {
-        if (floatVal < config->getTempComfortableHigh()) {
-          ok = false;
-          errorMsg = "Acceptable High cannot be lower than Comfortable High";
-        } else {
-          config->setTempAcceptableHigh(floatVal);
-        }
-      } else {
-        ok = false;
-      }
-    } else if (section == "humi") {
-      if (type == "acceptable_low" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_HUMI_PCT, ConfigLimits::MAX_HUMI_PCT)) {
-        if (floatVal > config->getHumiComfortableLow()) {
-          ok = false;
-          errorMsg = "Acceptable Low cannot exceed Comfortable Low";
-        } else {
-          config->setHumiAcceptableLow(floatVal);
-        }
-      } else if (type == "comfortable_low" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_HUMI_PCT, ConfigLimits::MAX_HUMI_PCT)) {
-        if (floatVal < config->getHumiAcceptableLow() || floatVal > config->getHumiComfortableHigh()) {
-          ok = false;
-          errorMsg = "Comfortable Low must be between Acceptable Low and Comfortable High";
-        } else {
-          config->setHumiComfortableLow(floatVal);
-        }
-      } else if (type == "comfortable_high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_HUMI_PCT, ConfigLimits::MAX_HUMI_PCT)) {
-        if (floatVal < config->getHumiComfortableLow() || floatVal > config->getHumiAcceptableHigh()) {
-          ok = false;
-          errorMsg = "Comfortable High must be between Comfortable Low and Acceptable High";
-        } else {
-          config->setHumiComfortableHigh(floatVal);
-        }
-      } else if (type == "acceptable_high" && parseStrictFloat(valueStr, floatVal, ConfigLimits::MIN_HUMI_PCT, ConfigLimits::MAX_HUMI_PCT)) {
-        if (floatVal < config->getHumiComfortableHigh()) {
-          ok = false;
-          errorMsg = "Acceptable High cannot be lower than Comfortable High";
-        } else {
-          config->setHumiAcceptableHigh(floatVal);
-        }
-      } else {
-        ok = false;
-      }
-    } else if (section == "inactivity") {
-      if (type == "timer_delay" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_INACTIVITY_DELAY_S, ConfigLimits::MAX_INACTIVITY_DELAY_S)) {
-        config->setInactivityTimerDelay(intVal);
-        SystemStatusAccessor shared;
-        shared->inactivityTimerDelay = intVal;
-        shared->inactivityTimerDelayForce = true;
-      } else {
-        ok = false;
-      }
-    } else if (section == "log") {
-      if (type == "level" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_LOG_LEVEL, ConfigLimits::MAX_LOG_LEVEL)) {
-        AppLogLevel level = static_cast<AppLogLevel>(intVal);
-        config->setLogLevel(level);
-        logger.setLogLevel(level);
-        SystemStatusAccessor shared;
-        shared->logLevel = level;
-        logger.infof("Log level updated to %d via Web Server", intVal);
-      } else {
-        ok = false;
-      }
-    } else if (section == "mqtt") {
-      if (type == "host" && valueStr.length() > 0 && valueStr.length() <= ConfigLimits::MAX_MQTT_HOST_LEN)
-        config->setMqttHost(valueStr.c_str());
-      else if (type == "port" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_MQTT_PORT, ConfigLimits::MAX_MQTT_PORT))
-        config->setMqttPort(intVal);
-      else if (type == "user" && valueStr.length() <= ConfigLimits::MAX_MQTT_USER_LEN)
-        config->setMqttUser(valueStr.c_str());
-      else if (type == "password" && valueStr.length() <= ConfigLimits::MAX_MQTT_PASSWORD_LEN) {
-        if (valueStr.length() > 0) {
-          config->setMqttPassword(valueStr.c_str());
-        }
-      } else if (type == "device_id" && valueStr.length() > 0 &&
-                 valueStr.length() <= ConfigLimits::MAX_MQTT_DEVICE_ID_LEN)
-        config->setMqttDeviceId(valueStr.c_str());
-      else if (type == "device_name" && valueStr.length() > 0 &&
-                 valueStr.length() <= ConfigLimits::MAX_MQTT_DEVICE_NAME_LEN)
-        config->setMqttDeviceName(valueStr.c_str());
-      else
-        ok = false;
-    } else if (section == "voc") {
-      if (type == "warn" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_GAS_INDEX, ConfigLimits::MAX_GAS_INDEX)) {
-        if (validateWarnDanger(intVal, config->getVocDangerThreshold(), true))
-          config->setVocWarnThreshold(intVal);
-        else
-          ok = false;
-      } else if (type == "danger" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_GAS_INDEX, ConfigLimits::MAX_GAS_INDEX)) {
-        if (validateWarnDanger(config->getVocWarnThreshold(), intVal, false))
-          config->setVocDangerThreshold(intVal);
-        else
-          ok = false;
-      } else {
-        ok = false;
-      }
-    } else if (section == "display") {
-      if (type == "brightness" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_DISPLAY_BRIGHTNESS, ConfigLimits::MAX_DISPLAY_BRIGHTNESS)) {
-        uint8_t b = static_cast<uint8_t>(intVal);
-        SystemStatusAccessor shared;
-        shared->backlightState = (b > 0);
-        shared->backlightBrightness = b;
-        logger.infof("Display brightness set to %u via Web Server", b);
-      } else if (type == "backlight" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_SWITCH_STATE, ConfigLimits::MAX_SWITCH_STATE)) {
-        SystemStatusAccessor shared;
-        uint8_t curB = shared->backlightBrightness;
-        uint8_t newB = (intVal != 0) ? (curB == 0 ? ConfigLimits::MAX_DISPLAY_BRIGHTNESS : curB) : 0;
-        shared->backlightState = (intVal != 0);
-        shared->backlightBrightness = newB;
-        logger.infof("Display backlight set to %s via Web Server",
-                     intVal != 0 ? "ON" : "OFF");
-      } else {
-        ok = false;
-      }
-    } else if (section == "scd30") {
-      if (type == "autocal" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_SWITCH_STATE, ConfigLimits::MAX_SWITCH_STATE)) {
-        bool enabled = (intVal != 0);
-        // The state is updated from the SensorStack's reply
-        MainTaskEventNotifier::getInstance().sendEvent(
-            enabled ? MainTaskEventNotifier::EVT_SCD30_AUTOCAL_ON : MainTaskEventNotifier::EVT_SCD30_AUTOCAL_OFF);
-        logger.infof("SCD30 AutoCalibration %s requested via Web Server",
-                     enabled ? "ON" : "OFF");
-      } else if (type == "forcecal" &&
-                 parseStrictInt(valueStr, intVal, SensorDefines::SCD30_FORCECAL_MIN_PPM, SensorDefines::SCD30_FORCECAL_MAX_PPM)) {
-        uint16_t ppm = static_cast<uint16_t>(intVal);
-        SystemStatusAccessor()->scd30ForceCalTarget = ppm;
-        MainTaskEventNotifier::getInstance().sendEvent(MainTaskEventNotifier::EVT_SCD30_FORCECAL);
-        logger.infof("SCD30 Force Calibration to %u ppm requested via Web Server",
-                     ppm);
-      } else {
-        ok = false;
-      }
-    } else {
-      ok = false;
     }
 
     if (ok) {
@@ -1805,9 +1815,10 @@ void WebServerManager::handleUpload() {
 }
 
 void WebServerManager::handleConfigGas() {
-  ConfigManagerAccessor config;
   streamTemplate(config_gas_html,
                  [&](const char *key, char *buf, size_t len) -> bool {
+                   // Locked per value: never while the page is being sent
+                   ConfigManagerAccessor config;
                    if (strcmp(key, "FIRMWARE_VERSION") == 0) {
                      snprintf(buf, len, "%s", _firmware_version);
                      return true;
@@ -1866,9 +1877,10 @@ void WebServerManager::handleConfigGas() {
 }
 
 void WebServerManager::handleConfigPM() {
-  ConfigManagerAccessor config;
   streamTemplate(config_pm_html,
                  [&](const char *key, char *buf, size_t len) -> bool {
+                   // Locked per value: never while the page is being sent
+                   ConfigManagerAccessor config;
                    if (strcmp(key, "FIRMWARE_VERSION") == 0) {
                      snprintf(buf, len, "%s", _firmware_version);
                      return true;
@@ -1911,9 +1923,10 @@ void WebServerManager::handleConfigPM() {
 }
 
 void WebServerManager::handleConfigHVAC() {
-  ConfigManagerAccessor config;
   streamTemplate(
       config_hvac_html, [&](const char *key, char *buf, size_t len) -> bool {
+        // Locked per value: never while the page is being sent
+        ConfigManagerAccessor config;
         if (strcmp(key, "FIRMWARE_VERSION") == 0) {
           snprintf(buf, len, "%s", _firmware_version);
           return true;
@@ -1986,9 +1999,10 @@ void WebServerManager::handleConfigHVAC() {
 }
 
 void WebServerManager::handleConfigClimate() {
-  ConfigManagerAccessor config;
   streamTemplate(
       config_climate_html, [&](const char *key, char *buf, size_t len) -> bool {
+        // Locked per value: never while the page is being sent
+        ConfigManagerAccessor config;
         if (strcmp(key, "FIRMWARE_VERSION") == 0) {
           snprintf(buf, len, "%s", _firmware_version);
           return true;
@@ -2031,9 +2045,10 @@ void WebServerManager::handleConfigClimate() {
 }
 
 void WebServerManager::handleConfigSystem() {
-  ConfigManagerAccessor config;
   streamTemplate(
       config_system_html, [&](const char *key, char *buf, size_t len) -> bool {
+        // Locked per value: never while the page is being sent
+        ConfigManagerAccessor config;
         if (strcmp(key, "FIRMWARE_VERSION") == 0) {
           snprintf(buf, len, "%s", _firmware_version);
           return true;
