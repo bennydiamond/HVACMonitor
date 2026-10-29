@@ -264,12 +264,12 @@ void setup() {
 
 void dispatch_main_task_event(MainTaskEventNotifier::EventBits event) {
   switch (event) {
-  case MainTaskEventNotifier::EVT_SCD30_AUTOCAL_ON:
-    nanoUartBridge.sendCommandWithParam(CMD_SET_SCD30_AUTOCAL, '1');
+  case MainTaskEventNotifier::EVT_SCD30_AUTOCAL: {
+    // The latest request wins
+    bool enabled = SystemStatusAccessor()->scd30AutoCalTarget;
+    nanoUartBridge.sendCommandWithParam(CMD_SET_SCD30_AUTOCAL, enabled ? '1' : '0');
     break;
-  case MainTaskEventNotifier::EVT_SCD30_AUTOCAL_OFF:
-    nanoUartBridge.sendCommandWithParam(CMD_SET_SCD30_AUTOCAL, '0');
-    break;
+  }
   case MainTaskEventNotifier::EVT_SPS30_CLEAN:
     nanoUartBridge.sendCommand(CMD_SPS30_CLEAN);
     break;

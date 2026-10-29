@@ -1749,8 +1749,7 @@ void HomeAssistantManager::onScd30AutoCalCommand(bool state, HASwitch *sender) {
                state ? "ON" : "OFF");
   // scd30AutoCalState only ever holds what the SensorStack confirmed: it is set
   // from the Nano's reply, and published from there
-  MainTaskEventNotifier::getInstance().sendEvent(
-      state ? MainTaskEventNotifier::EVT_SCD30_AUTOCAL_ON : MainTaskEventNotifier::EVT_SCD30_AUTOCAL_OFF);
+  MainTaskEventNotifier::getInstance().requestScd30AutoCal(state);
 }
 
 void HomeAssistantManager::onScd30ForceCalCommand(HANumeric number,

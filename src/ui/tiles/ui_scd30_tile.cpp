@@ -68,7 +68,7 @@ void UISCD30Tile::update_forcecal_value(uint16_t ppm) {
 void UISCD30Tile::autocal_switch_cb(lv_event_t* e) {
     lv_obj_t* sw = lv_event_get_target(e);
     bool state = lv_obj_has_state(sw, LV_STATE_CHECKED);
-    MainTaskEventNotifier::getInstance().sendEvent(state ? MainTaskEventNotifier::EVT_SCD30_AUTOCAL_ON : MainTaskEventNotifier::EVT_SCD30_AUTOCAL_OFF);
+    MainTaskEventNotifier::getInstance().requestScd30AutoCal(state);
 }
 void UISCD30Tile::set_visible(bool visible) {
     if (tile_obj) {

@@ -7,8 +7,7 @@
 class MainTaskEventNotifier {
 public:
     enum EventBits : uint32_t {
-        EVT_SCD30_AUTOCAL_ON   = (1UL << 0),
-        EVT_SCD30_AUTOCAL_OFF  = (1UL << 1),
+        EVT_SCD30_AUTOCAL      = (1UL << 0), // Target in SystemStatusData.scd30AutoCalTarget
         EVT_SPS30_CLEAN        = (1UL << 2),
         EVT_SGP41_TEST         = (1UL << 3),
         EVT_REBOOT_NANO        = (1UL << 4),
@@ -23,6 +22,10 @@ public:
 
     void setMainTaskHandle(TaskHandle_t handle);
     void sendEvent(EventBits event);
+    // Sets the requested state, then sends EVT_SCD30_AUTOCAL. A single event with a
+    // target, not one event per state: pending events run in bit order, so separate
+    // ON/OFF events could be sent to the Nano in the opposite order of the requests.
+    void requestScd30AutoCal(bool enabled);
     bool receiveOneEvent(EventBits& eventOut);
     // Process one event per call, using a callback for the event bit
     void processOneEvent(const std::function<void(EventBits)>& handler);

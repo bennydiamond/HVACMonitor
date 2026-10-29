@@ -1,4 +1,5 @@
 #include "MainTaskEvents.h"
+#include "SystemStatusAccessor.h"
 
 MainTaskEventNotifier& MainTaskEventNotifier::getInstance() {
     static MainTaskEventNotifier instance;
@@ -13,6 +14,11 @@ void MainTaskEventNotifier::sendEvent(EventBits event) {
     if (mainTaskHandle) {
         xTaskNotify(mainTaskHandle, event, eSetBits);
     }
+}
+
+void MainTaskEventNotifier::requestScd30AutoCal(bool enabled) {
+    SystemStatusAccessor()->scd30AutoCalTarget = enabled;
+    sendEvent(EVT_SCD30_AUTOCAL);
 }
 
 bool MainTaskEventNotifier::receiveOneEvent(EventBits& eventOut) {

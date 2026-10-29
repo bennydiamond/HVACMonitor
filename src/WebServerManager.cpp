@@ -1404,8 +1404,7 @@ void WebServerManager::handleConfigUpdate() {
         if (type == "autocal" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_SWITCH_STATE, ConfigLimits::MAX_SWITCH_STATE)) {
           bool enabled = (intVal != 0);
           // The state is updated from the SensorStack's reply
-          MainTaskEventNotifier::getInstance().sendEvent(
-              enabled ? MainTaskEventNotifier::EVT_SCD30_AUTOCAL_ON : MainTaskEventNotifier::EVT_SCD30_AUTOCAL_OFF);
+          MainTaskEventNotifier::getInstance().requestScd30AutoCal(enabled);
           logger.infof("SCD30 AutoCalibration %s requested via Web Server",
                        enabled ? "ON" : "OFF");
         } else if (type == "forcecal" &&
