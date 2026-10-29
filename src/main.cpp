@@ -51,10 +51,12 @@ const int DEBUG_UPDATE_INTERVAL_MS = 5000;
 const int STACK_CHECK_INTERVAL_MS = 60000;
 
 // Task watchdog timeout. Longer during setup() (Wi-Fi, sensors, tasks starting).
-// MqttTask is not watched: its network calls (DNS lookup, a slow write on a weak
-// link) can legitimately block longer, which must not reboot the device.
+// MqttTask is not watched: on a bad link its network calls can block for minutes,
+// and the device must never reboot because of Wi-Fi or the broker. A stall is
+// only logged (MQTT_TASK_STALL_LOG_MS).
 const uint32_t WATCHDOG_TIMEOUT_S = 10;
 const uint32_t WATCHDOG_SETUP_TIMEOUT_S = 30;
+const uint32_t MQTT_TASK_STALL_LOG_MS = 60000;
 
 unsigned long last_wifi_check_time = 0;
 unsigned long last_debug_update_time = 0;
@@ -333,6 +335,23 @@ void loop() {
     wifi_state_changed = false;
     previous_wifi_connected = current_wifi_connected;
     update_wifi_status();
+  }
+
+  // Log, never reboot: MqttTask blocked in a network call (or truly stuck)
+  static bool mqtt_task_stalled = false;
+  static uint32_t mqtt_task_stall_max_ms = 0;
+  uint32_t mqtt_task_age_ms = haManager.msSinceMqttTaskPass();
+  if (mqtt_task_age_ms > MQTT_TASK_STALL_LOG_MS) {
+    if (!mqtt_task_stalled) {
+      mqtt_task_stalled = true;
+      logger.warningf("MQTT task has not completed a pass for %lu s (network stalled?).",
+                      (unsigned long)(mqtt_task_age_ms / 1000));
+    }
+    mqtt_task_stall_max_ms = mqtt_task_age_ms;
+  } else if (mqtt_task_stalled) {
+    mqtt_task_stalled = false;
+    logger.infof("MQTT task running again after a stall of about %lu s.",
+                 (unsigned long)(mqtt_task_stall_max_ms / 1000));
   }
 
   otaManager.handle();

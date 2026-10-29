@@ -808,6 +808,8 @@ void HomeAssistantManager::taskLoop() {
       }
     }
 
+    _lastTaskPassMs.store(millis());
+    _taskPassed.store(true);
     vTaskDelay(pdMS_TO_TICKS(50));
   }
 }

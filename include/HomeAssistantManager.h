@@ -33,9 +33,23 @@ public:
 
     bool isMqttConnected();
 
+    // Milliseconds since MqttTask last completed a pass (0 before its first pass).
+    // For logging only: MqttTask is not on the task watchdog, since its network
+    // calls can block for minutes on a bad link, which must not reboot the device.
+    uint32_t msSinceMqttTaskPass() const {
+        if (!_taskPassed.load()) {
+            return 0;
+        }
+        // Signed: MqttTask may store a newer time between our two reads
+        int32_t age = static_cast<int32_t>(millis() - _lastTaskPassMs.load());
+        return age > 0 ? static_cast<uint32_t>(age) : 0;
+    }
+
 private:
     // FreeRTOS Task
     TaskHandle_t _taskHandle = nullptr;
+    std::atomic<uint32_t> _lastTaskPassMs{0};
+    std::atomic<bool> _taskPassed{false};
 
     char _firmwareVersion[32] = {0};
     char _configurationUrl[56] = {0};
