@@ -254,6 +254,7 @@ void SensorDataProcessor::processPacket(const NanoSensorPacket& pkt) {
         shared->geothermal_pump_amps = _geothermal_pump_amps_avg.getAverage();
         shared->liquid_level_sensor_state = pkt.isWaterDetected();
         shared->co_ppm = _co_avg.getAverage();
+        shared->nano_updated_ms = millis();
     }
 
     // 10. Pass ambient conditions to ESP32 local sensor task for compensation

@@ -14,6 +14,9 @@
 #define SENSOR_EXPIRE_TIMEOUT_S 300
 #define RANDOM_SUFFIX ""
 #define FORCE_PUBLISH_INTERVAL_MS 120000
+// A source silent for this long is stale: its values are no longer published, so
+// Home Assistant marks them unavailable SENSOR_EXPIRE_TIMEOUT_S after the last one
+#define SENSOR_STALE_TIMEOUT_MS 60000
 
 // Publishing intervals and deadbands
 namespace {
@@ -640,44 +643,52 @@ void HomeAssistantManager::taskLoop() {
         _hasPublishedLogLevel = true;
       }
 
+      auto isFresh = [currentTime](uint32_t updated_ms) {
+        return updated_ms != 0 && currentTime - updated_ms < SENSOR_STALE_TIMEOUT_MS;
+      };
+
       // 2. Publish sensor telemetry
-      publishDifferentialPressure(sensorState.pressure, currentTime);
-      publishFilterPressure(sensorState.filter_pressure, currentTime);
-      publishGeiger(sensorState.cpm, currentTime);
-      publishTemperature(sensorState.temp, currentTime);
-      publishHumidity(sensorState.humi, currentTime);
-      publishFanCurrent(sensorState.fan_amps, currentTime);
-      publishCO2(sensorState.co2, currentTime);
-      publishCO(sensorState.co_ppm, currentTime);
-      publishVOC(sensorState.voc_index, currentTime);
-      publishNOx(sensorState.nox_index, currentTime);
-      publishPM(sensorState.pm1, sensorState.pm25, sensorState.pm4, sensorState.pm10, currentTime);
-      publishCompressorCurrent(sensorState.compressor_amps, currentTime);
-      publishGeothermalPumpCurrent(sensorState.geothermal_pump_amps, currentTime);
-      publishLiquidLevel(sensorState.liquid_level_sensor_state, currentTime);
-      publishHighPressure(sensorState.high_pressure);
-      publishFan(sensorState.fan_status != FanStatus::Off);
+      if (isFresh(sensorState.nano_updated_ms)) {
+        publishDifferentialPressure(sensorState.pressure, currentTime);
+        publishFilterPressure(sensorState.filter_pressure, currentTime);
+        publishGeiger(sensorState.cpm, currentTime);
+        publishTemperature(sensorState.temp, currentTime);
+        publishHumidity(sensorState.humi, currentTime);
+        publishFanCurrent(sensorState.fan_amps, currentTime);
+        publishCO2(sensorState.co2, currentTime);
+        publishCO(sensorState.co_ppm, currentTime);
+        publishVOC(sensorState.voc_index, currentTime);
+        publishNOx(sensorState.nox_index, currentTime);
+        publishPM(sensorState.pm1, sensorState.pm25, sensorState.pm4, sensorState.pm10, currentTime);
+        publishCompressorCurrent(sensorState.compressor_amps, currentTime);
+        publishGeothermalPumpCurrent(sensorState.geothermal_pump_amps, currentTime);
+        publishLiquidLevel(sensorState.liquid_level_sensor_state, currentTime);
+        publishHighPressure(sensorState.high_pressure);
+        publishFan(sensorState.fan_status != FanStatus::Off);
+      }
 
       // 3. Publish ZMOD
-      publishO3(sensorState.o3_conc_ug_per_m3, currentTime);
-      publishNO2(sensorState.no2_conc_ug_per_m3, currentTime);
-      publishFastAQI(sensorState.fast_aqi, currentTime);
-      publishEPAAQI(sensorState.epa_aqi, currentTime);
+      if (isFresh(sensorState.zmod_updated_ms)) {
+        publishO3(sensorState.o3_conc_ug_per_m3, currentTime);
+        publishNO2(sensorState.no2_conc_ug_per_m3, currentTime);
+        publishFastAQI(sensorState.fast_aqi, currentTime);
+        publishEPAAQI(sensorState.epa_aqi, currentTime);
+      }
 
 #ifdef BMP280_ENABLED
-      if (!isnan(sensorState.bmp_pressure_pa)) {
+      if (isFresh(sensorState.bmp_updated_ms) && !isnan(sensorState.bmp_pressure_pa)) {
         publishBMP280Pressure(sensorState.bmp_pressure_pa, currentTime);
       }
-      if (!isnan(sensorState.bmp_temp_c)) {
+      if (isFresh(sensorState.bmp_updated_ms) && !isnan(sensorState.bmp_temp_c)) {
         publishBMP280Temperature(sensorState.bmp_temp_c, currentTime);
       }
 #endif
 
 #ifdef AHT20_ENABLED
-      if (!isnan(sensorState.aht_temp_c)) {
+      if (isFresh(sensorState.aht_updated_ms) && !isnan(sensorState.aht_temp_c)) {
         publishAHT20Temperature(sensorState.aht_temp_c, currentTime);
       }
-      if (!isnan(sensorState.aht_humi_pct)) {
+      if (isFresh(sensorState.aht_updated_ms) && !isnan(sensorState.aht_humi_pct)) {
         publishAHT20Humidity(sensorState.aht_humi_pct, currentTime);
       }
 #endif

@@ -436,6 +436,7 @@ void loop() {
         sensor->no2_conc_ug_per_m3 = no2_ug_per_m3;
         sensor->fast_aqi = fast_aqi_avg.getAverage();
         sensor->epa_aqi = epa_aqi_avg.getAverage();
+        sensor->zmod_updated_ms = millis();
       }
     }
   }
@@ -455,6 +456,7 @@ void loop() {
       SensorDataAccessor sensor;
       sensor->bmp_pressure_pa = averaged_pressure;
       sensor->bmp_temp_c = averaged_temperature;
+      sensor->bmp_updated_ms = millis();
     }
 
     logger.debugf("BMP280: P=%.1f Pa (avg: %.1f Pa), T=%.1f°C (avg: %.1f°C)",
@@ -475,6 +477,7 @@ void loop() {
       SensorDataAccessor sensor;
       sensor->aht_temp_c = aht20_temperature_avg.getAverage();
       sensor->aht_humi_pct = aht20_humidity_avg.getAverage();
+      sensor->aht_updated_ms = millis();
     }
 
     logger.debugf("AHT20: T=%.1f°C (avg: %.1f°C), H=%.1f%% (avg: %.1f%%)",

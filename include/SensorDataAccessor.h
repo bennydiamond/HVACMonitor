@@ -7,6 +7,17 @@
 #include <cmath>
 
 struct SensorStateData {
+    // millis() of each producer's last write (0: never). Consumers use them to
+    // tell live values from the last ones left by a source that stopped.
+    uint32_t nano_updated_ms = 0;
+    uint32_t zmod_updated_ms = 0;
+#ifdef BMP280_ENABLED
+    uint32_t bmp_updated_ms = 0;
+#endif
+#ifdef AHT20_ENABLED
+    uint32_t aht_updated_ms = 0;
+#endif
+
     // Environmental & Electrical Sensor Telemetry
     float pressure = NAN;
     float filter_pressure = 0.0f;
