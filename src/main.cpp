@@ -1,4 +1,5 @@
 #include "CST820.h"
+#include "HeapStats.h"
 #include "ConfigManager.h"
 #include "FilterPressureTracker.h"
 #include "GasConcentrationConverter.h"
@@ -359,7 +360,7 @@ void loop() {
   static unsigned long lastHeapCheck = 0;
   static size_t cached_free_heap = 0;
   if (millis() - lastHeapCheck >= 250 || cached_free_heap == 0) {
-    cached_free_heap = ESP.getFreeHeap();
+    cached_free_heap = HeapStats::freeHeap();
     lastHeapCheck = millis();
   }
   if (cached_free_heap > 15000) {
@@ -369,8 +370,8 @@ void loop() {
     if (millis() - lastMemWarning > 30000) {
       logger.warningf("Skipping web server handling due to low memory: "
                       "free=%d, min=%d, max=%d bytes",
-                      cached_free_heap, ESP.getMinFreeHeap(),
-                      ESP.getMaxAllocHeap());
+                      cached_free_heap, HeapStats::minFreeHeap(),
+                      HeapStats::largestFreeBlock());
       lastMemWarning = millis();
     }
   }
@@ -413,7 +414,7 @@ void loop() {
 
     {
       SystemStatusAccessor status;
-      status->esp32FreeHeap = ESP.getFreeHeap();
+      status->esp32FreeHeap = HeapStats::freeHeap();
       status->esp32Uptime = millis() / 1000;
     }
   }
@@ -509,8 +510,8 @@ void loop() {
     UBaseType_t remaining_stack = uxTaskGetStackHighWaterMark(NULL);
     logger.debugf("Main loop task remaining stack: %u bytes, free heap: %u "
                   "bytes, min free: %u bytes, max alloc: %u bytes",
-                  remaining_stack, ESP.getFreeHeap(), ESP.getMinFreeHeap(),
-                  ESP.getMaxAllocHeap());
+                  remaining_stack, HeapStats::freeHeap(), HeapStats::minFreeHeap(),
+                  HeapStats::largestFreeBlock());
   }
 
   MainTaskEventNotifier::getInstance().processOneEvent(dispatch_main_task_event);
@@ -570,9 +571,9 @@ void get_live_dashboard_data(LiveDashboardData &data) {
   data.mqtt_connected = haManager.isMqttConnected();
 
   // Diagnostics & ESP32 Health (Developer)
-  data.esp32_free_heap = esp_get_free_heap_size();
-  data.esp32_min_free_heap = esp_get_minimum_free_heap_size();
-  data.esp32_max_alloc_heap = ESP.getMaxAllocHeap();
+  data.esp32_free_heap = HeapStats::freeHeap();
+  data.esp32_min_free_heap = HeapStats::minFreeHeap();
+  data.esp32_max_alloc_heap = HeapStats::largestFreeBlock();
   data.esp32_uptime_seconds = millis() / 1000;
   strncpy(data.esp32_reset_reason, get_reset_reason_string(), sizeof(data.esp32_reset_reason) - 1);
   strncpy(data.firmware_version, firmwareVersion(), sizeof(data.firmware_version) - 1);

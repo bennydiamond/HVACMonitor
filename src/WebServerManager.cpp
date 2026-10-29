@@ -1,4 +1,5 @@
 #include "WebServerManager.h"
+#include "HeapStats.h"
 #include "BootloopGuard.h"
 #include "ConfigManager.h"
 #include "HomeAssistantManager.h"
@@ -416,7 +417,7 @@ static void appendFloat(String &out, float val, int decimals, float fallback) {
 }
 
 void WebServerManager::handleApiStatus() {
-  size_t freeHeap = ESP.getFreeHeap();
+  size_t freeHeap = HeapStats::freeHeap();
   if (freeHeap < MIN_FREE_HEAP_STATUS_BYTES) {
     logger.warningf("Low memory (%u bytes), rejecting /api/status", freeHeap);
     server.send(503, "application/json", "{\"error\":\"low memory\"}");
@@ -680,7 +681,7 @@ void WebServerManager::handleApiStatus() {
 }
 
 void WebServerManager::handleConfig() {
-  size_t freeHeap = ESP.getFreeHeap();
+  size_t freeHeap = HeapStats::freeHeap();
 
   streamTemplate(config_main_html,
                  [](const char *key, char *buf, size_t len) -> bool {
@@ -691,7 +692,7 @@ void WebServerManager::handleConfig() {
                    return false;
                  });
   logger.infof("Served main config page. Free: %u, Min: %u, Max: %u bytes",
-               freeHeap, ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
+               freeHeap, HeapStats::minFreeHeap(), HeapStats::largestFreeBlock());
 }
 
 static bool parseStrictInt(const String &str, int &outVal, int minVal, int maxVal) {
@@ -729,11 +730,11 @@ static bool parseStrictFloat(const String &str, float &outVal, float minVal, flo
 
 void WebServerManager::handleConfigUpdate() {
   // Check available memory before processing
-  size_t freeHeap = ESP.getFreeHeap();
+  size_t freeHeap = HeapStats::freeHeap();
   if (freeHeap < MIN_FREE_HEAP_CONFIG_UPDATE_BYTES) {
     logger.warningf(
         "Low memory (free=%u, min=%u, max=%u bytes), rejecting config update",
-        freeHeap, ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
+        freeHeap, HeapStats::minFreeHeap(), HeapStats::largestFreeBlock());
     server.send(503, "text/plain",
                 "Service temporarily unavailable - low memory");
     return;

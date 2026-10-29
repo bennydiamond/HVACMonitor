@@ -1,4 +1,5 @@
 #include "UITask.h"
+#include "HeapStats.h"
 #include "TaskPriorities.h"
 #include "LGFX_ESP32_2432S022C.h"
 #include "CST820.h"
@@ -80,7 +81,7 @@ void UITask::start() {
 
     if (result != pdPASS) {
         logger.errorf("Failed to create UITask. Free: %d, Min: %d, Max: %d bytes",
-                      ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
+                      HeapStats::freeHeap(), HeapStats::minFreeHeap(), HeapStats::largestFreeBlock());
         taskHandle = nullptr;
     } else {
         logger.infof("UITask created successfully on core %d", xPortGetCoreID());

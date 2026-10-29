@@ -1,4 +1,5 @@
 #include "SensorTask.h"
+#include "HeapStats.h"
 #include "TaskPriorities.h"
 #include "Logger.h"
 #include "SerialMutex.h"
@@ -71,7 +72,7 @@ void SensorTask::init() {
     );
     
     if (result != pdPASS) {
-        logger.errorf("Failed to create SensorTask. Free: %d, Min: %d, Max: %d bytes", ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
+        logger.errorf("Failed to create SensorTask. Free: %d, Min: %d, Max: %d bytes", HeapStats::freeHeap(), HeapStats::minFreeHeap(), HeapStats::largestFreeBlock());
         taskHandle = nullptr;
     } else {
         logger.infof("SensorTask created successfully on core %d", xPortGetCoreID());

@@ -1,4 +1,5 @@
 #include "HomeAssistantManager.h"
+#include "HeapStats.h"
 #include "Esp32Architecture.h"
 #include "NanoCommands.h"
 #include "RebootManager.h"
@@ -186,7 +187,7 @@ void HomeAssistantManager::init(const char *firmware_version) {
         &_taskHandle, tskNO_AFFINITY);
     if (result != pdPASS) {
       logger.errorf("Failed to create MqttTask. Free heap: %u bytes",
-                    ESP.getFreeHeap());
+                    HeapStats::freeHeap());
       _taskHandle = nullptr;
     } else {
       logger.info("MqttTask started successfully");

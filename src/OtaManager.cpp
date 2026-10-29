@@ -1,4 +1,5 @@
 #include <ArduinoOTA.h>
+#include "HeapStats.h"
 #include "OtaManager.h"
 #include "Logger.h"
 #include "UITask.h"
@@ -19,7 +20,7 @@ void OtaManager::init() {
         } else { // U_SPIFFS
             type = "filesystem";
         }
-        logger.infof("OTA update started for %s. Free: %lu, Min: %lu, Max: %lu bytes", type.c_str(), ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
+        logger.infof("OTA update started for %s. Free: %lu, Min: %lu, Max: %lu bytes", type.c_str(), HeapStats::freeHeap(), HeapStats::minFreeHeap(), HeapStats::largestFreeBlock());
     });
 
     ArduinoOTA.onEnd([]() {
@@ -37,7 +38,7 @@ void OtaManager::init() {
         uint8_t percent = progress / (total / 100);
         if (percent != lastPercent) {
             lastPercent = percent;
-            logger.debugf("OTA Progress: %u%% Free: %lu, Min: %lu, Max: %lu bytes\r", percent, ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
+            logger.debugf("OTA Progress: %u%% Free: %lu, Min: %lu, Max: %lu bytes\r", percent, HeapStats::freeHeap(), HeapStats::minFreeHeap(), HeapStats::largestFreeBlock());
         }
     });
 
@@ -50,7 +51,7 @@ void OtaManager::init() {
         else if (error == OTA_END_ERROR) strcpy(error_msg, "End Failed");
         else strcpy(error_msg, "Unknown Error");
         
-        logger.errorf("OTA Error[%u]: %s Free: %lu, Min: %lu, Max: %lu bytes", error, error_msg, ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
+        logger.errorf("OTA Error[%u]: %s Free: %lu, Min: %lu, Max: %lu bytes", error, error_msg, HeapStats::freeHeap(), HeapStats::minFreeHeap(), HeapStats::largestFreeBlock());
         //ESP.restart();  // Restart the device on OTA error to recover
     });
 
