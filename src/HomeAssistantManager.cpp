@@ -7,6 +7,9 @@
 #include "SystemStatusAccessor.h"
 #include "MainTaskEvents.h"
 #include "TaskPriorities.h"
+#ifdef ENABLE_TASK_WATCHDOG
+#include "WatchdogManager.h"
+#endif
 #include <WiFi.h>
 #include <math.h>
 
@@ -554,6 +557,9 @@ void HomeAssistantManager::taskFunction(void *pvParameters) {
     return;
   }
   instance->initMqtt();
+#ifdef ENABLE_TASK_WATCHDOG
+  WatchdogManager::addCurrentTask();
+#endif
   instance->taskLoop();
   vTaskDelete(NULL);
 }
@@ -808,6 +814,9 @@ void HomeAssistantManager::taskLoop() {
       }
     }
 
+#ifdef ENABLE_TASK_WATCHDOG
+    WatchdogManager::reset();
+#endif
     vTaskDelay(pdMS_TO_TICKS(50));
   }
 }
