@@ -197,11 +197,21 @@ void setup() {
   vTaskPrioritySet(NULL, TASK_PRIORITY_MAIN);
 
   logger.info("--- System Booting ---");
+  AppLogLevel log_level;
+  int inactivity_delay;
   {
     ConfigManagerAccessor config;
     config->init();
-    logger.init(&haManager);
-    logger.setLogLevel(config->getLogLevel());
+    log_level = config->getLogLevel();
+    inactivity_delay = static_cast<int>(config->getInactivityTimerDelay());
+  }
+  logger.init(&haManager);
+  logger.setLogLevel(log_level);
+  {
+    // Shared copies of the saved settings, published by MqttTask and shown by the UI
+    SystemStatusAccessor status;
+    status->logLevel = log_level;
+    status->inactivityTimerDelay = inactivity_delay;
   }
 
   const char *reset_reason = get_reset_reason_string();
