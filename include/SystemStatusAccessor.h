@@ -35,7 +35,7 @@ struct SystemStatusData {
 
     uint16_t scd30ForceCalValue = SystemStatusDefaults::SCD30_FORCECAL_VALUE;
     uint8_t scd30ForceCalSeq = 0;
-    uint16_t scd30ForceCalTarget = 0; // Target ppm when requesting a forced recalibration
+    uint16_t scd30ForceCalTarget = 0; // Pending forced recalibration request (ppm), 0: none
     bool scd30AutoCalTarget = false;  // Requested state, sent with EVT_SCD30_AUTOCAL
 
     bool backlightState = SystemStatusDefaults::BACKLIGHT_STATE;

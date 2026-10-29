@@ -26,6 +26,9 @@ public:
     // target, not one event per state: pending events run in bit order, so separate
     // ON/OFF events could be sent to the Nano in the opposite order of the requests.
     void requestScd30AutoCal(bool enabled);
+    // Sets the target, then sends EVT_SCD30_FORCECAL. A request still pending (not
+    // yet sent to the Nano) is replaced, and logged: the latest request wins.
+    void requestScd30ForceCal(uint16_t ppm);
     bool receiveOneEvent(EventBits& eventOut);
     // Process one event per call, using a callback for the event bit
     void processOneEvent(const std::function<void(EventBits)>& handler);

@@ -1767,8 +1767,7 @@ void HomeAssistantManager::onScd30ForceCalCommand(HANumeric number,
   uint16_t ppm_value = static_cast<uint16_t>(ppm_raw);
   logger.infof("SCD30 Force Calibration to %u ppm command from Home Assistant.",
                ppm_value);
-  SystemStatusAccessor()->scd30ForceCalTarget = ppm_value;
-  MainTaskEventNotifier::getInstance().sendEvent(MainTaskEventNotifier::EVT_SCD30_FORCECAL);
+  MainTaskEventNotifier::getInstance().requestScd30ForceCal(ppm_value);
 }
 
 void HomeAssistantManager::onInactivityTimerDelayCommand(HANumeric number,

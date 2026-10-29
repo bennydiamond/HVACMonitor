@@ -1,5 +1,6 @@
 #include "MainTaskEvents.h"
 #include "SystemStatusAccessor.h"
+#include "Logger.h"
 
 MainTaskEventNotifier& MainTaskEventNotifier::getInstance() {
     static MainTaskEventNotifier instance;
@@ -19,6 +20,20 @@ void MainTaskEventNotifier::sendEvent(EventBits event) {
 void MainTaskEventNotifier::requestScd30AutoCal(bool enabled) {
     SystemStatusAccessor()->scd30AutoCalTarget = enabled;
     sendEvent(EVT_SCD30_AUTOCAL);
+}
+
+void MainTaskEventNotifier::requestScd30ForceCal(uint16_t ppm) {
+    uint16_t pending;
+    {
+        SystemStatusAccessor status;
+        pending = status->scd30ForceCalTarget;
+        status->scd30ForceCalTarget = ppm;
+    }
+    if (pending != 0) {
+        logger.warningf("SCD30 Force Calibration to %u ppm replaces a pending request for %u ppm.",
+                        ppm, pending);
+    }
+    sendEvent(EVT_SCD30_FORCECAL);
 }
 
 bool MainTaskEventNotifier::receiveOneEvent(EventBits& eventOut) {

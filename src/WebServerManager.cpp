@@ -1410,8 +1410,7 @@ void WebServerManager::handleConfigUpdate() {
         } else if (type == "forcecal" &&
                    parseStrictInt(valueStr, intVal, SensorDefines::SCD30_FORCECAL_MIN_PPM, SensorDefines::SCD30_FORCECAL_MAX_PPM)) {
           uint16_t ppm = static_cast<uint16_t>(intVal);
-          SystemStatusAccessor()->scd30ForceCalTarget = ppm;
-          MainTaskEventNotifier::getInstance().sendEvent(MainTaskEventNotifier::EVT_SCD30_FORCECAL);
+          MainTaskEventNotifier::getInstance().requestScd30ForceCal(ppm);
           logger.infof("SCD30 Force Calibration to %u ppm requested via Web Server",
                        ppm);
         } else {

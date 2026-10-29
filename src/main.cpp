@@ -296,6 +296,7 @@ void dispatch_main_task_event(MainTaskEventNotifier::EventBits event) {
     {
       SystemStatusAccessor status;
       ppm = status->scd30ForceCalTarget;
+      status->scd30ForceCalTarget = 0; // Consumed: no request pending
     }
     if (SensorDefines::isValidForceCal(ppm)) {
       logger.infof("Sending SCD30 Force Cal to %u ppm via event.", ppm);
