@@ -23,6 +23,7 @@
 #include "SerialMutex.h"
 #include "SensorDataAccessor.h"
 #include "SystemStatusAccessor.h"
+#include "DiagnosticDataAccessor.h"
 #include "TaskPriorities.h"
 #include "UITask.h"
 #include "WebServerManager.h"
@@ -180,6 +181,13 @@ void setup_wifi() {
 }
 
 void setup() {
+  // Create the shared-state mutexes before any task can use them: the accessors
+  // also create them on first use, but that lazy path is not safe against two
+  // tasks taking the same accessor for the first time at once
+  SensorDataAccessor::init();
+  SystemStatusAccessor::init();
+  DiagnosticDataAccessor::init();
+
   SdUpdateManager::checkForUpdate();
 
   BootloopGuard::begin();
