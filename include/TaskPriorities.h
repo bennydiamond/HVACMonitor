@@ -14,7 +14,7 @@
 
 // Stack sizes in bytes (ESP-IDF FreeRTOS takes stack depth in BYTES, not words)
 #define STACK_SIZE_SENSOR           3072
-#define STACK_SIZE_UI               6144
-#define STACK_SIZE_MQTT             6144
+#define STACK_SIZE_UI               5120
+#define STACK_SIZE_MQTT             3072
 #define STACK_SIZE_MAIN             ARDUINO_LOOP_STACK_SIZE
 
