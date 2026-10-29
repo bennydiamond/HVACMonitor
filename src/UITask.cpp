@@ -142,6 +142,9 @@ void UITask::run() {
         SensorStateData lastSensorState;
         SystemStatusData lastSysState;
         bool firstRun = true;
+        // Readings blanked on a SensorStack disconnect: values that come back
+        // unchanged would otherwise never be redrawn
+        bool readingsCleared = false;
 
         auto floatDiffers = [](float a, float b) -> bool {
             if (std::isnan(a) && std::isnan(b)) return false;
@@ -191,74 +194,80 @@ void UITask::run() {
                 uiUpdater->update_sensor_status(sysState.sensorConnectionStatus);
                 if (!sysState.sensorConnectionStatus) {
                     uiUpdater->clearSensorReadings();
+                    readingsCleared = true;
                 }
             }
 
-            if (firstRun || floatDiffers(sensorState.pressure, lastSensorState.pressure) ||
+            // Everything is redrawn with the first packet after the readings were cleared
+            const bool redraw = firstRun ||
+                (readingsCleared && sensorState.nano_updated_ms != lastSensorState.nano_updated_ms);
+            readingsCleared = readingsCleared && !redraw;
+
+            if (redraw || floatDiffers(sensorState.pressure, lastSensorState.pressure) ||
                 floatDiffers(sensorState.filter_pressure, lastSensorState.filter_pressure)) {
                 float displayPressure = (sensorState.filter_pressure > 0.0f) ? sensorState.filter_pressure : sensorState.pressure;
                 uiUpdater->update_pressure(displayPressure);
             }
 
-            if (firstRun || sensorState.high_pressure != lastSensorState.high_pressure) {
+            if (redraw || sensorState.high_pressure != lastSensorState.high_pressure) {
                 uiUpdater->update_high_pressure_status(sensorState.high_pressure);
             }
-            if (firstRun || sensorState.cpm != lastSensorState.cpm) {
+            if (redraw || sensorState.cpm != lastSensorState.cpm) {
                 uiUpdater->update_geiger_cpm(sensorState.cpm);
             }
-            if (firstRun || floatDiffers(sensorState.geiger_usvh, lastSensorState.geiger_usvh)) {
+            if (redraw || floatDiffers(sensorState.geiger_usvh, lastSensorState.geiger_usvh)) {
                 uiUpdater->update_geiger_usvh(sensorState.geiger_usvh);
             }
-            if (firstRun || floatDiffers(sensorState.temp, lastSensorState.temp)) {
+            if (redraw || floatDiffers(sensorState.temp, lastSensorState.temp)) {
                 uiUpdater->update_temp(sensorState.temp);
             }
-            if (firstRun || floatDiffers(sensorState.humi, lastSensorState.humi)) {
+            if (redraw || floatDiffers(sensorState.humi, lastSensorState.humi)) {
                 uiUpdater->update_humi(sensorState.humi);
             }
-            if (firstRun || floatDiffers(sensorState.co2, lastSensorState.co2)) {
+            if (redraw || floatDiffers(sensorState.co2, lastSensorState.co2)) {
                 uiUpdater->update_co2(sensorState.co2);
             }
-            if (firstRun || floatDiffers(sensorState.fan_amps, lastSensorState.fan_amps)) {
+            if (redraw || floatDiffers(sensorState.fan_amps, lastSensorState.fan_amps)) {
                 uiUpdater->update_fan_amps(sensorState.fan_amps);
             }
-            if (firstRun || sensorState.fan_status != lastSensorState.fan_status) {
+            if (redraw || sensorState.fan_status != lastSensorState.fan_status) {
                 uiUpdater->update_fan_status(sensorState.fan_status);
             }
-            if (firstRun || floatDiffers(sensorState.compressor_amps, lastSensorState.compressor_amps)) {
+            if (redraw || floatDiffers(sensorState.compressor_amps, lastSensorState.compressor_amps)) {
                 uiUpdater->update_compressor_amps(sensorState.compressor_amps);
             }
-            if (firstRun || floatDiffers(sensorState.geothermal_pump_amps, lastSensorState.geothermal_pump_amps)) {
+            if (redraw || floatDiffers(sensorState.geothermal_pump_amps, lastSensorState.geothermal_pump_amps)) {
                 uiUpdater->update_pump_amps(sensorState.geothermal_pump_amps);
             }
-            if (firstRun || sensorState.liquid_level_sensor_state != lastSensorState.liquid_level_sensor_state) {
+            if (redraw || sensorState.liquid_level_sensor_state != lastSensorState.liquid_level_sensor_state) {
                 uiUpdater->update_water_sensor(sensorState.liquid_level_sensor_state);
             }
-            if (firstRun || sensorState.voc_index != lastSensorState.voc_index) {
+            if (redraw || sensorState.voc_index != lastSensorState.voc_index) {
                 uiUpdater->update_voc(sensorState.voc_index);
             }
-            if (firstRun || sensorState.nox_index != lastSensorState.nox_index) {
+            if (redraw || sensorState.nox_index != lastSensorState.nox_index) {
                 uiUpdater->update_nox(sensorState.nox_index);
             }
-            if (firstRun || floatDiffers(sensorState.pm1, lastSensorState.pm1)) {
+            if (redraw || floatDiffers(sensorState.pm1, lastSensorState.pm1)) {
                 uiUpdater->update_pm1(sensorState.pm1);
             }
-            if (firstRun || floatDiffers(sensorState.pm25, lastSensorState.pm25)) {
+            if (redraw || floatDiffers(sensorState.pm25, lastSensorState.pm25)) {
                 uiUpdater->update_pm25(sensorState.pm25);
             }
-            if (firstRun || floatDiffers(sensorState.pm4, lastSensorState.pm4)) {
+            if (redraw || floatDiffers(sensorState.pm4, lastSensorState.pm4)) {
                 uiUpdater->update_pm4(sensorState.pm4);
             }
-            if (firstRun || floatDiffers(sensorState.pm10, lastSensorState.pm10)) {
+            if (redraw || floatDiffers(sensorState.pm10, lastSensorState.pm10)) {
                 uiUpdater->update_pm10(sensorState.pm10);
             }
-            if (firstRun || floatDiffers(sensorState.co_ppm, lastSensorState.co_ppm)) {
+            if (redraw || floatDiffers(sensorState.co_ppm, lastSensorState.co_ppm)) {
                 uiUpdater->update_co(sensorState.co_ppm);
             }
 
-            if (firstRun || floatDiffers(sensorState.no2_conc_ug_per_m3, lastSensorState.no2_conc_ug_per_m3)) {
+            if (redraw || floatDiffers(sensorState.no2_conc_ug_per_m3, lastSensorState.no2_conc_ug_per_m3)) {
                 uiUpdater->update_no2(sensorState.no2_conc_ug_per_m3);
             }
-            if (firstRun || floatDiffers(sensorState.o3_conc_ug_per_m3, lastSensorState.o3_conc_ug_per_m3)) {
+            if (redraw || floatDiffers(sensorState.o3_conc_ug_per_m3, lastSensorState.o3_conc_ug_per_m3)) {
                 uiUpdater->update_o3(sensorState.o3_conc_ug_per_m3);
             }
 
