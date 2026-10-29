@@ -85,6 +85,9 @@ constexpr float AHT20_HUMI_STEADY_DELTA_PCT = 0.5f;
 // WiFi
 constexpr int8_t WIFI_RSSI_DELTA_DBM = 5;
 
+// Period of MqttTask's stack usage log, like the other tasks
+constexpr unsigned long STACK_CHECK_INTERVAL_MS = 60000;
+
 // MQTT: TCP connect timeout to the broker
 constexpr uint32_t MQTT_CONNECT_TIMEOUT_MS = 2000;
 } // namespace
@@ -565,7 +568,13 @@ void HomeAssistantManager::taskFunction(void *pvParameters) {
 }
 
 void HomeAssistantManager::taskLoop() {
+  unsigned long lastStackCheckTime = 0;
   while (true) {
+    if (millis() - lastStackCheckTime > STACK_CHECK_INTERVAL_MS) {
+      lastStackCheckTime = millis();
+      logger.debugf("MqttTask remaining stack: %u bytes",
+                    (unsigned)uxTaskGetStackHighWaterMark(NULL));
+    }
     if (WiFi.status() == WL_CONNECTED) {
       _mqtt.loop();
     }
