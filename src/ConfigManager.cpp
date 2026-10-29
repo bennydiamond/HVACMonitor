@@ -992,17 +992,7 @@ void ConfigManager::setMqttDeviceName(const char *value) {
 }
 
 // ConfigManagerAccessor implementation
-void ConfigManagerAccessor::lockMutex() {
-  xSemaphoreTakeRecursive(_instance._mutex, portMAX_DELAY);
-}
-
-void ConfigManagerAccessor::unlockMutex() {
-  xSemaphoreGiveRecursive(_instance._mutex);
-}
-
 ConfigManagerAccessor::ConfigManagerAccessor()
-    : _instance(*ConfigManager::_instance) {
-  lockMutex();
-}
+    : BaseAccessor(ConfigManager::_instance ? ConfigManager::_instance->_mutex : nullptr),
+      _instance(*ConfigManager::_instance) {}
 
-ConfigManagerAccessor::~ConfigManagerAccessor() { unlockMutex(); }

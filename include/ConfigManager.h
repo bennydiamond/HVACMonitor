@@ -325,18 +325,17 @@ private:
     static const char* KEY_PM10_DANGER;
 };
 
+#include "BaseAccessor.h"
+
 // Thread-safe accessor class for ConfigManager
-class ConfigManagerAccessor {
+class ConfigManagerAccessor : public BaseAccessor {
 public:
     ConfigManagerAccessor();
-    ~ConfigManagerAccessor();
+    ~ConfigManagerAccessor() override = default;
     
     ConfigManager* operator->() { return &_instance; }
     ConfigManager& operator*() { return _instance; }
     
 private:
     ConfigManager& _instance;
-    
-    void lockMutex();
-    void unlockMutex();
 };

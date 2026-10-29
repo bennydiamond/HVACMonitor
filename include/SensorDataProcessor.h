@@ -13,7 +13,6 @@
 
 // Forward declarations
 class UITask;
-class HomeAssistantManager;
 class FilterPressureTracker;
 class SensorTask;
 
@@ -26,8 +25,8 @@ public:
   SensorDataProcessor();
   ~SensorDataProcessor() = default;
 
-  void begin(UITask *ui, HomeAssistantManager *ha,
-             FilterPressureTracker *filterTracker, SensorTask *sensorTask);
+  void begin(UITask *ui, FilterPressureTracker *filterTracker,
+             SensorTask *sensorTask);
 
   // Parses raw payload string and processes sensor data
   void processPayload(char *payload);
@@ -64,7 +63,6 @@ public:
 
 private:
   UITask *_ui;
-  HomeAssistantManager *_ha;
   FilterPressureTracker *_filterTracker;
   SensorTask *_sensorTask;
 

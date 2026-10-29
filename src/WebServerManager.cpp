@@ -2,6 +2,7 @@
 #include "BootloopGuard.h"
 #include "ConfigManager.h"
 #include "HomeAssistantManager.h"
+#include "SharedDataAccessor.h"
 #include "Logger.h"
 #include "RebootManager.h"
 #include <Update.h>
@@ -1261,9 +1262,8 @@ void WebServerManager::handleConfigUpdate() {
     } else if (section == "inactivity") {
       if (type == "timer_delay" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_INACTIVITY_DELAY_S, ConfigLimits::MAX_INACTIVITY_DELAY_S)) {
         config->setInactivityTimerDelay(intVal);
-        HomeAssistantManager *ha = HomeAssistantManager::getInstance();
-        if (ha)
-          ha->updateInactivityTimerDelayState(true);
+        SharedDataAccessor shared;
+        shared.setInactivityTimerDelay(intVal, true);
       } else {
         ok = false;
       }
@@ -1272,9 +1272,8 @@ void WebServerManager::handleConfigUpdate() {
         AppLogLevel level = static_cast<AppLogLevel>(intVal);
         config->setLogLevel(level);
         logger.setLogLevel(level);
-        HomeAssistantManager *ha = HomeAssistantManager::getInstance();
-        if (ha)
-          ha->updateLogLevelState(level);
+        SharedDataAccessor shared;
+        shared.setLogLevel(level);
         logger.infof("Log level updated to %d via Web Server", intVal);
       } else {
         ok = false;
@@ -1316,17 +1315,15 @@ void WebServerManager::handleConfigUpdate() {
       if (type == "brightness" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_DISPLAY_BRIGHTNESS, ConfigLimits::MAX_DISPLAY_BRIGHTNESS)) {
         uint8_t b = static_cast<uint8_t>(intVal);
         UITask::getInstance().set_brightness(b);
-        HomeAssistantManager *ha = HomeAssistantManager::getInstance();
-        if (ha)
-          ha->updateBacklightState(b > 0, b);
+        SharedDataAccessor shared;
+        shared.setBacklightState(b > 0, b);
         logger.infof("Display brightness set to %u via Web Server", b);
       } else if (type == "backlight" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_SWITCH_STATE, ConfigLimits::MAX_SWITCH_STATE)) {
         uint8_t curB = UITask::getInstance().get_brightness();
         uint8_t newB = (intVal != 0) ? (curB == 0 ? ConfigLimits::MAX_DISPLAY_BRIGHTNESS : curB) : 0;
         UITask::getInstance().set_brightness(newB);
-        HomeAssistantManager *ha = HomeAssistantManager::getInstance();
-        if (ha)
-          ha->updateBacklightState(intVal != 0, newB);
+        SharedDataAccessor shared;
+        shared.setBacklightState(intVal != 0, newB);
         logger.infof("Display backlight set to %s via Web Server",
                      intVal != 0 ? "ON" : "OFF");
       } else {
@@ -2066,9 +2063,9 @@ void WebServerManager::handleConfigSystem() {
 }
 
 void WebServerManager::handleConfigMaintenance() {
-  HomeAssistantManager *ha = HomeAssistantManager::getInstance();
-  bool autoCalState = ha ? ha->getScd30AutoCalState() : false;
-  uint16_t forceCalValue = ha ? ha->getScd30ForceCalValue() : SensorDefines::SCD30_FORCECAL_MIN_PPM;
+  SharedDataAccessor shared;
+  bool autoCalState = shared.getScd30AutoCalState();
+  uint16_t forceCalValue = shared.getScd30ForceCalValue();
   if (forceCalValue == 0)
     forceCalValue = SensorDefines::SCD30_FORCECAL_MIN_PPM;
 

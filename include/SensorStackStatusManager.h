@@ -8,7 +8,6 @@
 
 // Forward declarations
 class UITask;
-class HomeAssistantManager;
 
 // Health of the SensorStack firmware itself (as opposed to the UART link)
 enum class SensorStackFirmwareState : uint8_t {
@@ -22,7 +21,7 @@ public:
     SensorStackStatusManager();
     ~SensorStackStatusManager() = default;
 
-    void begin(UITask* ui, HomeAssistantManager* ha);
+    void begin(UITask* ui);
 
     // Invoked by NanoUartBridge on connection & health telemetry
     void onPacketReceived();
@@ -72,7 +71,6 @@ public:
 
 private:
     UITask* _ui;
-    HomeAssistantManager* _ha;
 
     bool _connected;
     unsigned long _last_packet_time;

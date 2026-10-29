@@ -1,92 +1,74 @@
 #pragma once
 
-#include <ArduinoHA.h>
+#include <Arduino.h>
 #include <WiFi.h>
+#include <ArduinoHA.h>
+#include "secrets.h"
+#include "ConfigManager.h"
+#include "SensorDefines.h"
 #include "Logger.h"
+#include "ILogPublisher.h"
+#include "SharedDataAccessor.h"
 
-// Forward declarations to avoid circular dependencies
-class LGFX;
-class IUIUpdater;
-
-class HomeAssistantManager {
+class HomeAssistantManager : public ILogPublisher {
 public:
+    static constexpr const char* MQTT_LOG_TOPIC = "aha/" MQTT_DEVICE_ID "/log";
+
     HomeAssistantManager();
     ~HomeAssistantManager();
     
     static HomeAssistantManager* getInstance() { return _instance; }
 
     void init(const char* firmware_version);
-    void loop();
 
-    // Data Publishing Methods
-    void publishSensorData(
-        float pressure, int cpm, float temp, float humi,
-        float co2, int32_t voc_index, int32_t nox_index,
-        float amps,
-        float pm1, float pm25, float pm4, float pm10,
-        float compressor_amps, float geothermal_pump_amps, bool liquid_level_sensor_state,
-        float co_ppm,
-        float filter_pressure = 0.0f
-    );
-    void publish_O3_NOx_Values(
-        float o3_conc_ug_per_m3, float no2_conc_ug_per_m3, 
-        uint16_t fast_aqi, uint16_t epa_aqi
-    );
-#ifdef BMP280_ENABLED
-    void publishBMP280Data(float pressure_pa);
-    void publishBMP280Data(float pressure_pa, float temperature_degc);
-#endif
-#ifdef AHT20_ENABLED
-    void publishAHT20Data(float temperature_degc, float humidity_pct);
-#endif
-    void publishWiFiStatus(bool connected, int8_t rssi, const char* ssid, const char* ip);
-    void publishSensorConnectionStatus(bool connected);
-    void publishHighPressureStatus(bool is_high);
-    void publishFanStatus(bool is_on); // Renamed from publishNanoVersion
-    void publishSensorStackVersion(const char* version); // Renamed from publishNanoVersion
-    void setSensorStackVersionUnavailable(); // Renamed from setNanoVersionUnavailable
-    void publishSensorStackUptime(uint32_t uptime_seconds, bool force = false);
-    void publishSensorStackFreeRam(uint16_t free_ram);
-    void resetSensorStackUptimePublishTime();
-    
-    // Method to get the MQTT client for the logger
-    HAMqtt* getMqtt();
-
-    // New public method to check MQTT connection status
-    bool isMqttConnected();
-
-    void publishNanoResetCause(const char* cause);
-    // force: publish even when unchanged, e.g. to revert Home Assistant's control
-    // after the SensorStack rejected a command
-    void updateScd30AutoCalState(bool state, bool force = false);
-    void updateScd30ForceCalValue(uint16_t value, bool force = false);
-    bool getScd30AutoCalState() const { return _scd30AutoCalSwitch.getCurrentState(); }
-    uint16_t getScd30ForceCalValue() const { return _scd30ForceCalNumber.getCurrentState().toUInt16(); }
-    bool getBacklightState() const { return _backlight.getCurrentState(); }
-    uint8_t getBacklightBrightness() const { return _backlight.getCurrentBrightness(); }
-    void updateBacklightState(bool state, uint8_t brightness);
-    void publishEsp32FreeRam(uint32_t free_ram);
-    void publishEsp32Uptime(uint32_t uptime_seconds);
-    void updateInactivityTimerDelayState(bool force = false);
-    void updateLogLevelState(AppLogLevel level);
+    // ILogPublisher interface implementation
+    void queueLogMessage(AppLogLevel level, const char* message) override;
+    bool isMqttConnected() override;
 
 private:
+    struct LogQueueEntry {
+        AppLogLevel level;
+        char message[ILogPublisher::MAX_LOG_MESSAGE_LENGTH + 1];
+    };
+
+    // FreeRTOS Task and log queue
+    TaskHandle_t _taskHandle = nullptr;
+    QueueHandle_t _logQueue = nullptr;
+
+    char _firmwareVersion[32] = {0};
+    char _configurationUrl[56] = {0};
+
+    // Tracking versions of last published values to HA
+    uint32_t _lastPublishedScd30AutoCalVersion = 0;
+    uint32_t _lastPublishedScd30ForceCalVersion = 0;
+    uint32_t _lastPublishedBacklightVersion = 0;
+    uint32_t _lastPublishedInactivityDelayVersion = 0;
+    uint32_t _lastPublishedLogLevelVersion = 0;
+    bool _lastMqttConnected = false;
+
+    // Dedicated task functions
+    static void taskFunction(void* pvParameters);
+    void initMqtt();
+    void taskLoop();
+    void drainLogQueue();
+    void resetAllPublishTimes();
+
     // MQTT and Home Assistant objects
     WiFiClient _wifiClient;
     HADevice _device;
     HAMqtt _mqtt;
 
     // Home Assistant Entities
-    HASensor _pressureSensor;
-    HASensor _filterPressureSensor;
+    HASensorNumber _pressureSensor;
+    HASensorNumber _filterPressureSensor;
     HALight _backlight;
     HASensorNumber _wifi_rssi;
     HASensor _wifi_ssid;
     HASensor _wifi_ip;
-    HASensor _geiger_cpm;
-    HASensor _geiger_dose;
-    HASensor _temperatureSensor;
-    HASensor _humiditySensor;
+    HASensorNumber _geiger_cpm;
+    HASensorNumber _geiger_dose;
+    HASensorNumber _temperatureSensor;
+    HASensorNumber _humiditySensor;
 #ifdef BMP280_ENABLED
     HASensorNumber _bmp280PressureSensor;
     HASensorNumber _bmp280TemperatureSensor;
@@ -100,16 +82,16 @@ private:
     HABinarySensor _fanStatus;
     HAButton _rebootButton; 
     HAButton _rebootSensorStackButton;
-    HASensor _pm1_0_sensor, _pm2_5_sensor, _pm4_0_sensor, _pm10_0_sensor;
+    HASensorNumber _pm1_0_sensor, _pm2_5_sensor, _pm4_0_sensor, _pm10_0_sensor;
     HASensorNumber _o3_sensor, _no2_sensor, _fast_aqi_sensor, _epa_aqi_sensor;
-    HASensor _co2_sensor;
-    HASensorNumber _co_sensor;  // Add CO sensor
+    HASensorNumber _co2_sensor;
+    HASensorNumber _co_sensor;
     HASensorNumber _sensorStackUptimeSensor;
     HASensor _sensorStackVersionSensor;
     HASensorNumber _sensorStackFreeRamSensor;
-    HASensor _voc_index_sensor;
-    HASensor _nox_index_sensor;
-    HASensor _currentSensor;
+    HASensorNumber _voc_index_sensor;
+    HASensorNumber _nox_index_sensor;
+    HASensorNumber _currentSensor;
     HASensorNumber _compressorCurrentSensor;
     HASensorNumber _geothermalPumpCurrentSensor;
     HABinarySensor _liquidLevelSensor;
@@ -124,61 +106,83 @@ private:
     HASensorNumber _esp32FreeRamSensor;
     HASensorNumber _esp32UptimeSensor;
 
+    // State tracking sentinels for uninitialized publish values
+    static constexpr float UNPUBLISHED_FLOAT = -9999.0f;
+    static constexpr int UNPUBLISHED_INT = -9999;
+    static constexpr int32_t UNPUBLISHED_INT32 = -9999;
+    static constexpr uint16_t UNPUBLISHED_AQI = 0xFFFF;
+
     // State tracking for publishing
-    float _lastPublishedPressure, _lastPublishedTemp, _lastPublishedHumi, _lastPublishedCo2;
-    float _lastPublishedCo;  // Add CO tracking
-    float _lastPublishedAmps;
-    float _lastPublishedCompressorAmps;
-    float _lastPublishedGeothermalPumpAmps;
-    bool _lastPublishedLiquidLevelState;
-    int _lastPublishedCpm;
-    int32_t _lastPublishedVocIndex;
-    int32_t _lastPublishedNOxIndex;
+    float _lastPublishedPressure = UNPUBLISHED_FLOAT;
+    float _lastPublishedTemp = UNPUBLISHED_FLOAT;
+    float _lastPublishedHumi = UNPUBLISHED_FLOAT;
+    float _lastPublishedCo2 = UNPUBLISHED_FLOAT;
+    float _lastPublishedCo = UNPUBLISHED_FLOAT;
+    float _lastPublishedAmps = UNPUBLISHED_FLOAT;
+    float _lastPublishedCompressorAmps = UNPUBLISHED_FLOAT;
+    float _lastPublishedGeothermalPumpAmps = UNPUBLISHED_FLOAT;
+    bool _lastPublishedLiquidLevelState = false;
+    int _lastPublishedCpm = UNPUBLISHED_INT;
+    int32_t _lastPublishedVocIndex = UNPUBLISHED_INT32;
+    int32_t _lastPublishedNOxIndex = UNPUBLISHED_INT32;
 #ifdef BMP280_ENABLED
-    float _lastPublishedBMP280Pressure;
-    float _lastPublishedBMP280Temperature;
+    float _lastPublishedBMP280Pressure = UNPUBLISHED_FLOAT;
+    float _lastPublishedBMP280Temperature = UNPUBLISHED_FLOAT;
 #endif
 #ifdef AHT20_ENABLED
-    float _lastPublishedAHT20Temperature;
-    float _lastPublishedAHT20Humidity;
+    float _lastPublishedAHT20Temperature = UNPUBLISHED_FLOAT;
+    float _lastPublishedAHT20Humidity = UNPUBLISHED_FLOAT;
 #endif
-    long _lastPublishedWifiRssi;
-    bool _lastPublishedWifiConnected, _lastPublishedSensorConnected, _lastPublishedHighPressure;
-    bool _lastPublishedFanStatus;
-    String _lastPublishedSensorStackVersion; // Tracks the last version string published
-    float _lastPublishedPm1_0, _lastPublishedPm2_5, _lastPublishedPm4_0, _lastPublishedPm10_0;
-    float _lastPublishedO3, _lastPublishedNO2;
-    uint16_t _lastPublishedFastAQI, _lastPublishedEPAAQI;
-    
+    long _lastPublishedWifiRssi = 0;
+    bool _lastPublishedWifiConnected = false, _lastPublishedSensorConnected = false, _lastPublishedHighPressure = false;
+    bool _lastPublishedFanStatus = false;
+    char _lastPublishedWifiSSID[SharedDataDefaults::WIFI_SSID_BUFFER_SIZE] = {0};
+    char _lastPublishedWifiIP[SharedDataDefaults::WIFI_IP_BUFFER_SIZE] = {0};
+    String _lastPublishedSensorStackVersion;
+    float _lastPublishedPm1_0 = UNPUBLISHED_FLOAT;
+    float _lastPublishedPm2_5 = UNPUBLISHED_FLOAT;
+    float _lastPublishedPm4_0 = UNPUBLISHED_FLOAT;
+    float _lastPublishedPm10_0 = UNPUBLISHED_FLOAT;
+    float _lastPublishedO3 = UNPUBLISHED_FLOAT;
+    float _lastPublishedNO2 = UNPUBLISHED_FLOAT;
+    uint16_t _lastPublishedFastAQI = UNPUBLISHED_AQI;
+    uint16_t _lastPublishedEPAAQI = UNPUBLISHED_AQI;
+    float _lastPublishedFilterPressure = UNPUBLISHED_FLOAT;
+    unsigned long _lastFilterPressurePublishTime = 0;
+
+    // Warmup unavailable state tracking
+    bool _geigerUnavailablePublished = false;
+    bool _vocUnavailablePublished = false;
+    bool _noxUnavailablePublished = false;
+    bool _o3UnavailablePublished = false;
+    bool _no2UnavailablePublished = false;
+    bool _fastAqiUnavailablePublished = false;
+    bool _epaAqiUnavailablePublished = false;
+    bool _zmodUnavailablePublished = false;
+
     // Timestamps for periodic publishing
-    unsigned long _lastPressurePublishTime, _lastCpmPublishTime, _lastTempPublishTime, _lastHumiPublishTime;
-    unsigned long _LastO3PublishTime, _lastNO2PublishTime, _lastFastAQIPublishTime, _lastEPAAQIPublishTime;
-    unsigned long _lastWifiStatusPublishTime, _lastSensorStatusPublishTime, _lastHighPressurePublishTime;
-    unsigned long _lastPmPublishTime, _lastCo2PublishTime, _lastVocPublishTime, _lastNOxPublishTime;
-    unsigned long _lastCoPublishTime;  // Add CO publish time tracking
-    unsigned long _lastAmpsPublishTime, _lastFanStatusPublishTime;
+    unsigned long _lastPressurePublishTime = 0, _lastCpmPublishTime = 0, _lastTempPublishTime = 0, _lastHumiPublishTime = 0;
+    unsigned long _LastO3PublishTime = 0, _lastNO2PublishTime = 0, _lastFastAQIPublishTime = 0, _lastEPAAQIPublishTime = 0;
+    unsigned long _lastWifiStatusPublishTime = 0, _lastSensorStatusPublishTime = 0, _lastHighPressurePublishTime = 0;
+    unsigned long _lastPmPublishTime = 0, _lastCo2PublishTime = 0, _lastVocPublishTime = 0, _lastNOxPublishTime = 0;
+    unsigned long _lastCoPublishTime = 0;
+    unsigned long _lastAmpsPublishTime = 0, _lastFanStatusPublishTime = 0;
 #ifdef BMP280_ENABLED
-    unsigned long _lastBMP280PressurePublishTime;
-    unsigned long _lastBMP280TemperaturePublishTime;
+    unsigned long _lastBMP280PressurePublishTime = 0;
+    unsigned long _lastBMP280TemperaturePublishTime = 0;
 #endif
 #ifdef AHT20_ENABLED
-    unsigned long _lastAHT20TemperaturePublishTime;
-    unsigned long _lastAHT20HumidityPublishTime;
+    unsigned long _lastAHT20TemperaturePublishTime = 0;
+    unsigned long _lastAHT20HumidityPublishTime = 0;
 #endif
-    unsigned long _lastSensorStackUptimePublishTime;
-    unsigned long _lastSensorStackFreeRamPublishTime;
-    unsigned long _lastEsp32FreeRamPublishTime;
-    unsigned long _lastEsp32UptimePublishTime;
-    unsigned long _lastCompressorAmpsPublishTime;
-    unsigned long _lastGeothermalPumpAmpsPublishTime;
-    unsigned long _lastLiquidLevelPublishTime;
-    unsigned long _lastInactivityTimerDelayPublishTime;
-
-    float _lastPublishedFilterPressure;
-    unsigned long _lastFilterPressurePublishTime;
-
-    // Sized to fit max IPv6 URL: "http://[39-char-addr]:65535" (54 chars + null = 55 bytes, 56 aligned)
-    char _configurationUrl[56];
+    unsigned long _lastSensorStackUptimePublishTime = 0;
+    unsigned long _lastSensorStackFreeRamPublishTime = 0;
+    unsigned long _lastEsp32FreeRamPublishTime = 0;
+    unsigned long _lastEsp32UptimePublishTime = 0;
+    unsigned long _lastCompressorAmpsPublishTime = 0;
+    unsigned long _lastGeothermalPumpAmpsPublishTime = 0;
+    unsigned long _lastLiquidLevelPublishTime = 0;
+    unsigned long _lastInactivityTimerDelayPublishTime = 0;
 
     // Private sensor publish helpers
     void publishDifferentialPressure(float pressure, unsigned long currentTime);
@@ -195,13 +199,28 @@ private:
     void publishCompressorCurrent(float compressor_amps, unsigned long currentTime);
     void publishGeothermalPumpCurrent(float geothermal_pump_amps, unsigned long currentTime);
     void publishLiquidLevel(bool liquid_level_sensor_state, unsigned long currentTime);
+    void publishO3(float o3, unsigned long currentTime);
+    void publishNO2(float no2, unsigned long currentTime);
+    void publishFastAQI(uint16_t fast_aqi, unsigned long currentTime);
+    void publishEPAAQI(uint16_t epa_aqi, unsigned long currentTime);
+    void publishZmodUnavailable(unsigned long currentTime);
+#ifdef BMP280_ENABLED
+    void publishBMP280Pressure(float pressure_pa, unsigned long currentTime);
+    void publishBMP280Temperature(float temp_c, unsigned long currentTime);
+#endif
+#ifdef AHT20_ENABLED
+    void publishAHT20Temperature(float temp_c, unsigned long currentTime);
+    void publishAHT20Humidity(float humi_pct, unsigned long currentTime);
+#endif
+    void publishHighPressure(bool is_high);
+    void publishFan(bool is_on);
+    void publishSensorStackUptimeHelper(uint32_t uptime_seconds, bool force);
 
     // Static callbacks for ArduinoHA
     static void onMqttConnected();
     static void onMqttDisconnected();
     static void onMqttStateChanged(HAMqtt::ConnectionState state);
 
-    // Failed MQTT connect attempts since the last successful connection (main loop only)
     uint32_t _mqttFailedAttempts = 0;
     static void onBrightnessCommand(uint8_t brightness, HALight* sender);
     static void onStateCommand(bool state, HALight* sender);
@@ -215,7 +234,5 @@ private:
     static void onScd30ForceCalCommand(HANumeric number, HANumber* sender);
     static void onInactivityTimerDelayCommand(HANumeric number, HANumber* sender);
 
-    
-    // Static pointer to the class instance for callbacks
     static HomeAssistantManager* _instance;
 };

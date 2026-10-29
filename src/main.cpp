@@ -21,6 +21,7 @@
 #include "SensorDefines.h"
 #include "SensorTask.h"
 #include "SerialMutex.h"
+#include "SharedDataAccessor.h"
 #include "TaskPriorities.h"
 #include "UITask.h"
 #include "WebServerManager.h"
@@ -116,7 +117,7 @@ void update_wifi_status() {
 
   UITask::getInstance().update_wifi_status(connected, rssi);
   UITask::getInstance().update_network_rssi(rssi);
-  haManager.publishWiFiStatus(connected, rssi, current_ssid, ip_str);
+  SharedDataAccessor().setWifiStatus(connected, rssi, current_ssid, ip_str);
   UITask::getInstance().update_ssid(current_ssid);
   UITask::getInstance().update_ip(ip_str);
   UITask::getInstance().update_mac(mac_str);
@@ -196,7 +197,7 @@ void setup() {
   {
     ConfigManagerAccessor config;
     config->init();
-    logger.init(haManager.getMqtt());
+    logger.init(&haManager);
     logger.setLogLevel(config->getLogLevel());
   }
 
@@ -239,8 +240,8 @@ void setup() {
   sensorTask.init();
 
   // Initialize modular collaborators
-  statusManager.begin(&UITask::getInstance(), &haManager);
-  dataProcessor.begin(&UITask::getInstance(), &haManager, &filterPressureTracker, &sensorTask);
+  statusManager.begin(&UITask::getInstance());
+  dataProcessor.begin(&UITask::getInstance(), &filterPressureTracker, &sensorTask);
   nanoUartBridge.begin(SERIAL_BAUD_RATE, &statusManager, &dataProcessor, &sensorTask);
 
 #ifdef ENABLE_TASK_WATCHDOG
@@ -266,7 +267,6 @@ void loop() {
   static bool previous_mqtt_connect_status = false;
   static unsigned long mqtt_connected_since = 0;
 
-  haManager.loop();
   bool ha_conn = haManager.isMqttConnected();
 
   if (previous_mqtt_connect_status != ha_conn) {
@@ -337,8 +337,11 @@ void loop() {
     last_debug_update_time = millis();
     statusManager.updateDiagnostics();
 
-    haManager.publishEsp32FreeRam(ESP.getFreeHeap());
-    haManager.publishEsp32Uptime(millis() / 1000);
+    {
+      SharedDataAccessor shared;
+      shared.setEsp32FreeHeap(ESP.getFreeHeap());
+      shared.setEsp32Uptime(millis() / 1000);
+    }
     UITask::getInstance().update_runtime_uptime(millis() / 1000);
     UITask::getInstance().update_runtime_free_heap(ESP.getFreeHeap());
   }
@@ -378,9 +381,9 @@ void loop() {
       UITask::getInstance().update_no2(no2_ug_per_m3);
       UITask::getInstance().update_o3(o3_ug_per_m3);
 
-      haManager.publish_O3_NOx_Values(o3_ug_per_m3, no2_ug_per_m3,
-                                      fast_aqi_avg.getAverage(),
-                                      epa_aqi_avg.getAverage());
+      SharedDataAccessor().setZmodData(o3_ug_per_m3, no2_ug_per_m3,
+                                       fast_aqi_avg.getAverage(),
+                                       epa_aqi_avg.getAverage());
     }
   }
 
@@ -395,7 +398,7 @@ void loop() {
 
     float averaged_pressure = bmp280_pressure_avg.getAverage();
     float averaged_temperature = bmp280_temperature_avg.getAverage();
-    haManager.publishBMP280Data(averaged_pressure, averaged_temperature);
+    SharedDataAccessor().setBmpData(averaged_pressure, averaged_temperature);
 
     logger.debugf("BMP280: P=%.1f Pa (avg: %.1f Pa), T=%.1f°C (avg: %.1f°C)",
                   bmp280_values.pressure_pa, averaged_pressure,
@@ -411,8 +414,8 @@ void loop() {
   if (freshAHT20Values) {
     aht20_temperature_avg.add(aht20_values.temperature_degc);
     aht20_humidity_avg.add(aht20_values.humidity_pct);
-    haManager.publishAHT20Data(aht20_temperature_avg.getAverage(),
-                               aht20_humidity_avg.getAverage());
+    SharedDataAccessor().setAhtData(aht20_temperature_avg.getAverage(),
+                                   aht20_humidity_avg.getAverage());
 
     logger.debugf("AHT20: T=%.1f°C (avg: %.1f°C), H=%.1f%% (avg: %.1f%%)",
                   aht20_values.temperature_degc,
@@ -456,8 +459,6 @@ void loop() {
           break;
         }
       });
-
-  haManager.updateInactivityTimerDelayState();
 
   if (Serial.available() > 0) {
     vTaskDelay(pdMS_TO_TICKS(1));

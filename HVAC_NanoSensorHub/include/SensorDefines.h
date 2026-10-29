@@ -64,6 +64,16 @@ inline bool isValidForceCal(uint16_t ppm) {
 }
 
 // ==============================================================================
+// ZMOD4510 Ozone, NO2 & AQI Validity Ranges
+// ==============================================================================
+// Valid US EPA AQI and Fast AQI range per Renesas ZMOD4510 and US EPA standard is 0 to 500:
+// 0-50: Good, 51-100: Moderate, 101-150: Unhealthy for Sensitive Groups,
+// 151-200: Unhealthy, 201-300: Very Unhealthy, 301-500: Hazardous.
+// 500 is the defined ceiling of the Hazardous category (in-range).
+constexpr uint16_t EPA_AQI_MIN = 0;
+constexpr uint16_t EPA_AQI_MAX = 500;
+
+// ==============================================================================
 // SensorStack Sensor Faults
 // ==============================================================================
 // Bits of the fault mask the SensorStack reports in its health response. A sensor that

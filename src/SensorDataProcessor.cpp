@@ -5,10 +5,10 @@
 #include "Logger.h"
 #include "ConfigManager.h"
 #include "UITask.h"
-#include "HomeAssistantManager.h"
 #include "FilterPressureTracker.h"
 #include "SensorTask.h"
 #include "SensorDefines.h"
+#include "SharedDataAccessor.h"
 
 // --- Sensor Calculation Constants ---
 #define SHUNT_RESISTOR 150.0f
@@ -24,7 +24,6 @@
 
 SensorDataProcessor::SensorDataProcessor()
     : _ui(nullptr),
-      _ha(nullptr),
       _filterTracker(nullptr),
       _sensorTask(nullptr),
       _last_received_timestamp(0),
@@ -51,11 +50,9 @@ SensorDataProcessor::SensorDataProcessor()
       _sgp41_was_conditioning(false) {}
 
 void SensorDataProcessor::begin(UITask* ui,
-                               HomeAssistantManager* ha,
                                FilterPressureTracker* filterTracker,
                                SensorTask* sensorTask) {
     _ui = ui;
-    _ha = ha;
     _filterTracker = filterTracker;
     _sensorTask = sensorTask;
 }
@@ -263,12 +260,13 @@ void SensorDataProcessor::processPacket(const NanoSensorPacket& pkt) {
         _ui->update_water_sensor(pkt.isWaterDetected());
     }
 
-    // 9. Publish to Home Assistant
-    if (_ha) {
-        _ha->publishHighPressureStatus(is_pressure_high);
-        _ha->publishFanStatus(fan_status != FAN_STATUS_OFF);
-        // Invalid values (NaN, or a gas index of 0) are not published
-        _ha->publishSensorData(
+    // 9. Centralize telemetry into SharedDataAccessor
+    {
+        SharedDataAccessor shared;
+        shared.setHighPressureStatus(is_pressure_high);
+        shared.setFanStatus(fan_status != FAN_STATUS_OFF);
+        // Invalid values (NaN, or a gas index of 0) are handled safely
+        shared.setSensorData(
             _diff_pressure_avg.getAverage(), c, temp_c, humi_pct,
             scd30_has_data ? _co2_avg.getAverage() : NAN,
             sgp41_ok ? _voc_avg.getAverage() : 0, sgp41_ok ? _nox_avg.getAverage() : 0, pkt.getFanAmps(),

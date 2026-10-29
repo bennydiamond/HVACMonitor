@@ -3,14 +3,13 @@
 #include <stdio.h>
 #include "Logger.h"
 #include "UITask.h"
-#include "HomeAssistantManager.h"
 #include "SensorDefines.h"
+#include "SharedDataAccessor.h"
 
 static SensorStackStatusManager* s_status_instance = nullptr;
 
 SensorStackStatusManager::SensorStackStatusManager()
     : _ui(nullptr),
-      _ha(nullptr),
       _connected(false),
       _last_packet_time(0),
       _nano_boot_millis(0),
@@ -25,9 +24,8 @@ SensorStackStatusManager::SensorStackStatusManager()
     s_status_instance = this;
 }
 
-void SensorStackStatusManager::begin(UITask* ui, HomeAssistantManager* ha) {
+void SensorStackStatusManager::begin(UITask* ui) {
     _ui = ui;
-    _ha = ha;
     s_status_instance = this;
 }
 
@@ -114,7 +112,8 @@ void SensorStackStatusManager::setConnected(bool connected) {
         _nano_boot_millis = millis();
         logger.info("Sensor module connection established.");
         if (_ui) _ui->update_sensor_status(true);
-        if (_ha) _ha->publishSensorConnectionStatus(true);
+        SharedDataAccessor shared;
+        shared.setSensorStackStatus(true);
     } else {
         logger.warning("Sensor module connection lost / timeout.");
         if (_ui) {
@@ -123,11 +122,10 @@ void SensorStackStatusManager::setConnected(bool connected) {
             _ui->update_sensorstack_uptime(0);
             _ui->update_sensorstack_ram(0);
         }
-        if (_ha) {
-            _ha->publishSensorConnectionStatus(false);
-            _ha->setSensorStackVersionUnavailable();
-            _ha->publishSensorStackUptime(0, true);
-        }
+        SharedDataAccessor shared;
+        shared.setSensorStackStatus(false);
+        shared.setSensorStackVersionUnavailable();
+        shared.setSensorStackUptime(0, true);
     }
 }
 
@@ -136,7 +134,8 @@ void SensorStackStatusManager::setVersion(const char* version_str) {
     strncpy(_version, version_str, sizeof(_version) - 1);
     _version[sizeof(_version) - 1] = '\0';
 
-    if (_ha) _ha->publishSensorStackVersion(_version);
+    SharedDataAccessor shared;
+    shared.setSensorStackVersion(_version);
     if (_ui) _ui->update_fw_version(_version);
 }
 
@@ -155,15 +154,15 @@ void SensorStackStatusManager::setHealth(int first_time_flag, uint16_t free_ram,
     _free_ram = free_ram;
     _reset_cause_code = reset_cause;
 
-    if (_ha) {
-        _ha->publishSensorStackFreeRam(free_ram);
-        _ha->publishNanoResetCause(reset_cause_str);
+    {
+        SharedDataAccessor shared;
+        shared.setSensorStackFreeRam(free_ram);
+        shared.setNanoResetCause(reset_cause_str);
     }
 
     if (first_time_flag == 0) {
         _nano_boot_millis = millis();
         logger.warning("Nano reported first boot (or reboot). Uptime counter reset.");
-        if (_ha) _ha->resetSensorStackUptimePublishTime();
     }
 }
 
@@ -184,10 +183,9 @@ void SensorStackStatusManager::setSgp41TestResult(const SGP41TestResult& result)
 }
 
 void SensorStackStatusManager::setScd30Info(bool auto_cal, uint16_t force_cal) {
-    if (_ha) {
-        _ha->updateScd30AutoCalState(auto_cal);
-        _ha->updateScd30ForceCalValue(force_cal);
-    }
+    SharedDataAccessor shared;
+    shared.setScd30AutoCalState(auto_cal);
+    shared.setScd30ForceCalValue(force_cal);
     if (_ui) {
         _ui->update_scd30_autocal(auto_cal);
         _ui->update_scd30_forcecal(force_cal);
@@ -195,12 +193,14 @@ void SensorStackStatusManager::setScd30Info(bool auto_cal, uint16_t force_cal) {
 }
 
 void SensorStackStatusManager::setScd30AutoCalState(bool auto_cal, bool force) {
-    if (_ha) _ha->updateScd30AutoCalState(auto_cal, force);
+    SharedDataAccessor shared;
+    shared.setScd30AutoCalState(auto_cal, force);
     if (_ui) _ui->update_scd30_autocal(auto_cal);
 }
 
 void SensorStackStatusManager::setScd30ForceCalValue(uint16_t force_cal, bool force) {
-    if (_ha) _ha->updateScd30ForceCalValue(force_cal, force);
+    SharedDataAccessor shared;
+    shared.setScd30ForceCalValue(force_cal, force);
     if (_ui) _ui->update_scd30_forcecal(force_cal);
 }
 
@@ -377,7 +377,8 @@ bool SensorStackStatusManager::processScd30AutoCalPayload(char* payload) {
         // The state the SensorStack applied is unknown: republish the last confirmed one
         logger.warningf("SCD30 AutoCalibration could not be confirmed: SetResult=%d, ReadResult=%d",
                         set_result, read_result);
-        if (_ha) _ha->updateScd30AutoCalState(_ha->getScd30AutoCalState(), true);
+        SharedDataAccessor shared;
+        shared.setScd30AutoCalState(shared.getScd30AutoCalState(), true);
         return true;
     }
     if (set_result != 0) {
@@ -411,7 +412,8 @@ bool SensorStackStatusManager::processScd30ForceCalPayload(char* payload) {
         logger.warningf("SCD30 Force Calibration rejected or failed: SetResult=%d, ReadResult=%d, Value=%u ppm",
                         set_result, read_result, actual_value);
         // Revert Home Assistant's control to the last confirmed value
-        if (_ha) _ha->updateScd30ForceCalValue(_ha->getScd30ForceCalValue(), true);
+        SharedDataAccessor shared;
+        shared.setScd30ForceCalValue(shared.getScd30ForceCalValue(), true);
     }
     return true;
 }
@@ -432,9 +434,8 @@ void SensorStackStatusManager::updateDiagnostics() {
         }
     }
 
-    if (_ha) {
-        _ha->publishSensorStackUptime(nano_current_uptime_seconds);
-    }
+    SharedDataAccessor shared;
+    shared.setSensorStackUptime(nano_current_uptime_seconds);
 }
 
 void SensorStackStatusManager::populateDashboardData(LiveDashboardData& data) const {

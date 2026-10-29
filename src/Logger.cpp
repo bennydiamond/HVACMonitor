@@ -15,8 +15,8 @@ Logger::Logger() {
     _logStreamBufferHandle = xMessageBufferCreate(LOG_BUFFER_SIZE_BYTES);
 }
 
-void Logger::init(HAMqtt* mqtt) {
-    _mqtt = mqtt;
+void Logger::init(ILogPublisher* publisher) {
+    _logPublisher = publisher;
 }
 
 // Syslog severities (RFC 5424); facility 0 (kern), as the device always used
@@ -224,11 +224,8 @@ void Logger::loop() {
 
             receivedEntry.message[receivedEntry.msgLen] = '\0';
 
-            if (_mqtt != nullptr && _mqtt->isConnected()) {
-                char payload[MAX_MESSAGE_LENGTH + 128];
-                snprintf(payload, sizeof(payload), "{\"level\": \"%s\", \"message\": \"%s\"}",
-                         _getLogLevelString(receivedEntry.level), receivedEntry.message);
-                _mqtt->publish(MQTT_LOG_TOPIC, payload);
+            if (_logPublisher != nullptr && _logPublisher->isMqttConnected()) {
+                _logPublisher->queueLogMessage(receivedEntry.level, receivedEntry.message);
             }
 
             _formatLine(receivedEntry.level, receivedEntry.message);
