@@ -36,19 +36,6 @@ void MainTaskEventNotifier::requestScd30ForceCal(uint16_t ppm) {
     sendEvent(EVT_SCD30_FORCECAL);
 }
 
-bool MainTaskEventNotifier::receiveOneEvent(EventBits& eventOut) {
-    uint32_t ulNotificationValue = 0;
-    if (xTaskNotifyWait(0, 0xFFFFFFFF, &ulNotificationValue, 0) == pdTRUE && ulNotificationValue) {
-        for (uint32_t bit = 0; bit < 32; ++bit) {
-            if (ulNotificationValue & (1UL << bit)) {
-                eventOut = static_cast<EventBits>(1UL << bit);
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
 void MainTaskEventNotifier::processOneEvent(const std::function<void(EventBits)>& handler) {
     if (pendingEvents == 0) {
         if (xTaskNotifyWait(0, 0xFFFFFFFF, &pendingEvents, 0) != pdTRUE) {

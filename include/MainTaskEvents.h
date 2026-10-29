@@ -29,7 +29,6 @@ public:
     // Sets the target, then sends EVT_SCD30_FORCECAL. A request still pending (not
     // yet sent to the Nano) is replaced, and logged: the latest request wins.
     void requestScd30ForceCal(uint16_t ppm);
-    bool receiveOneEvent(EventBits& eventOut);
     // Process one event per call, using a callback for the event bit
     void processOneEvent(const std::function<void(EventBits)>& handler);
 
