@@ -640,8 +640,20 @@ void HomeAssistantManager::taskLoop() {
         _hasPublishedLogLevel = true;
       }
 
-      // 2. Publish sensor telemetry
-      {
+      // 2. Readings that can't be trusted are published as unknown, once
+      // The SensorStack is down while disconnected or without a working firmware,
+      // and until its first packet after that (its readings were cleared)
+      const bool stackUp = sysState.sensorConnectionStatus &&
+                           sysState.sensorStackFirmwareState == SensorStackFirmwareState::Ok &&
+                           sensorState.nano_updated_ms != 0;
+      uint8_t unknown = stackUp ? 0 : GROUP_ALL;
+      updateUnknownGroups(unknown);
+      const uint8_t live = GROUP_ALL & ~unknown;
+
+      // 3. Publish SensorStack telemetry
+      const bool newNanoPacket = sensorState.nano_updated_ms != _lastSeenNanoUpdateMs;
+      _lastSeenNanoUpdateMs = sensorState.nano_updated_ms;
+      if (live & GROUP_STACK) {
         // Read once, so the config lock isn't held while publishing
         float fanOffThreshold, compressorOffThreshold, pumpOffThreshold;
         {
@@ -653,25 +665,29 @@ void HomeAssistantManager::taskLoop() {
         publishDifferentialPressure(sensorState.pressure, currentTime);
         publishFilterPressure(sensorState.filter_pressure, currentTime);
         publishGeiger(sensorState.cpm, currentTime);
-        publishTemperature(sensorState.temp, currentTime);
-        publishHumidity(sensorState.humi, currentTime);
         publishFanCurrent(sensorState.fan_amps, fanOffThreshold, currentTime);
-        publishCO2(sensorState.co2, currentTime);
-        const bool newNanoPacket = sensorState.nano_updated_ms != _lastSeenNanoUpdateMs;
-        _lastSeenNanoUpdateMs = sensorState.nano_updated_ms;
         publishCO(sensorState.co_ppm, newNanoPacket, currentTime);
-        publishVOC(sensorState.voc_index, currentTime);
-        publishNOx(sensorState.nox_index, currentTime);
-        publishPM(sensorState.pm1, sensorState.pm25, sensorState.pm4, sensorState.pm10, currentTime);
         publishCompressorCurrent(sensorState.compressor_amps, compressorOffThreshold, currentTime);
         publishGeothermalPumpCurrent(sensorState.geothermal_pump_amps, pumpOffThreshold, currentTime);
         publishLiquidLevel(sensorState.liquid_level_sensor_state, currentTime);
         publishHighPressure(sensorState.high_pressure);
         publishFan(sensorState.fan_status != FanStatus::Off);
       }
+      if (live & GROUP_SCD30) {
+        publishTemperature(sensorState.temp, currentTime);
+        publishHumidity(sensorState.humi, currentTime);
+        publishCO2(sensorState.co2, currentTime);
+      }
+      if (live & GROUP_SGP41) {
+        publishVOC(sensorState.voc_index, currentTime);
+        publishNOx(sensorState.nox_index, currentTime);
+      }
+      if (live & GROUP_SPS30) {
+        publishPM(sensorState.pm1, sensorState.pm25, sensorState.pm4, sensorState.pm10, currentTime);
+      }
 
-      // 3. Publish ZMOD
-      {
+      // I2C bridge sensors
+      if (live & GROUP_ZMOD) {
         publishO3(sensorState.o3_conc_ug_per_m3, currentTime);
         publishNO2(sensorState.no2_conc_ug_per_m3, currentTime);
         publishFastAQI(sensorState.fast_aqi, currentTime);
@@ -679,20 +695,24 @@ void HomeAssistantManager::taskLoop() {
       }
 
 #ifdef BMP280_ENABLED
-      if (!isnan(sensorState.bmp_pressure_pa)) {
-        publishBMP280Pressure(sensorState.bmp_pressure_pa, currentTime);
-      }
-      if (!isnan(sensorState.bmp_temp_c)) {
-        publishBMP280Temperature(sensorState.bmp_temp_c, currentTime);
+      if (live & GROUP_BMP280) {
+        if (!isnan(sensorState.bmp_pressure_pa)) {
+          publishBMP280Pressure(sensorState.bmp_pressure_pa, currentTime);
+        }
+        if (!isnan(sensorState.bmp_temp_c)) {
+          publishBMP280Temperature(sensorState.bmp_temp_c, currentTime);
+        }
       }
 #endif
 
 #ifdef AHT20_ENABLED
-      if (!isnan(sensorState.aht_temp_c)) {
-        publishAHT20Temperature(sensorState.aht_temp_c, currentTime);
-      }
-      if (!isnan(sensorState.aht_humi_pct)) {
-        publishAHT20Humidity(sensorState.aht_humi_pct, currentTime);
+      if (live & GROUP_AHT20) {
+        if (!isnan(sensorState.aht_temp_c)) {
+          publishAHT20Temperature(sensorState.aht_temp_c, currentTime);
+        }
+        if (!isnan(sensorState.aht_humi_pct)) {
+          publishAHT20Humidity(sensorState.aht_humi_pct, currentTime);
+        }
       }
 #endif
 
@@ -860,6 +880,7 @@ void HomeAssistantManager::resetAllPublishTimes() {
   _lastLiquidLevelPublishTime = 0;
   _lastInactivityTimerDelayPublishTime = 0;
   _lastPublishedResetCause[0] = '\0';
+  _unknownGroups = 0;
   _geigerUnavailablePublished = false;
   _vocUnavailablePublished = false;
   _noxUnavailablePublished = false;
@@ -873,6 +894,118 @@ void HomeAssistantManager::resetAllPublishTimes() {
   _hasPublishedBacklight = false;
   _hasPublishedInactivityDelay = false;
   _hasPublishedLogLevel = false;
+}
+
+void HomeAssistantManager::updateUnknownGroups(uint8_t unknown) {
+  uint8_t newly_unknown = unknown & ~_unknownGroups;
+  uint8_t recovered = _unknownGroups & ~unknown;
+  if (newly_unknown) {
+    publishGroupsUnknown(newly_unknown);
+  }
+  if (recovered) {
+    resetGroupPublishTimes(recovered);
+  }
+  _unknownGroups = unknown;
+}
+
+void HomeAssistantManager::publishGroupsUnknown(uint8_t groups) {
+  if (groups & GROUP_STACK) {
+    _pressureSensor.HASensor::setValue(nullptr);
+    _filterPressureSensor.HASensor::setValue(nullptr);
+    _geiger_cpm.HASensor::setValue(nullptr);
+    _geiger_dose.HASensor::setValue(nullptr);
+    _currentSensor.HASensor::setValue(nullptr);
+    _co_sensor.HASensor::setValue(nullptr);
+    _compressorCurrentSensor.HASensor::setValue(nullptr);
+    _geothermalPumpCurrentSensor.HASensor::setValue(nullptr);
+    _liquidLevelSensor.setUnknown();
+    _highPressureSensor.setUnknown();
+    _fanStatus.setUnknown();
+  }
+  if (groups & GROUP_SCD30) {
+    _temperatureSensor.HASensor::setValue(nullptr);
+    _humiditySensor.HASensor::setValue(nullptr);
+    _co2_sensor.HASensor::setValue(nullptr);
+  }
+  if (groups & GROUP_SPS30) {
+    _pm1_0_sensor.HASensor::setValue(nullptr);
+    _pm2_5_sensor.HASensor::setValue(nullptr);
+    _pm4_0_sensor.HASensor::setValue(nullptr);
+    _pm10_0_sensor.HASensor::setValue(nullptr);
+  }
+  if (groups & GROUP_SGP41) {
+    _voc_index_sensor.HASensor::setValue(nullptr);
+    _nox_index_sensor.HASensor::setValue(nullptr);
+  }
+  if (groups & GROUP_ZMOD) {
+    _zmodUnavailablePublished = false;
+    publishZmodUnavailable(millis());
+  }
+#ifdef BMP280_ENABLED
+  if (groups & GROUP_BMP280) {
+    _bmp280PressureSensor.HASensor::setValue(nullptr);
+    _bmp280TemperatureSensor.HASensor::setValue(nullptr);
+  }
+#endif
+#ifdef AHT20_ENABLED
+  if (groups & GROUP_AHT20) {
+    _aht20TemperatureSensor.HASensor::setValue(nullptr);
+    _aht20HumiditySensor.HASensor::setValue(nullptr);
+  }
+#endif
+}
+
+// A recovered group publishes its first valid readings at once, with force
+void HomeAssistantManager::resetGroupPublishTimes(uint8_t groups) {
+  if (groups & GROUP_STACK) {
+    _lastPressurePublishTime = 0;
+    _lastFilterPressurePublishTime = 0;
+    _lastCpmPublishTime = 0;
+    _geigerUnavailablePublished = false;
+    _lastAmpsPublishTime = 0;
+    _lastCoPublishTime = 0;
+    _lastCompressorAmpsPublishTime = 0;
+    _lastGeothermalPumpAmpsPublishTime = 0;
+    _lastLiquidLevelPublishTime = 0;
+    _lastHighPressurePublishTime = 0;
+    _lastFanStatusPublishTime = 0;
+  }
+  if (groups & GROUP_SCD30) {
+    _lastTempPublishTime = 0;
+    _lastHumiPublishTime = 0;
+    _lastCo2PublishTime = 0;
+  }
+  if (groups & GROUP_SPS30) {
+    _lastPmPublishTime = 0;
+  }
+  if (groups & GROUP_SGP41) {
+    _lastVocPublishTime = 0;
+    _lastNOxPublishTime = 0;
+    _vocUnavailablePublished = false;
+    _noxUnavailablePublished = false;
+  }
+  if (groups & GROUP_ZMOD) {
+    _LastO3PublishTime = 0;
+    _lastNO2PublishTime = 0;
+    _lastFastAQIPublishTime = 0;
+    _lastEPAAQIPublishTime = 0;
+    _o3UnavailablePublished = false;
+    _no2UnavailablePublished = false;
+    _fastAqiUnavailablePublished = false;
+    _epaAqiUnavailablePublished = false;
+  }
+#ifdef BMP280_ENABLED
+  if (groups & GROUP_BMP280) {
+    _lastBMP280PressurePublishTime = 0;
+    _lastBMP280TemperaturePublishTime = 0;
+  }
+#endif
+#ifdef AHT20_ENABLED
+  if (groups & GROUP_AHT20) {
+    _lastAHT20TemperaturePublishTime = 0;
+    _lastAHT20HumidityPublishTime = 0;
+  }
+#endif
 }
 
 void HomeAssistantManager::onMqttStateChanged(HAMqtt::ConnectionState state) {

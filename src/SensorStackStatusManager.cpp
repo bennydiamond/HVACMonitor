@@ -5,6 +5,7 @@
 #include "SensorDefines.h"
 #include "SystemStatusAccessor.h"
 #include "DiagnosticDataAccessor.h"
+#include "SensorDataAccessor.h"
 
 static SensorStackStatusManager* s_status_instance = nullptr;
 
@@ -80,11 +81,21 @@ void SensorStackStatusManager::setSensorFaultMask(uint8_t mask) {
     }
 }
 
+// All readings come through the SensorStack (I2C bridge sensors included): when it
+// goes down they are cleared, so nothing shows or publishes them as current, and
+// nano_updated_ms = 0 tells consumers to wait for its next packet
+static void clearSensorReadings() {
+    *SensorDataAccessor() = SensorStateData{};
+}
+
 void SensorStackStatusManager::setFirmwareState(SensorStackFirmwareState state) {
     if (_firmware_state == state) {
         return;
     }
     _firmware_state = state;
+    if (state != SensorStackFirmwareState::Ok) {
+        clearSensorReadings();
+    }
 
     switch (state) {
         case SensorStackFirmwareState::Updating:
@@ -117,6 +128,7 @@ void SensorStackStatusManager::setConnected(bool connected) {
         shared->sensorConnectionStatus = true;
     } else {
         logger.warning("Sensor module connection lost / timeout.");
+        clearSensorReadings();
         SystemStatusAccessor shared;
         shared->sensorConnectionStatus = false;
         shared->sensorStackVersionUnavailable = true;

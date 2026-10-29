@@ -10,6 +10,17 @@
 #include "ILogPublisher.h"
 #include "SensorDataAccessor.h"
 #include "SystemStatusAccessor.h"
+#include "utils/HADictionary.h"
+
+// Binary sensor that can also report an unknown state, like HASensor::setValue(nullptr).
+// After setUnknown(), the next setState() must use force: the cached state is unchanged.
+class HABinarySensorWithUnknown : public HABinarySensor {
+public:
+    using HABinarySensor::HABinarySensor;
+    bool setUnknown() {
+        return publishOnDataTopic(AHATOFSTR(HAStateTopic), AHATOFSTR(HAStateNone), true);
+    }
+};
 
 class HomeAssistantManager : public ILogPublisher {
 public:
@@ -62,6 +73,25 @@ private:
     void drainLogQueue();
     void resetAllPublishTimes();
 
+    // Entities grouped by what can make their readings unknown in Home Assistant
+    enum EntityGroup : uint8_t {
+        GROUP_STACK = 1 << 0,  // SensorStack readings without a fault report of their own
+        GROUP_SCD30 = 1 << 1,  // Temperature, humidity, CO2
+        GROUP_SPS30 = 1 << 2,  // PM
+        GROUP_SGP41 = 1 << 3,  // VOC, NOx indexes
+        GROUP_ZMOD = 1 << 4,   // O3, NO2, AQIs (I2C bridge)
+        GROUP_BMP280 = 1 << 5, // (I2C bridge)
+        GROUP_AHT20 = 1 << 6,  // (I2C bridge)
+        GROUP_ALL = 0x7F,
+    };
+    // Groups currently published as unknown (cleared on MQTT reconnect, so they are
+    // published again)
+    uint8_t _unknownGroups = 0;
+    // Publishes newly unknown groups once, and lets recovered ones publish at once
+    void updateUnknownGroups(uint8_t unknown);
+    void publishGroupsUnknown(uint8_t groups);
+    void resetGroupPublishTimes(uint8_t groups);
+
     // MQTT and Home Assistant objects
     WiFiClient _wifiClient;
     HADevice _device;
@@ -87,8 +117,8 @@ private:
     HASensorNumber _aht20HumiditySensor;
 #endif
     HABinarySensor _sensorStatus;
-    HABinarySensor _highPressureSensor;
-    HABinarySensor _fanStatus;
+    HABinarySensorWithUnknown _highPressureSensor;
+    HABinarySensorWithUnknown _fanStatus;
     HAButton _rebootButton; 
     HAButton _rebootSensorStackButton;
     HASensorNumber _pm1_0_sensor, _pm2_5_sensor, _pm4_0_sensor, _pm10_0_sensor;
@@ -103,7 +133,7 @@ private:
     HASensorNumber _currentSensor;
     HASensorNumber _compressorCurrentSensor;
     HASensorNumber _geothermalPumpCurrentSensor;
-    HABinarySensor _liquidLevelSensor;
+    HABinarySensorWithUnknown _liquidLevelSensor;
     HASensor _sensorStackResetCauseSensor;
     HANumber _inactivityTimerDelay;
     HAButton _getSps30InfoButton;
