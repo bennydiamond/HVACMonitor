@@ -136,7 +136,6 @@ private:
     HANumber _scd30ForceCalNumber;
     HASensorNumber _esp32FreeRamSensor;
     HASensorNumber _esp32UptimeSensor;
-    HASensor _firmwareGitHashSensor;
 
     // State tracking sentinels for uninitialized publish values
     static constexpr float UNPUBLISHED_FLOAT = -9999.0f;

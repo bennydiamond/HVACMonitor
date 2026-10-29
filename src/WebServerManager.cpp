@@ -55,7 +55,7 @@ constexpr float JSON_FALLBACK_ZERO = 0.0f;
 WebServer server(80);
 char WebServerManager::_firmware_version[32] = {0};
 // ETag of the static assets: the firmware version, quoted as HTTP requires (it
-// contains spaces and parentheses, e.g. "1.1.1 (a1b2c3d+)")
+// may contain characters such as "+", e.g. "1.1.1-a1b2c3d+")
 static char s_asset_etag[34] = {0}; // _firmware_version + 2 quotes
 
 static bool s_is_bootloader_update = false;
