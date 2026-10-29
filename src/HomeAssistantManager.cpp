@@ -1089,6 +1089,8 @@ void HomeAssistantManager::publishHumidity(float humi,
 
 void HomeAssistantManager::publishFanCurrent(float amps, float fan_thresh,
                                              unsigned long currentTime) {
+  if (isnan(amps))
+    return;
   bool is_first = (_lastAmpsPublishTime == 0);
   bool fan_state_changed =
       !is_first && ((amps > fan_thresh) != (_lastPublishedAmps > fan_thresh));
