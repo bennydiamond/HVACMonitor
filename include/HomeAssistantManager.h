@@ -8,7 +8,8 @@
 #include "SensorDefines.h"
 #include "Logger.h"
 #include "ILogPublisher.h"
-#include "SharedDataAccessor.h"
+#include "SensorDataAccessor.h"
+#include "SystemStatusAccessor.h"
 
 class HomeAssistantManager : public ILogPublisher {
 public:
@@ -38,12 +39,18 @@ private:
     char _firmwareVersion[32] = {0};
     char _configurationUrl[56] = {0};
 
-    // Tracking versions of last published values to HA
-    uint32_t _lastPublishedScd30AutoCalVersion = 0;
-    uint32_t _lastPublishedScd30ForceCalVersion = 0;
-    uint32_t _lastPublishedBacklightVersion = 0;
-    uint32_t _lastPublishedInactivityDelayVersion = 0;
-    uint32_t _lastPublishedLogLevelVersion = 0;
+    // Tracking last published control values to HA
+    bool _hasPublishedScd30AutoCal = false;
+    bool _lastPublishedScd30AutoCal = false;
+    bool _hasPublishedScd30ForceCal = false;
+    uint16_t _lastPublishedScd30ForceCal = 0;
+    bool _hasPublishedBacklight = false;
+    bool _lastPublishedBacklightState = false;
+    uint8_t _lastPublishedBacklightBrightness = 0;
+    bool _hasPublishedInactivityDelay = false;
+    int _lastPublishedInactivityDelay = 0;
+    bool _hasPublishedLogLevel = false;
+    AppLogLevel _lastPublishedLogLevel = APP_LOG_INFO;
     bool _lastMqttConnected = false;
 
     // Dedicated task functions
@@ -136,8 +143,8 @@ private:
     long _lastPublishedWifiRssi = 0;
     bool _lastPublishedWifiConnected = false, _lastPublishedSensorConnected = false, _lastPublishedHighPressure = false;
     bool _lastPublishedFanStatus = false;
-    char _lastPublishedWifiSSID[SharedDataDefaults::WIFI_SSID_BUFFER_SIZE] = {0};
-    char _lastPublishedWifiIP[SharedDataDefaults::WIFI_IP_BUFFER_SIZE] = {0};
+    char _lastPublishedWifiSSID[SystemStatusDefaults::WIFI_SSID_BUFFER_SIZE] = {0};
+    char _lastPublishedWifiIP[SystemStatusDefaults::WIFI_IP_BUFFER_SIZE] = {0};
     String _lastPublishedSensorStackVersion;
     float _lastPublishedPm1_0 = UNPUBLISHED_FLOAT;
     float _lastPublishedPm2_5 = UNPUBLISHED_FLOAT;

@@ -8,7 +8,7 @@
 #include "FilterPressureTracker.h"
 #include "SensorTask.h"
 #include "SensorDefines.h"
-#include "SharedDataAccessor.h"
+#include "SensorDataAccessor.h"
 
 // --- Sensor Calculation Constants ---
 #define SHUNT_RESISTOR 150.0f
@@ -23,8 +23,7 @@
    (ARDUINO_ADC_MAX_VALUE * CO_FEEDBACK_RESISTOR_OHMS * CO_SENSITIVITY_A_PPM))
 
 SensorDataProcessor::SensorDataProcessor()
-    : _ui(nullptr),
-      _filterTracker(nullptr),
+    : _filterTracker(nullptr),
       _sensorTask(nullptr),
       _last_received_timestamp(0),
       _sensor_fault_mask(0),
@@ -44,15 +43,13 @@ SensorDataProcessor::SensorDataProcessor()
       _live_temp_c(0.0f),
       _live_humi_pct(0.0f),
       _live_fan_amps(0.0f),
-      _live_fan_status(FAN_STATUS_OFF),
+      _live_fan_status(FanStatus::Off),
       _live_is_pressure_high(false),
       _live_water_detected(false),
       _sgp41_was_conditioning(false) {}
 
-void SensorDataProcessor::begin(UITask* ui,
-                               FilterPressureTracker* filterTracker,
-                               SensorTask* sensorTask) {
-    _ui = ui;
+void SensorDataProcessor::begin(FilterPressureTracker* filterTracker,
+                                SensorTask* sensorTask) {
     _filterTracker = filterTracker;
     _sensorTask = sensorTask;
 }
@@ -81,9 +78,6 @@ void SensorDataProcessor::setSensorFaultMask(uint8_t mask) {
         _nox_avg.clear();
     }
     // The next packets refill every reading except those of the faulty sensors
-    if (_ui) {
-        _ui->clearSensorReadings();
-    }
 }
 
 void SensorDataProcessor::processPayload(char* payload) {
@@ -206,12 +200,12 @@ void SensorDataProcessor::processPacket(const NanoSensorPacket& pkt) {
     {
         ConfigManagerAccessor config;
         if (pkt.getFanAmps() <= config->getFanOffCurrentThreshold()) {
-            fan_status = FAN_STATUS_OFF;
+            fan_status = FanStatus::Off;
         } else if (pkt.getFanAmps() < config->getFanOnCurrentThreshold() ||
                    pkt.getFanAmps() > config->getFanHighCurrentThreshold()) {
-            fan_status = FAN_STATUS_ALERT;
+            fan_status = FanStatus::Alert;
         } else {
-            fan_status = FAN_STATUS_NORMAL;
+            fan_status = FanStatus::Normal;
         }
     }
 
@@ -226,54 +220,40 @@ void SensorDataProcessor::processPacket(const NanoSensorPacket& pkt) {
         ConfigManagerAccessor config;
         is_pressure_high =
             (filter_pressure > config->getHighPressureThreshold()) ||
-            (fan_status != FAN_STATUS_OFF &&
+            (fan_status != FanStatus::Off &&
              _diff_pressure_avg.getAverage() > config->getHighPressureThreshold());
     }
 
-    // 8. Update UI Elements
-    if (_ui) {
-        _ui->update_high_pressure_status(is_pressure_high);
-        _ui->update_pressure(filter_pressure > 0.0f ? filter_pressure : _diff_pressure_avg.getAverage());
-
-        if (_geigerCounter.hasValidData()) {
-            _geigerCounter.checkAndLogHighRadiation();
-            float usv_h = _geigerCounter.getDoseRate();
-            _ui->update_geiger_reading(c, usv_h);
-        }
-
-        // Readings of faulty sensors are left blank (cleared when the fault was reported)
-        if (scd30_ok) {
-            _ui->update_temp_humi(temp_c, humi_pct);
-            _ui->update_co2(scd30_has_data ? _co2_avg.getAverage() : NAN);
-        }
-        _ui->update_fan_current(pkt.getFanAmps(), fan_status);
-        _ui->update_compressor_amps(_compressor_amps_avg.getAverage());
-        _ui->update_pump_amps(_geothermal_pump_amps_avg.getAverage());
-        if (sgp41_ok) {
-            _ui->update_voc(_voc_avg.getAverage());
-            _ui->update_nox(_nox_avg.getAverage());
-        }
-        if (sps30_ok) {
-            _ui->update_pm_values(_pm1_avg.getAverage(), _pm25_avg.getAverage(), _pm4_avg.getAverage(), _pm10_avg.getAverage());
-        }
-        _ui->update_co(_co_avg.getAverage());
-        _ui->update_water_sensor(pkt.isWaterDetected());
+    // 8. Process radiation checks
+    float usv_h = 0.0f;
+    if (_geigerCounter.hasValidData()) {
+        _geigerCounter.checkAndLogHighRadiation();
+        usv_h = _geigerCounter.getDoseRate();
     }
 
-    // 9. Centralize telemetry into SharedDataAccessor
+    // 9. Centralize telemetry into SensorDataAccessor (UITask and MqttTask sync from here)
     {
-        SharedDataAccessor shared;
-        shared.setHighPressureStatus(is_pressure_high);
-        shared.setFanStatus(fan_status != FAN_STATUS_OFF);
-        // Invalid values (NaN, or a gas index of 0) are handled safely
-        shared.setSensorData(
-            _diff_pressure_avg.getAverage(), c, temp_c, humi_pct,
-            scd30_has_data ? _co2_avg.getAverage() : NAN,
-            sgp41_ok ? _voc_avg.getAverage() : 0, sgp41_ok ? _nox_avg.getAverage() : 0, pkt.getFanAmps(),
-            sps30_ok ? _pm1_avg.getAverage() : NAN, sps30_ok ? _pm25_avg.getAverage() : NAN,
-            sps30_ok ? _pm4_avg.getAverage() : NAN, sps30_ok ? _pm10_avg.getAverage() : NAN,
-            _compressor_amps_avg.getAverage(), _geothermal_pump_amps_avg.getAverage(),
-            pkt.isWaterDetected(), _co_avg.getAverage(), filter_pressure);
+        SensorDataAccessor shared;
+        shared->high_pressure = is_pressure_high;
+        shared->pressure = _diff_pressure_avg.getAverage();
+        shared->filter_pressure = filter_pressure;
+        shared->cpm = c;
+        shared->geiger_usvh = usv_h;
+        shared->temp = temp_c;
+        shared->humi = humi_pct;
+        shared->co2 = scd30_has_data ? _co2_avg.getAverage() : NAN;
+        shared->voc_index = sgp41_ok ? _voc_avg.getAverage() : 0;
+        shared->nox_index = sgp41_ok ? _nox_avg.getAverage() : 0;
+        shared->fan_amps = pkt.getFanAmps();
+        shared->fan_status = fan_status;
+        shared->pm1 = sps30_ok ? _pm1_avg.getAverage() : NAN;
+        shared->pm25 = sps30_ok ? _pm25_avg.getAverage() : NAN;
+        shared->pm4 = sps30_ok ? _pm4_avg.getAverage() : NAN;
+        shared->pm10 = sps30_ok ? _pm10_avg.getAverage() : NAN;
+        shared->compressor_amps = _compressor_amps_avg.getAverage();
+        shared->geothermal_pump_amps = _geothermal_pump_amps_avg.getAverage();
+        shared->liquid_level_sensor_state = pkt.isWaterDetected();
+        shared->co_ppm = _co_avg.getAverage();
     }
 
     // 10. Pass ambient conditions to ESP32 local sensor task for compensation
@@ -308,7 +288,7 @@ void SensorDataProcessor::populateDashboardData(LiveDashboardData& data) const {
     data.filter_pressure_pa = _filterTracker ? _filterTracker->getFilterPressure() : 0.0f;
     data.is_pressure_high = _live_is_pressure_high;
     data.fan_amps = _live_fan_amps;
-    data.fan_status = (_live_fan_status == FAN_STATUS_OFF) ? 0 : ((_live_fan_status == FAN_STATUS_ALERT) ? 1 : 2);
+    data.fan_status = (_live_fan_status == FanStatus::Off) ? 0 : ((_live_fan_status == FanStatus::Alert) ? 1 : 2);
     data.compressor_amps = _compressor_amps_avg.getAverage();
     data.pump_amps = _geothermal_pump_amps_avg.getAverage();
     data.water_detected = _live_water_detected;

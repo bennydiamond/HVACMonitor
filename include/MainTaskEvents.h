@@ -13,6 +13,9 @@ public:
         EVT_SGP41_TEST         = (1UL << 3),
         EVT_REBOOT_NANO        = (1UL << 4),
         EVT_REBOOT_ESP32       = (1UL << 5),
+        EVT_SPS30_GET_INFO     = (1UL << 6),
+        EVT_SCD30_FORCECAL     = (1UL << 7),
+        EVT_SCD30_GET_INFO     = (1UL << 8),
         // Add more events as needed
     };
 
@@ -31,4 +34,6 @@ private:
     // Disallow copy/move
     MainTaskEventNotifier(const MainTaskEventNotifier&) = delete;
     MainTaskEventNotifier& operator=(const MainTaskEventNotifier&) = delete;
-}; 
+};
+
+void dispatch_main_task_event(MainTaskEventNotifier::EventBits event); 

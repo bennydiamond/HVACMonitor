@@ -439,14 +439,14 @@ void UI::firmware_popup_clicked_cb(lv_event_t *e) {
     lv_obj_add_flag(ui_instance->firmware_popup, LV_OBJ_FLAG_HIDDEN);
 }
 
-void UI::update_sensorstack_firmware_state(int state) {
-  // state: 0 OK, 1 update in progress, 2 firmware issue (SensorStackFirmwareState)
-  sensorstack_firmware_state = state;
+void UI::update_sensorstack_firmware_state(SensorStackFirmwareState state) {
+  // state: Ok, Updating, Faulty (SensorStackFirmwareState)
+  sensorstack_firmware_state = static_cast<int>(state);
   refresh_sensor_icon();
   if (tileManager)
     tileManager->update_sensorstack_firmware_state(state);
 
-  if (state != 1 && state != 2) {
+  if (state == SensorStackFirmwareState::Ok) {
     if (firmware_popup)
       lv_obj_add_flag(firmware_popup, LV_OBJ_FLAG_HIDDEN);
     return;
@@ -463,7 +463,7 @@ void UI::update_sensorstack_firmware_state(int state) {
   }
 
   lv_obj_t *panel = lv_obj_get_parent(firmware_popup_icon);
-  if (state == 1) {
+  if (state == SensorStackFirmwareState::Updating) {
     firmware_popup_dismissable = false;
     ui_set_label_text(firmware_popup_icon, ICON_UPDATE);
     ui_set_text_color(firmware_popup_icon, COLOR_HA_BLUE);

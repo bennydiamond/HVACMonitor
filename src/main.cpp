@@ -21,7 +21,8 @@
 #include "SensorDefines.h"
 #include "SensorTask.h"
 #include "SerialMutex.h"
-#include "SharedDataAccessor.h"
+#include "SensorDataAccessor.h"
+#include "SystemStatusAccessor.h"
 #include "TaskPriorities.h"
 #include "UITask.h"
 #include "WebServerManager.h"
@@ -115,12 +116,14 @@ void update_wifi_status() {
   snprintf(mac_str, sizeof(mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
            mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
-  UITask::getInstance().update_wifi_status(connected, rssi);
-  UITask::getInstance().update_network_rssi(rssi);
-  SharedDataAccessor().setWifiStatus(connected, rssi, current_ssid, ip_str);
-  UITask::getInstance().update_ssid(current_ssid);
-  UITask::getInstance().update_ip(ip_str);
-  UITask::getInstance().update_mac(mac_str);
+  {
+    SystemStatusAccessor status;
+    status->wifiConnected = connected;
+    status->wifiRssi = rssi;
+    snprintf(status->wifiSsid, sizeof(status->wifiSsid), "%s", current_ssid);
+    snprintf(status->wifiIp, sizeof(status->wifiIp), "%s", ip_str);
+    snprintf(status->wifiMac, sizeof(status->wifiMac), "%s", mac_str);
+  }
 }
 
 // =================== SETUP & LOOP ===================
@@ -229,7 +232,7 @@ void setup() {
   UITask::getInstance().start();
   float initial_filter_p = filterPressureTracker.getFilterPressure();
   if (initial_filter_p > 0.0f) {
-    UITask::getInstance().update_pressure(initial_filter_p);
+    SensorDataAccessor()->filter_pressure = initial_filter_p;
   }
 
   setup_wifi();
@@ -240,13 +243,64 @@ void setup() {
   sensorTask.init();
 
   // Initialize modular collaborators
-  statusManager.begin(&UITask::getInstance());
-  dataProcessor.begin(&UITask::getInstance(), &filterPressureTracker, &sensorTask);
+  statusManager.begin();
+  dataProcessor.begin(&filterPressureTracker, &sensorTask);
   nanoUartBridge.begin(SERIAL_BAUD_RATE, &statusManager, &dataProcessor, &sensorTask);
 
 #ifdef ENABLE_TASK_WATCHDOG
   WatchdogManager::addCurrentTask();
 #endif
+}
+
+void dispatch_main_task_event(MainTaskEventNotifier::EventBits event) {
+  switch (event) {
+  case MainTaskEventNotifier::EVT_SCD30_AUTOCAL_ON:
+    nanoUartBridge.sendCommandWithParam(CMD_SET_SCD30_AUTOCAL, '1');
+    break;
+  case MainTaskEventNotifier::EVT_SCD30_AUTOCAL_OFF:
+    nanoUartBridge.sendCommandWithParam(CMD_SET_SCD30_AUTOCAL, '0');
+    break;
+  case MainTaskEventNotifier::EVT_SPS30_CLEAN:
+    nanoUartBridge.sendCommand(CMD_SPS30_CLEAN);
+    break;
+  case MainTaskEventNotifier::EVT_SGP41_TEST:
+    nanoUartBridge.sendCommand(CMD_SGP41_TEST);
+    break;
+  case MainTaskEventNotifier::EVT_REBOOT_ESP32:
+    RebootManager::getInstance().requestReboot("Event", 500);
+    break;
+  case MainTaskEventNotifier::EVT_REBOOT_NANO:
+    logger.warning("Rebooting SensorStack as requested by event.");
+    nanoUartBridge.sendCommand(CMD_REBOOT);
+    break;
+  case MainTaskEventNotifier::EVT_SPS30_GET_INFO:
+    logger.info("Requesting SPS30 info via event.");
+    nanoUartBridge.sendCommand(CMD_GET_SPS30_INFO);
+    break;
+  case MainTaskEventNotifier::EVT_SCD30_GET_INFO:
+    logger.info("Requesting SCD30 info via event.");
+    nanoUartBridge.sendCommand(CMD_GET_SCD30_INFO);
+    break;
+  case MainTaskEventNotifier::EVT_SCD30_FORCECAL: {
+    uint16_t ppm = 0;
+    {
+      SystemStatusAccessor status;
+      ppm = status->scd30ForceCalTarget;
+    }
+    if (SensorDefines::isValidForceCal(ppm)) {
+      logger.infof("Sending SCD30 Force Cal to %u ppm via event.", ppm);
+      char cmd_with_param[8];
+      snprintf(cmd_with_param, sizeof(cmd_with_param), "%c%u",
+               CMD_SET_SCD30_FORCECAL, ppm);
+      nanoUartBridge.sendCommandStr(cmd_with_param);
+    } else {
+      logger.warningf("Ignored out-of-range SCD30 Force Cal event: %u ppm", ppm);
+    }
+    break;
+  }
+  default:
+    break;
+  }
 }
 
 void loop() {
@@ -272,7 +326,7 @@ void loop() {
   if (previous_mqtt_connect_status != ha_conn) {
     previous_mqtt_connect_status = ha_conn;
     mqtt_connected_since = millis();
-    UITask::getInstance().update_network_ha_conn(ha_conn);
+    SystemStatusAccessor()->mqttConnected = ha_conn;
   }
 #ifdef ENABLE_TASK_WATCHDOG
   // The only place the watchdog timeout changes (setTimeout() ignores unchanged values)
@@ -330,7 +384,7 @@ void loop() {
       wifi_retry_attempts = 0;
     }
     update_wifi_status();
-    UITask::getInstance().update_network_ha_conn(ha_conn);
+    SystemStatusAccessor()->mqttConnected = ha_conn;
   }
 
   if (millis() - last_debug_update_time > DEBUG_UPDATE_INTERVAL_MS) {
@@ -338,12 +392,10 @@ void loop() {
     statusManager.updateDiagnostics();
 
     {
-      SharedDataAccessor shared;
-      shared.setEsp32FreeHeap(ESP.getFreeHeap());
-      shared.setEsp32Uptime(millis() / 1000);
+      SystemStatusAccessor status;
+      status->esp32FreeHeap = ESP.getFreeHeap();
+      status->esp32Uptime = millis() / 1000;
     }
-    UITask::getInstance().update_runtime_uptime(millis() / 1000);
-    UITask::getInstance().update_runtime_free_heap(ESP.getFreeHeap());
   }
 
   // Get ZMOD4510 sensor data
@@ -378,12 +430,13 @@ void loop() {
                     o3_avg.getAverage(), o3_ug_per_m3, no2_avg.getAverage(),
                     no2_ug_per_m3, current_temperature, current_pressure);
 
-      UITask::getInstance().update_no2(no2_ug_per_m3);
-      UITask::getInstance().update_o3(o3_ug_per_m3);
-
-      SharedDataAccessor().setZmodData(o3_ug_per_m3, no2_ug_per_m3,
-                                       fast_aqi_avg.getAverage(),
-                                       epa_aqi_avg.getAverage());
+      {
+        SensorDataAccessor sensor;
+        sensor->o3_conc_ug_per_m3 = o3_ug_per_m3;
+        sensor->no2_conc_ug_per_m3 = no2_ug_per_m3;
+        sensor->fast_aqi = fast_aqi_avg.getAverage();
+        sensor->epa_aqi = epa_aqi_avg.getAverage();
+      }
     }
   }
 
@@ -398,7 +451,11 @@ void loop() {
 
     float averaged_pressure = bmp280_pressure_avg.getAverage();
     float averaged_temperature = bmp280_temperature_avg.getAverage();
-    SharedDataAccessor().setBmpData(averaged_pressure, averaged_temperature);
+    {
+      SensorDataAccessor sensor;
+      sensor->bmp_pressure_pa = averaged_pressure;
+      sensor->bmp_temp_c = averaged_temperature;
+    }
 
     logger.debugf("BMP280: P=%.1f Pa (avg: %.1f Pa), T=%.1f°C (avg: %.1f°C)",
                   bmp280_values.pressure_pa, averaged_pressure,
@@ -414,8 +471,11 @@ void loop() {
   if (freshAHT20Values) {
     aht20_temperature_avg.add(aht20_values.temperature_degc);
     aht20_humidity_avg.add(aht20_values.humidity_pct);
-    SharedDataAccessor().setAhtData(aht20_temperature_avg.getAverage(),
-                                   aht20_humidity_avg.getAverage());
+    {
+      SensorDataAccessor sensor;
+      sensor->aht_temp_c = aht20_temperature_avg.getAverage();
+      sensor->aht_humi_pct = aht20_humidity_avg.getAverage();
+    }
 
     logger.debugf("AHT20: T=%.1f°C (avg: %.1f°C), H=%.1f%% (avg: %.1f%%)",
                   aht20_values.temperature_degc,
@@ -433,32 +493,7 @@ void loop() {
                   ESP.getMaxAllocHeap());
   }
 
-  MainTaskEventNotifier::getInstance().processOneEvent(
-      [&](MainTaskEventNotifier::EventBits event) {
-        switch (event) {
-        case MainTaskEventNotifier::EVT_SCD30_AUTOCAL_ON:
-          nanoUartBridge.sendCommandWithParam(CMD_SET_SCD30_AUTOCAL, '1');
-          break;
-        case MainTaskEventNotifier::EVT_SCD30_AUTOCAL_OFF:
-          nanoUartBridge.sendCommandWithParam(CMD_SET_SCD30_AUTOCAL, '0');
-          break;
-        case MainTaskEventNotifier::EVT_SPS30_CLEAN:
-          nanoUartBridge.sendCommand(CMD_SPS30_CLEAN);
-          break;
-        case MainTaskEventNotifier::EVT_SGP41_TEST:
-          nanoUartBridge.sendCommand(CMD_SGP41_TEST);
-          break;
-        case MainTaskEventNotifier::EVT_REBOOT_ESP32:
-          RebootManager::getInstance().requestReboot("UI Event", 500);
-          break;
-        case MainTaskEventNotifier::EVT_REBOOT_NANO:
-          logger.warning("Rebooting SensorStack as requested by event.");
-          nanoUartBridge.sendCommand(CMD_REBOOT);
-          break;
-        default:
-          break;
-        }
-      });
+  MainTaskEventNotifier::getInstance().processOneEvent(dispatch_main_task_event);
 
   if (Serial.available() > 0) {
     vTaskDelay(pdMS_TO_TICKS(1));

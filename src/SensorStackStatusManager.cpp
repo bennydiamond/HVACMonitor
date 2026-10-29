@@ -2,30 +2,26 @@
 #include <string.h>
 #include <stdio.h>
 #include "Logger.h"
-#include "UITask.h"
 #include "SensorDefines.h"
-#include "SharedDataAccessor.h"
+#include "SystemStatusAccessor.h"
+#include "DiagnosticDataAccessor.h"
 
 static SensorStackStatusManager* s_status_instance = nullptr;
 
 SensorStackStatusManager::SensorStackStatusManager()
-    : _ui(nullptr),
-      _connected(false),
+    : _connected(false),
       _last_packet_time(0),
       _nano_boot_millis(0),
       _free_ram(0),
       _reset_cause_code(0),
       _first_health_packet_received(false),
       _firmware_state(SensorStackFirmwareState::Ok),
-      _sensor_fault_mask(0),
-      _sps30_device_info{},
-      _sgp41_test_result_data{} {
+      _sensor_fault_mask(0) {
     _version[0] = '\0';
     s_status_instance = this;
 }
 
-void SensorStackStatusManager::begin(UITask* ui) {
-    _ui = ui;
+void SensorStackStatusManager::begin() {
     s_status_instance = this;
 }
 
@@ -78,7 +74,10 @@ void SensorStackStatusManager::setSensorFaultMask(uint8_t mask) {
             logger.infof("SensorStack: %s is responding again; %s readings resumed.", s.name, s.readings);
         }
     }
-    if (_ui) _ui->update_sensorstack_sensor_faults(mask);
+    {
+        SystemStatusAccessor shared;
+        shared->sensorStackSensorFaults = mask;
+    }
 }
 
 void SensorStackStatusManager::setFirmwareState(SensorStackFirmwareState state) {
@@ -99,7 +98,10 @@ void SensorStackStatusManager::setFirmwareState(SensorStackFirmwareState state) 
             logger.info("SensorStack firmware state OK.");
             break;
     }
-    if (_ui) _ui->update_sensorstack_firmware_state(static_cast<int>(state));
+    {
+        SystemStatusAccessor shared;
+        shared->sensorStackFirmwareState = state;
+    }
 }
 
 void SensorStackStatusManager::setConnected(bool connected) {
@@ -111,21 +113,15 @@ void SensorStackStatusManager::setConnected(bool connected) {
     if (_connected) {
         _nano_boot_millis = millis();
         logger.info("Sensor module connection established.");
-        if (_ui) _ui->update_sensor_status(true);
-        SharedDataAccessor shared;
-        shared.setSensorStackStatus(true);
+        SystemStatusAccessor shared;
+        shared->sensorConnectionStatus = true;
     } else {
         logger.warning("Sensor module connection lost / timeout.");
-        if (_ui) {
-            _ui->update_sensor_status(false);
-            _ui->clearSensorReadings();
-            _ui->update_sensorstack_uptime(0);
-            _ui->update_sensorstack_ram(0);
-        }
-        SharedDataAccessor shared;
-        shared.setSensorStackStatus(false);
-        shared.setSensorStackVersionUnavailable();
-        shared.setSensorStackUptime(0, true);
+        SystemStatusAccessor shared;
+        shared->sensorConnectionStatus = false;
+        shared->sensorStackVersionUnavailable = true;
+        shared->sensorStackUptime = 0;
+        shared->sensorStackUptimeForce = true;
     }
 }
 
@@ -134,9 +130,10 @@ void SensorStackStatusManager::setVersion(const char* version_str) {
     strncpy(_version, version_str, sizeof(_version) - 1);
     _version[sizeof(_version) - 1] = '\0';
 
-    SharedDataAccessor shared;
-    shared.setSensorStackVersion(_version);
-    if (_ui) _ui->update_fw_version(_version);
+    SystemStatusAccessor shared;
+    strncpy(shared->sensorStackVersion, _version, sizeof(shared->sensorStackVersion) - 1);
+    shared->sensorStackVersion[sizeof(shared->sensorStackVersion) - 1] = '\0';
+    shared->sensorStackVersionUnavailable = false;
 }
 
 void SensorStackStatusManager::setHealth(int first_time_flag, uint16_t free_ram, uint8_t reset_cause) {
@@ -155,9 +152,10 @@ void SensorStackStatusManager::setHealth(int first_time_flag, uint16_t free_ram,
     _reset_cause_code = reset_cause;
 
     {
-        SharedDataAccessor shared;
-        shared.setSensorStackFreeRam(free_ram);
-        shared.setNanoResetCause(reset_cause_str);
+        SystemStatusAccessor shared;
+        shared->sensorStackFreeRam = free_ram;
+        strncpy(shared->nanoResetCause, reset_cause_str, sizeof(shared->nanoResetCause) - 1);
+        shared->nanoResetCause[sizeof(shared->nanoResetCause) - 1] = '\0';
     }
 
     if (first_time_flag == 0) {
@@ -167,41 +165,49 @@ void SensorStackStatusManager::setHealth(int first_time_flag, uint16_t free_ram,
 }
 
 void SensorStackStatusManager::setSps30Info(const SPS30DeviceInfo& info) {
-    _sps30_device_info = info;
-    if (_ui) {
-        _ui->update_sps30_fan_interval(info.fan_interval);
-        _ui->update_sps30_fan_days(info.fan_days);
-    }
+    DiagnosticDataAccessor diag;
+    diag->sps30.valid = info.valid;
+    diag->sps30.timestamp = millis();
+    diag->sps30.fwMajor = info.fw_major;
+    diag->sps30.fwMinor = info.fw_minor;
+    diag->sps30.fanInterval = info.fan_interval;
+    diag->sps30.fanDays = info.fan_days;
+    diag->sps30.statusReg = info.status_reg;
 }
 
 void SensorStackStatusManager::setSgp41TestResult(const SGP41TestResult& result) {
-    _sgp41_test_result_data = result;
-    if (_ui) {
-        _ui->update_sgp41_test_status(result.ret_status);
-        _ui->update_sgp41_test_value(result.raw_value);
-    }
+    DiagnosticDataAccessor diag;
+    diag->sgp41.valid = result.valid;
+    diag->sgp41.timestamp = millis();
+    diag->sgp41.retStatus = result.ret_status;
+    diag->sgp41.rawValue = result.raw_value;
 }
 
 void SensorStackStatusManager::setScd30Info(bool auto_cal, uint16_t force_cal) {
-    SharedDataAccessor shared;
-    shared.setScd30AutoCalState(auto_cal);
-    shared.setScd30ForceCalValue(force_cal);
-    if (_ui) {
-        _ui->update_scd30_autocal(auto_cal);
-        _ui->update_scd30_forcecal(force_cal);
+    {
+        DiagnosticDataAccessor diag;
+        diag->scd30.valid = true;
+        diag->scd30.timestamp = millis();
+        diag->scd30.autoCalState = auto_cal;
+        diag->scd30.forceCalValue = force_cal;
+    }
+    {
+        SystemStatusAccessor shared;
+        shared->scd30AutoCalState = auto_cal;
+        shared->scd30ForceCalValue = force_cal;
     }
 }
 
 void SensorStackStatusManager::setScd30AutoCalState(bool auto_cal, bool force) {
-    SharedDataAccessor shared;
-    shared.setScd30AutoCalState(auto_cal, force);
-    if (_ui) _ui->update_scd30_autocal(auto_cal);
+    SystemStatusAccessor shared;
+    shared->scd30AutoCalState = auto_cal;
+    shared->scd30AutoCalForce = force;
 }
 
 void SensorStackStatusManager::setScd30ForceCalValue(uint16_t force_cal, bool force) {
-    SharedDataAccessor shared;
-    shared.setScd30ForceCalValue(force_cal, force);
-    if (_ui) _ui->update_scd30_forcecal(force_cal);
+    SystemStatusAccessor shared;
+    shared->scd30ForceCalValue = force_cal;
+    shared->scd30ForceCalForce = force;
 }
 
 bool SensorStackStatusManager::processHealthPayload(char* payload, int* out_first_time_flag) {
@@ -377,8 +383,8 @@ bool SensorStackStatusManager::processScd30AutoCalPayload(char* payload) {
         // The state the SensorStack applied is unknown: republish the last confirmed one
         logger.warningf("SCD30 AutoCalibration could not be confirmed: SetResult=%d, ReadResult=%d",
                         set_result, read_result);
-        SharedDataAccessor shared;
-        shared.setScd30AutoCalState(shared.getScd30AutoCalState(), true);
+        SystemStatusAccessor shared;
+        shared->scd30AutoCalForce = true;
         return true;
     }
     if (set_result != 0) {
@@ -412,8 +418,8 @@ bool SensorStackStatusManager::processScd30ForceCalPayload(char* payload) {
         logger.warningf("SCD30 Force Calibration rejected or failed: SetResult=%d, ReadResult=%d, Value=%u ppm",
                         set_result, read_result, actual_value);
         // Revert Home Assistant's control to the last confirmed value
-        SharedDataAccessor shared;
-        shared.setScd30ForceCalValue(shared.getScd30ForceCalValue(), true);
+        SystemStatusAccessor shared;
+        shared->scd30ForceCalForce = true;
     }
     return true;
 }
@@ -423,19 +429,10 @@ void SensorStackStatusManager::updateDiagnostics() {
     uint32_t nano_current_uptime_seconds =
         (_connected && _nano_boot_millis > 0) ? (millis() - _nano_boot_millis) / 1000 : 0;
 
-    if (_ui) {
-        _ui->update_last_packet_time(seconds_since_packet);
-        if (_connected) {
-            _ui->update_sensorstack_uptime(nano_current_uptime_seconds);
-            _ui->update_sensorstack_ram(_free_ram);
-        } else {
-            _ui->update_sensorstack_uptime(0);
-            _ui->update_sensorstack_ram(0);
-        }
-    }
-
-    SharedDataAccessor shared;
-    shared.setSensorStackUptime(nano_current_uptime_seconds);
+    SystemStatusAccessor shared;
+    shared->sensorStackSecondsSincePacket = seconds_since_packet;
+    shared->sensorStackUptime = nano_current_uptime_seconds;
+    shared->sensorStackFreeRam = _connected ? _free_ram : 0;
 }
 
 void SensorStackStatusManager::populateDashboardData(LiveDashboardData& data) const {
@@ -447,15 +444,5 @@ void SensorStackStatusManager::populateDashboardData(LiveDashboardData& data) co
     data.nano_free_ram = _free_ram;
     snprintf(data.nano_version, sizeof(data.nano_version), "%s", _version);
     snprintf(data.nano_reset_cause, sizeof(data.nano_reset_cause), "%s", getResetCauseStr());
-}
-
-const SPS30DeviceInfo& get_sps30_device_info() {
-    static SPS30DeviceInfo dummy;
-    return s_status_instance ? s_status_instance->getSps30DeviceInfo() : dummy;
-}
-
-const SGP41TestResult& get_sgp41_test_result() {
-    static SGP41TestResult dummy;
-    return s_status_instance ? s_status_instance->getSgp41TestResult() : dummy;
 }
 

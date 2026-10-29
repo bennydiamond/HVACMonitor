@@ -2,7 +2,8 @@
 #include "BootloopGuard.h"
 #include "ConfigManager.h"
 #include "HomeAssistantManager.h"
-#include "SharedDataAccessor.h"
+#include "SystemStatusAccessor.h"
+#include "DiagnosticDataAccessor.h"
 #include "Logger.h"
 #include "RebootManager.h"
 #include <Update.h>
@@ -19,8 +20,9 @@
 #include "MainTaskEvents.h"
 #include "NanoCommands.h"
 #include "NanoFlasher.h"
+#include "NanoUartBridge.h"
 #include "SensorDefines.h"
-#include "UITask.h"
+#include "WatchdogManager.h"
 #include "webserver/WebServerAssets.h"
 #include "webserver/WebServerConfigClimate.h"
 #include "webserver/WebServerConfigMaintenance.h"
@@ -867,16 +869,43 @@ void WebServerManager::handleConfigUpdate() {
     }
     if (action == "sps30_info") {
       logger.info("SPS30 info query requested via Web Server");
-      if (query_sps30_info_blocking(SensorDefines::SPS30_INFO_TIMEOUT_MS)) {
-        const SPS30DeviceInfo &info = get_sps30_device_info();
-        char resp[128];
-        snprintf(resp, sizeof(resp),
-                 "Firmware: v%u.%u | Clean Interval: %lus (%lud) | Status: "
-                 "0x%08lX (%s)",
-                 info.fw_major, info.fw_minor, info.fan_interval, info.fan_days,
-                 info.status_reg,
-                 info.status_reg == 0 ? "OK" : "Fan Speed Warning");
-        server.send(200, "text/plain", resp);
+      uint32_t reqTime = millis();
+      MainTaskEventNotifier::getInstance().sendEvent(
+          MainTaskEventNotifier::EVT_SPS30_GET_INFO);
+
+      bool received = false;
+      while (millis() - reqTime < SensorDefines::SPS30_INFO_TIMEOUT_MS) {
+#ifdef ENABLE_TASK_WATCHDOG
+        WatchdogManager::reset();
+#endif
+        MainTaskEventNotifier::getInstance().processOneEvent(
+            dispatch_main_task_event);
+        if (NanoUartBridge::getInstance()) {
+          NanoUartBridge::getInstance()->readAndProcessSerial();
+        }
+        {
+          DiagnosticDataAccessor diag;
+          if (diag->sps30.valid && diag->sps30.timestamp >= reqTime) {
+            received = true;
+            break;
+          }
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+      }
+
+      if (received) {
+        DiagnosticDataAccessor diag;
+        char val_buf[128];
+        snprintf(val_buf, sizeof(val_buf),
+                 "v%u.%u | Clean: %lud (%lus) | %s (just now)",
+                 diag->sps30.fwMajor, diag->sps30.fwMinor,
+                 diag->sps30.fanDays, diag->sps30.fanInterval,
+                 diag->sps30.statusReg == 0 ? "OK" : "Fan Warning");
+        char json[256];
+        snprintf(json, sizeof(json),
+                 "{\"status\":\"ok\",\"message\":\"SPS30 info query successful.\",\"value\":\"%s\"}",
+                 val_buf);
+        server.send(200, "application/json", json);
       } else {
         server.send(504, "text/plain",
                     "Timeout waiting for SPS30 info from sensor stack");
@@ -885,17 +914,44 @@ void WebServerManager::handleConfigUpdate() {
     }
     if (action == "sgp41_test") {
       logger.info("SGP41 self-test requested via Web Server");
-      if (run_sgp41_test_blocking(SensorDefines::SGP41_TEST_TIMEOUT_MS)) {
-        const SGP41TestResult &res = get_sgp41_test_result();
-        char resp[96];
-        if (res.ret_status == 0 && res.raw_value == SensorDefines::SGP41_TEST_PASSED_RAW_VALUE) {
-          snprintf(resp, sizeof(resp), "OK / Passed (Value: 0x%04X, Status: 0)",
-                   res.raw_value);
-        } else {
-          snprintf(resp, sizeof(resp), "Failed (Status: %d, Value: 0x%04X)",
-                   res.ret_status, res.raw_value);
+      uint32_t reqTime = millis();
+      MainTaskEventNotifier::getInstance().sendEvent(
+          MainTaskEventNotifier::EVT_SGP41_TEST);
+
+      bool received = false;
+      while (millis() - reqTime < SensorDefines::SGP41_TEST_TIMEOUT_MS) {
+#ifdef ENABLE_TASK_WATCHDOG
+        WatchdogManager::reset();
+#endif
+        MainTaskEventNotifier::getInstance().processOneEvent(
+            dispatch_main_task_event);
+        if (NanoUartBridge::getInstance()) {
+          NanoUartBridge::getInstance()->readAndProcessSerial();
         }
-        server.send(200, "text/plain", resp);
+        {
+          DiagnosticDataAccessor diag;
+          if (diag->sgp41.valid && diag->sgp41.timestamp >= reqTime) {
+            received = true;
+            break;
+          }
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+      }
+
+      if (received) {
+        DiagnosticDataAccessor diag;
+        char val_buf[96];
+        bool passed = (diag->sgp41.retStatus == 0 &&
+                       diag->sgp41.rawValue == SensorDefines::SGP41_TEST_PASSED_RAW_VALUE);
+        snprintf(val_buf, sizeof(val_buf),
+                 "%s (0x%04X) (just now)",
+                 passed ? "PASSED" : "FAILED", diag->sgp41.rawValue);
+        char json[256];
+        snprintf(json, sizeof(json),
+                 "{\"status\":\"ok\",\"message\":\"SGP41 self-test %s.\",\"value\":\"%s\"}",
+                 passed ? "passed successfully" : "failed",
+                 val_buf);
+        server.send(200, "application/json", json);
       } else {
         server.send(504, "text/plain",
                     "Timeout waiting for SGP41 test from sensor stack");
@@ -1262,8 +1318,9 @@ void WebServerManager::handleConfigUpdate() {
     } else if (section == "inactivity") {
       if (type == "timer_delay" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_INACTIVITY_DELAY_S, ConfigLimits::MAX_INACTIVITY_DELAY_S)) {
         config->setInactivityTimerDelay(intVal);
-        SharedDataAccessor shared;
-        shared.setInactivityTimerDelay(intVal, true);
+        SystemStatusAccessor shared;
+        shared->inactivityTimerDelay = intVal;
+        shared->inactivityTimerDelayForce = true;
       } else {
         ok = false;
       }
@@ -1272,8 +1329,8 @@ void WebServerManager::handleConfigUpdate() {
         AppLogLevel level = static_cast<AppLogLevel>(intVal);
         config->setLogLevel(level);
         logger.setLogLevel(level);
-        SharedDataAccessor shared;
-        shared.setLogLevel(level);
+        SystemStatusAccessor shared;
+        shared->logLevel = level;
         logger.infof("Log level updated to %d via Web Server", intVal);
       } else {
         ok = false;
@@ -1314,16 +1371,16 @@ void WebServerManager::handleConfigUpdate() {
     } else if (section == "display") {
       if (type == "brightness" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_DISPLAY_BRIGHTNESS, ConfigLimits::MAX_DISPLAY_BRIGHTNESS)) {
         uint8_t b = static_cast<uint8_t>(intVal);
-        UITask::getInstance().set_brightness(b);
-        SharedDataAccessor shared;
-        shared.setBacklightState(b > 0, b);
+        SystemStatusAccessor shared;
+        shared->backlightState = (b > 0);
+        shared->backlightBrightness = b;
         logger.infof("Display brightness set to %u via Web Server", b);
       } else if (type == "backlight" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_SWITCH_STATE, ConfigLimits::MAX_SWITCH_STATE)) {
-        uint8_t curB = UITask::getInstance().get_brightness();
+        SystemStatusAccessor shared;
+        uint8_t curB = shared->backlightBrightness;
         uint8_t newB = (intVal != 0) ? (curB == 0 ? ConfigLimits::MAX_DISPLAY_BRIGHTNESS : curB) : 0;
-        UITask::getInstance().set_brightness(newB);
-        SharedDataAccessor shared;
-        shared.setBacklightState(intVal != 0, newB);
+        shared->backlightState = (intVal != 0);
+        shared->backlightBrightness = newB;
         logger.infof("Display backlight set to %s via Web Server",
                      intVal != 0 ? "ON" : "OFF");
       } else {
@@ -1332,17 +1389,16 @@ void WebServerManager::handleConfigUpdate() {
     } else if (section == "scd30") {
       if (type == "autocal" && parseStrictInt(valueStr, intVal, ConfigLimits::MIN_SWITCH_STATE, ConfigLimits::MAX_SWITCH_STATE)) {
         bool enabled = (intVal != 0);
-        // Home Assistant and the screen are updated once the SensorStack confirms
-        send_command_to_nano_with_param(CMD_SET_SCD30_AUTOCAL,
-                                        enabled ? '1' : '0');
+        SystemStatusAccessor()->scd30AutoCalState = enabled;
+        MainTaskEventNotifier::getInstance().sendEvent(
+            enabled ? MainTaskEventNotifier::EVT_SCD30_AUTOCAL_ON : MainTaskEventNotifier::EVT_SCD30_AUTOCAL_OFF);
         logger.infof("SCD30 AutoCalibration %s requested via Web Server",
                      enabled ? "ON" : "OFF");
       } else if (type == "forcecal" &&
                  parseStrictInt(valueStr, intVal, SensorDefines::SCD30_FORCECAL_MIN_PPM, SensorDefines::SCD30_FORCECAL_MAX_PPM)) {
         uint16_t ppm = static_cast<uint16_t>(intVal);
-        char cmd_str[8];
-        snprintf(cmd_str, sizeof(cmd_str), "%c%u", CMD_SET_SCD30_FORCECAL, ppm);
-        send_command_to_nano_str(cmd_str);
+        SystemStatusAccessor()->scd30ForceCalTarget = ppm;
+        MainTaskEventNotifier::getInstance().sendEvent(MainTaskEventNotifier::EVT_SCD30_FORCECAL);
         logger.infof("SCD30 Force Calibration to %u ppm requested via Web Server",
                      ppm);
       } else {
@@ -1998,7 +2054,7 @@ void WebServerManager::handleConfigSystem() {
             snprintf(buf, len, " selected");
           return true;
         }
-        uint8_t currentBrightness = UITask::getInstance().get_brightness();
+        uint8_t currentBrightness = SystemStatusAccessor()->backlightBrightness;
         if (strcmp(key, "DISPLAY_BRIGHTNESS") == 0) {
           snprintf(buf, len, "%u", currentBrightness);
           return true;
@@ -2063,9 +2119,9 @@ void WebServerManager::handleConfigSystem() {
 }
 
 void WebServerManager::handleConfigMaintenance() {
-  SharedDataAccessor shared;
-  bool autoCalState = shared.getScd30AutoCalState();
-  uint16_t forceCalValue = shared.getScd30ForceCalValue();
+  SystemStatusAccessor shared;
+  bool autoCalState = shared->scd30AutoCalState;
+  uint16_t forceCalValue = shared->scd30ForceCalValue;
   if (forceCalValue == 0)
     forceCalValue = SensorDefines::SCD30_FORCECAL_MIN_PPM;
 
@@ -2090,11 +2146,47 @@ void WebServerManager::handleConfigMaintenance() {
                      return true;
                    }
                    if (strcmp(key, "SPS30_INFO") == 0) {
-                     buf[0] = '\0';
+                     DiagnosticDataAccessor diag;
+                     if (diag->sps30.valid) {
+                       uint32_t ageSec = (millis() - diag->sps30.timestamp) / 1000;
+                       char ageBuf[24];
+                       if (ageSec < 60) {
+                         snprintf(ageBuf, sizeof(ageBuf), "%lu s ago", (unsigned long)ageSec);
+                       } else if (ageSec < 3600) {
+                         snprintf(ageBuf, sizeof(ageBuf), "%lu m ago", (unsigned long)(ageSec / 60));
+                       } else {
+                         snprintf(ageBuf, sizeof(ageBuf), "%lu h ago", (unsigned long)(ageSec / 3600));
+                       }
+                       snprintf(buf, len,
+                                "v%u.%u | Clean: %lud (%lus) | %s (%s)",
+                                diag->sps30.fwMajor, diag->sps30.fwMinor,
+                                diag->sps30.fanDays, diag->sps30.fanInterval,
+                                diag->sps30.statusReg == 0 ? "OK" : "Fan Warning",
+                                ageBuf);
+                     } else {
+                       snprintf(buf, len, "Not queried yet");
+                     }
                      return true;
                    }
                    if (strcmp(key, "SGP41_RESULT") == 0) {
-                     buf[0] = '\0';
+                     DiagnosticDataAccessor diag;
+                     if (diag->sgp41.valid) {
+                       uint32_t ageSec = (millis() - diag->sgp41.timestamp) / 1000;
+                       char ageBuf[24];
+                       if (ageSec < 60) {
+                         snprintf(ageBuf, sizeof(ageBuf), "%lu s ago", (unsigned long)ageSec);
+                       } else if (ageSec < 3600) {
+                         snprintf(ageBuf, sizeof(ageBuf), "%lu m ago", (unsigned long)(ageSec / 60));
+                       } else {
+                         snprintf(ageBuf, sizeof(ageBuf), "%lu h ago", (unsigned long)(ageSec / 3600));
+                       }
+                       bool passed = (diag->sgp41.retStatus == 0 &&
+                                      diag->sgp41.rawValue == SensorDefines::SGP41_TEST_PASSED_RAW_VALUE);
+                       snprintf(buf, len, "%s (0x%04X) (%s)",
+                                passed ? "PASSED" : "FAILED", diag->sgp41.rawValue, ageBuf);
+                     } else {
+                       snprintf(buf, len, "Not tested yet");
+                     }
                      return true;
                    }
                    return false;

@@ -67,7 +67,7 @@ public:
     void update_network_rssi(int8_t rssi);
     void update_network_ha_conn(bool ha_conn);
     void update_sensor_status(bool connected);
-    void update_sensorstack_firmware_state(int state);
+    void update_sensorstack_firmware_state(SensorStackFirmwareState state);
     void update_sensorstack_sensor_faults(int mask);
     void update_last_packet_time(uint32_t seconds_since_packet);
     void update_ssid(const char* ssid);

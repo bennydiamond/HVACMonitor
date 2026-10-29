@@ -2,6 +2,7 @@
 #define IUI_UPDATER_H
 
 #include "ui/ui_common.h" // For FanStatus
+#include "SensorStackFirmwareState.h"
 #include <stdint.h>       // For standard integer types like int8_t, uint32_t
 
 class IUIUpdater {
@@ -47,7 +48,7 @@ public:
     virtual void update_network_rssi(int8_t rssi) = 0;
     virtual void update_network_ha_conn(bool ha_conn) = 0;
     // 0 OK (hide popup), 1 update in progress, 2 firmware issue (see SensorStackFirmwareState)
-    virtual void update_sensorstack_firmware_state(int state) = 0;
+    virtual void update_sensorstack_firmware_state(SensorStackFirmwareState state) = 0;
     // SENSOR_FAULT_* bits: SensorStack sensors not responding
     virtual void update_sensorstack_sensor_faults(int mask) = 0;
     virtual void update_last_packet_time(uint32_t seconds_since_packet) = 0;

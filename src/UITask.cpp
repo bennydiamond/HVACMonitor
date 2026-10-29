@@ -5,6 +5,9 @@
 #include "ui.h"
 #include "ui/interfaces/IUIManager.h"
 #include "ui/interfaces/IUIUpdater.h"
+#include "SensorDataAccessor.h"
+#include "SystemStatusAccessor.h"
+#include "DiagnosticDataAccessor.h"
 #include "Logger.h"
 #include "ConfigManager.h"
 #include "ResetUtils.h"
@@ -19,92 +22,8 @@ static UITask* instance = nullptr;
 static std::atomic<bool> otaPopupDrawn{false};
 
 static bool is_ota_popup_drawn() {
-        return otaPopupDrawn.load();
-    }
-
-// Static function pointer table for UI dispatch
-const UITask::UIUpdateFunc UITask::updateTable[UI_MSG_COUNT] = {
-    // UI_PRESSURE
-    [](IUIUpdater* u, const UIMessage& m) { u->update_pressure(m.value.f); },
-    // UI_FAN_STATUS
-    [](IUIUpdater* u, const UIMessage& m) { u->update_fan_status(static_cast<FanStatus>(m.value.i)); },
-    // UI_HIGH_PRESSURE
-    [](IUIUpdater* u, const UIMessage& m) { u->update_high_pressure_status(m.value.b); },
-    // UI_GEIGER_CPM
-    [](IUIUpdater* u, const UIMessage& m) { u->update_geiger_cpm(m.value.i); },
-    // UI_GEIGER_USVH
-    [](IUIUpdater* u, const UIMessage& m) { u->update_geiger_usvh(m.value.f); },
-    // UI_TEMP
-    [](IUIUpdater* u, const UIMessage& m) { u->update_temp(m.value.f); },
-    // UI_HUMI
-    [](IUIUpdater* u, const UIMessage& m) { u->update_humi(m.value.f); },
-    // UI_FAN_CURRENT
-    [](IUIUpdater* u, const UIMessage& m) { u->update_fan_amps(m.value.f); },
-    // UI_COMPRESSOR_AMPS
-    [](IUIUpdater* u, const UIMessage& m) { u->update_compressor_amps(m.value.f); },
-    // UI_PUMP_AMPS
-    [](IUIUpdater* u, const UIMessage& m) { u->update_pump_amps(m.value.f); },
-    // UI_WATER_SENSOR
-    [](IUIUpdater* u, const UIMessage& m) { u->update_water_sensor(m.value.b); },
-    // UI_CO2
-    [](IUIUpdater* u, const UIMessage& m) { u->update_co2(m.value.f); },
-    // UI_VOC
-    [](IUIUpdater* u, const UIMessage& m) { u->update_voc(m.value.f); },
-    // UI_NO2
-    [](IUIUpdater* u, const UIMessage& m) { u->update_no2(m.value.f); },
-    // UI_O3
-    [](IUIUpdater* u, const UIMessage& m) { u->update_o3(m.value.f); },
-    // UI_NOX
-    [](IUIUpdater* u, const UIMessage& m) { u->update_nox(m.value.f); },
-    // UI_CO
-    [](IUIUpdater* u, const UIMessage& m) { u->update_co(m.value.f); },
-    // UI_PM1
-    [](IUIUpdater* u, const UIMessage& m) { u->update_pm1(m.value.f); },
-    // UI_PM25
-    [](IUIUpdater* u, const UIMessage& m) { u->update_pm25(m.value.f); },
-    // UI_PM4
-    [](IUIUpdater* u, const UIMessage& m) { u->update_pm4(m.value.f); },
-    // UI_PM10
-    [](IUIUpdater* u, const UIMessage& m) { u->update_pm10(m.value.f); },
-    // UI_WIFI_STATUS
-    [](IUIUpdater* u, const UIMessage& m) { u->update_wifi_status(m.value.wifi.connected, m.value.wifi.rssi); },
-    // UI_SENSOR_STATUS
-    [](IUIUpdater* u, const UIMessage& m) { u->update_sensor_status(m.value.b); },
-    // UI_CLEAR_SENSOR_READINGS
-    [](IUIUpdater* u, const UIMessage&) { u->clearSensorReadings(); },
-    // UI_SPS30_FAN_INTERVAL
-    [](IUIUpdater* u, const UIMessage& m) { u->update_sps30_fan_interval(m.value.i); },
-    // UI_SPS30_FAN_DAYS
-    [](IUIUpdater* u, const UIMessage& m) { u->update_sps30_fan_days(m.value.i); },
-    // UI_SGP41_TEST_STATUS
-    [](IUIUpdater* u, const UIMessage& m) { u->update_sgp41_test_status(m.value.i); },
-    // UI_SGP41_TEST_VALUE
-    [](IUIUpdater* u, const UIMessage& m) { u->update_sgp41_test_value(m.value.i); },
-    // UI_SCD30_AUTOCAL
-    [](IUIUpdater* u, const UIMessage& m) { u->update_scd30_autocal(m.value.b); },
-    // UI_SCD30_FORCECAL
-    [](IUIUpdater* u, const UIMessage& m) { u->update_scd30_forcecal(m.value.i); },
-    // UI_LAST_PACKET_TIME
-    [](IUIUpdater* u, const UIMessage& m) { u->update_last_packet_time(m.value.i); },
-    // UI_RUNTIME_FREE_HEAP
-    [](IUIUpdater* u, const UIMessage& m) { u->update_runtime_free_heap(m.value.i); },
-    // UI_RUNTIME_UPTIME
-    [](IUIUpdater* u, const UIMessage& m) { u->update_runtime_uptime(m.value.i); },
-    // UI_SENSORSTACK_UPTIME
-    [](IUIUpdater* u, const UIMessage& m) { u->update_sensorstack_uptime(m.value.i); },
-    // UI_SENSORSTACK_RAM
-    [](IUIUpdater* u, const UIMessage& m) { u->update_sensorstack_ram(m.value.i); },
-    // UI_NETWORK_RSSI
-    [](IUIUpdater* u, const UIMessage& m) { u->update_network_rssi(m.value.i); },
-    // UI_NETWORK_HA_CONN
-    [](IUIUpdater* u, const UIMessage& m) { u->update_network_ha_conn(m.value.b); },
-    // UI_SENSORSTACK_FIRMWARE_STATE
-    [](IUIUpdater* u, const UIMessage& m) { u->update_sensorstack_firmware_state(m.value.i); },
-    // UI_SENSORSTACK_SENSOR_FAULTS
-    [](IUIUpdater* u, const UIMessage& m) { u->update_sensorstack_sensor_faults(m.value.i); },
-    // UI_SHOW_OTA_POPUP
-    [](IUIUpdater* u, const UIMessage& m) { UITask::getInstance().show_ota_popup(); },
-};
+    return otaPopupDrawn.load();
+}
 
 UITask& UITask::getInstance() {
     if (!instance) {
@@ -114,14 +33,13 @@ UITask& UITask::getInstance() {
 }
 
 UITask::UITask() : 
-tft(nullptr),
-touch(nullptr),
-uiManager(nullptr),
-uiUpdater(nullptr),
-taskHandle(nullptr),
-uiQueue(nullptr),
-uiIsInit(false),
-uiStringQueue(nullptr)
+    tft(nullptr),
+    touch(nullptr),
+    uiManager(nullptr),
+    uiUpdater(nullptr),
+    taskHandle(nullptr),
+    otaPopupRequested(false),
+    uiIsInit(false)
 {
     otaPopupDrawn.store(false);
 }
@@ -130,33 +48,22 @@ UITask::~UITask() {
 #ifdef ENABLE_TASK_WATCHDOG
     WatchdogManager::removeCurrentTask();
 #endif
-    // Cleanup if needed
-    if(uiQueue != nullptr)
-    {
-        vQueueDelete(uiQueue);
-    }
-    if(uiStringQueue != nullptr)
-    {
-        vQueueDelete(uiStringQueue);
-    }
-
-    if(uiManager != nullptr)
-    {
+    if (uiManager != nullptr) {
         delete uiManager;
-        // uiUpdater is the same instance as uiManager, no need to delete
+        uiManager = nullptr;
+        uiUpdater = nullptr;
     }
-
-    if(tft != nullptr)
-    {
+    if (tft != nullptr) {
         delete tft;
+        tft = nullptr;
     }
-    if(touch != nullptr)
-    {
+    if (touch != nullptr) {
         delete touch;
+        touch = nullptr;
     }
-    if(taskHandle != nullptr)
-    {
+    if (taskHandle != nullptr) {
         vTaskDelete(taskHandle);
+        taskHandle = nullptr;
     }
 }
 
@@ -168,11 +75,12 @@ void UITask::start() {
         this,
         TASK_PRIORITY_UI,
         &taskHandle,
-        xPortGetCoreID()      // Core ID (use running core to avoid executing on WIFI core)
+        xPortGetCoreID() // Core ID (use running core to avoid executing on WIFI core)
     );
 
     if (result != pdPASS) {
-        logger.errorf("Failed to create UITask. Free: %d, Min: %d, Max: %d bytes", ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
+        logger.errorf("Failed to create UITask. Free: %d, Min: %d, Max: %d bytes",
+                      ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getMaxAllocHeap());
         taskHandle = nullptr;
     } else {
         logger.infof("UITask created successfully on core %d", xPortGetCoreID());
@@ -184,30 +92,25 @@ void UITask::taskFunc(void* param) {
 }
 
 void UITask::run() {
-    
-    while(1)
-    {
-        #ifdef ENABLE_TASK_WATCHDOG
-            WatchdogManager::addCurrentTask();
-        #endif
-        // Initialize UI objects here
-        uiQueue = xQueueCreate(UI_QUEUE_SIZE, sizeof(UIMessage));
-        xQueueReset(uiQueue);
-        uiStringQueue = xQueueCreate(UI_STRING_QUEUE_SIZE, sizeof(UIStringMessage));
-        xQueueReset(uiStringQueue);
-
-        uint8_t local_bightness = brightness.load();
-        if(tft == nullptr)
+    while (1) {
+#ifdef ENABLE_TASK_WATCHDOG
+        WatchdogManager::addCurrentTask();
+#endif
+        uint8_t local_brightness = DEFAULT_LCD_BRIGHTNESS;
         {
+            SystemStatusAccessor sys;
+            local_brightness = sys->backlightState ? sys->backlightBrightness : 0;
+        }
+
+        if (tft == nullptr) {
             tft = new LGFX();
             tft->init();
             tft->setRotation(1);
-            tft->setBrightness(local_bightness);
+            tft->setBrightness(local_brightness);
         }
         tft->fillScreen(TFT_BLACK);
         
-        if(touch == nullptr)
-        {
+        if (touch == nullptr) {
             touch = new CST820(21, 22, -1, -1);
             touch->begin();
         }
@@ -217,6 +120,7 @@ void UITask::run() {
         uiUpdater = ui;
         uiManager->init(tft, touch);
         uiManager->create_widgets();
+
         char ver_buf[64];
         FlashMode_t fMode = ESP.getFlashChipMode();
         const char *fModeStr = (fMode == FM_QIO)    ? "QIO"
@@ -231,61 +135,212 @@ void UITask::run() {
                  fModeStr);
         uiUpdater->set_initial_debug_info(ver_buf, get_reset_reason_string());
 
-
-        
         uiIsInit = true;
         logger.info("UITask initialized.");
-        // Variables for periodic stack size logging
         unsigned long lastStackCheckTime = 0;
 
+        SensorStateData lastSensorState;
+        SystemStatusData lastSysState;
+        bool firstRun = true;
+
+        auto floatDiffers = [](float a, float b) -> bool {
+            if (std::isnan(a) && std::isnan(b)) return false;
+            if (std::isnan(a) != std::isnan(b)) return true;
+            return a != b;
+        };
+
         while (uiIsInit) {
+            if (otaPopupRequested.load()) {
+                show_ota_popup();
+                otaPopupRequested.store(false);
+                otaPopupDrawn.store(false);
+                break;
+            }
 
-            auto newBrightness = brightness.load();
-            if(local_bightness != newBrightness) {
-                local_bightness = newBrightness;
-                tft->setBrightness(local_bightness);
-                logger.infof("UI brightness set to %u", local_bightness);
-            }   
-
-            // Periodically log the remaining stack size for this task
             uint32_t start = millis();
             if (start - lastStackCheckTime > STACK_CHECK_INTERVAL_MS) {
                 lastStackCheckTime = start;
                 UBaseType_t remaining_stack = uxTaskGetStackHighWaterMark(NULL);
                 logger.debugf("UITask task remaining stack: %u bytes", remaining_stack);
             }
-            
-            if(uiStringQueue != nullptr)
+
+            // Snapshot sensor and system states
+            SensorStateData sensorState;
             {
-                // Process all pending string messages
-                UIStringMessage strmsg;
-                while (xQueueReceive(uiStringQueue, &strmsg, 0) == pdTRUE) {
-                    if (strmsg.type < UI_STRING_COUNT) {
-                        stringUpdateTable[strmsg.type](uiUpdater, strmsg);
-#ifdef ENABLE_TASK_WATCHDOG
-                        WatchdogManager::reset();
-#endif
-                    }
+                SensorDataAccessor sensor;
+                sensorState = *sensor;
+            }
+
+            SystemStatusData sysState;
+            {
+                SystemStatusAccessor sys;
+                sysState = *sys;
+            }
+
+            if (firstRun || sysState.backlightState != lastSysState.backlightState ||
+                sysState.backlightBrightness != lastSysState.backlightBrightness) {
+                uint8_t target_brightness = sysState.backlightState ? sysState.backlightBrightness : 0;
+                if (local_brightness != target_brightness) {
+                    local_brightness = target_brightness;
+                    tft->setBrightness(local_brightness);
+                    logger.infof("UI brightness set to %u", local_brightness);
                 }
             }
 
-            // Process all pending regular messages 
-            if(uiQueue != nullptr)
-            {
-                UIMessage msg;
-                while (uiQueue && xQueueReceive(uiQueue, &msg, 0) == pdTRUE) {
-                    dispatchMessage(msg);
-#ifdef ENABLE_TASK_WATCHDOG
-                    WatchdogManager::reset();
-#endif
+            if (firstRun || sysState.sensorConnectionStatus != lastSysState.sensorConnectionStatus) {
+                uiUpdater->update_sensor_status(sysState.sensorConnectionStatus);
+                if (!sysState.sensorConnectionStatus) {
+                    uiUpdater->clearSensorReadings();
                 }
             }
-            uint32_t sleepMs = UITASK_SLEEP_TIME_MS;
-            if(uiManager != nullptr)
+
+            if (firstRun || floatDiffers(sensorState.pressure, lastSensorState.pressure) ||
+                floatDiffers(sensorState.filter_pressure, lastSensorState.filter_pressure)) {
+                float displayPressure = (sensorState.filter_pressure > 0.0f) ? sensorState.filter_pressure : sensorState.pressure;
+                uiUpdater->update_pressure(displayPressure);
+            }
+
+            if (firstRun || sensorState.high_pressure != lastSensorState.high_pressure) {
+                uiUpdater->update_high_pressure_status(sensorState.high_pressure);
+            }
+            if (firstRun || sensorState.cpm != lastSensorState.cpm) {
+                uiUpdater->update_geiger_cpm(sensorState.cpm);
+            }
+            if (firstRun || floatDiffers(sensorState.geiger_usvh, lastSensorState.geiger_usvh)) {
+                uiUpdater->update_geiger_usvh(sensorState.geiger_usvh);
+            }
+            if (firstRun || floatDiffers(sensorState.temp, lastSensorState.temp)) {
+                uiUpdater->update_temp(sensorState.temp);
+            }
+            if (firstRun || floatDiffers(sensorState.humi, lastSensorState.humi)) {
+                uiUpdater->update_humi(sensorState.humi);
+            }
+            if (firstRun || floatDiffers(sensorState.co2, lastSensorState.co2)) {
+                uiUpdater->update_co2(sensorState.co2);
+            }
+            if (firstRun || floatDiffers(sensorState.fan_amps, lastSensorState.fan_amps)) {
+                uiUpdater->update_fan_amps(sensorState.fan_amps);
+            }
+            if (firstRun || sensorState.fan_status != lastSensorState.fan_status) {
+                uiUpdater->update_fan_status(sensorState.fan_status);
+            }
+            if (firstRun || floatDiffers(sensorState.compressor_amps, lastSensorState.compressor_amps)) {
+                uiUpdater->update_compressor_amps(sensorState.compressor_amps);
+            }
+            if (firstRun || floatDiffers(sensorState.geothermal_pump_amps, lastSensorState.geothermal_pump_amps)) {
+                uiUpdater->update_pump_amps(sensorState.geothermal_pump_amps);
+            }
+            if (firstRun || sensorState.liquid_level_sensor_state != lastSensorState.liquid_level_sensor_state) {
+                uiUpdater->update_water_sensor(sensorState.liquid_level_sensor_state);
+            }
+            if (firstRun || sensorState.voc_index != lastSensorState.voc_index) {
+                uiUpdater->update_voc(sensorState.voc_index);
+            }
+            if (firstRun || sensorState.nox_index != lastSensorState.nox_index) {
+                uiUpdater->update_nox(sensorState.nox_index);
+            }
+            if (firstRun || floatDiffers(sensorState.pm1, lastSensorState.pm1)) {
+                uiUpdater->update_pm1(sensorState.pm1);
+            }
+            if (firstRun || floatDiffers(sensorState.pm25, lastSensorState.pm25)) {
+                uiUpdater->update_pm25(sensorState.pm25);
+            }
+            if (firstRun || floatDiffers(sensorState.pm4, lastSensorState.pm4)) {
+                uiUpdater->update_pm4(sensorState.pm4);
+            }
+            if (firstRun || floatDiffers(sensorState.pm10, lastSensorState.pm10)) {
+                uiUpdater->update_pm10(sensorState.pm10);
+            }
+            if (firstRun || floatDiffers(sensorState.co_ppm, lastSensorState.co_ppm)) {
+                uiUpdater->update_co(sensorState.co_ppm);
+            }
+
+            if (firstRun || floatDiffers(sensorState.no2_conc_ug_per_m3, lastSensorState.no2_conc_ug_per_m3)) {
+                uiUpdater->update_no2(sensorState.no2_conc_ug_per_m3);
+            }
+            if (firstRun || floatDiffers(sensorState.o3_conc_ug_per_m3, lastSensorState.o3_conc_ug_per_m3)) {
+                uiUpdater->update_o3(sensorState.o3_conc_ug_per_m3);
+            }
+
+            if (firstRun || strcmp(sysState.sensorStackVersion, lastSysState.sensorStackVersion) != 0 ||
+                sysState.sensorStackVersionUnavailable != lastSysState.sensorStackVersionUnavailable) {
+                uiUpdater->update_fw_version(sysState.sensorStackVersionUnavailable ? "" : sysState.sensorStackVersion);
+            }
+
+            if (firstRun || sysState.sensorStackSecondsSincePacket != lastSysState.sensorStackSecondsSincePacket) {
+                uiUpdater->update_last_packet_time(sysState.sensorStackSecondsSincePacket);
+            }
+            if (firstRun || sysState.sensorStackUptime != lastSysState.sensorStackUptime) {
+                uiUpdater->update_sensorstack_uptime(sysState.sensorStackUptime);
+            }
+            if (firstRun || sysState.sensorStackFreeRam != lastSysState.sensorStackFreeRam) {
+                uiUpdater->update_sensorstack_ram(sysState.sensorStackFreeRam);
+            }
+
+            if (firstRun || sysState.sensorStackFirmwareState != lastSysState.sensorStackFirmwareState) {
+                uiUpdater->update_sensorstack_firmware_state(sysState.sensorStackFirmwareState);
+            }
+
+            if (firstRun || sysState.sensorStackSensorFaults != lastSysState.sensorStackSensorFaults) {
+                uiUpdater->update_sensorstack_sensor_faults(sysState.sensorStackSensorFaults);
+            }
+
+            static uint32_t lastSps30Timestamp = 0;
+            static uint32_t lastSgp41Timestamp = 0;
             {
+                DiagnosticDataAccessor diag;
+                if (diag->sps30.valid && (firstRun || diag->sps30.timestamp != lastSps30Timestamp)) {
+                    lastSps30Timestamp = diag->sps30.timestamp;
+                    uiUpdater->update_sps30_fan_interval(diag->sps30.fanInterval);
+                    uiUpdater->update_sps30_fan_days(diag->sps30.fanDays);
+                }
+                if (diag->sgp41.valid && (firstRun || diag->sgp41.timestamp != lastSgp41Timestamp)) {
+                    lastSgp41Timestamp = diag->sgp41.timestamp;
+                    uiUpdater->update_sgp41_test_status(diag->sgp41.retStatus);
+                    uiUpdater->update_sgp41_test_value(diag->sgp41.rawValue);
+                }
+            }
+
+            if (firstRun || sysState.scd30AutoCalState != lastSysState.scd30AutoCalState) {
+                uiUpdater->update_scd30_autocal(sysState.scd30AutoCalState);
+            }
+
+            if (firstRun || sysState.scd30ForceCalValue != lastSysState.scd30ForceCalValue) {
+                uiUpdater->update_scd30_forcecal(sysState.scd30ForceCalValue);
+            }
+
+            if (firstRun || sysState.wifiConnected != lastSysState.wifiConnected || sysState.wifiRssi != lastSysState.wifiRssi) {
+                uiUpdater->update_wifi_status(sysState.wifiConnected, sysState.wifiRssi);
+                uiUpdater->update_network_rssi(sysState.wifiRssi);
+            }
+            if (firstRun || strcmp(sysState.wifiSsid, lastSysState.wifiSsid) != 0) {
+                uiUpdater->update_ssid(sysState.wifiSsid);
+            }
+            if (firstRun || strcmp(sysState.wifiIp, lastSysState.wifiIp) != 0) {
+                uiUpdater->update_ip(sysState.wifiIp);
+            }
+            if ((firstRun && sysState.wifiMac[0] != '\0') || strcmp(sysState.wifiMac, lastSysState.wifiMac) != 0) {
+                uiUpdater->update_mac(sysState.wifiMac);
+            }
+
+            if (firstRun || sysState.esp32FreeHeap != lastSysState.esp32FreeHeap) {
+                uiUpdater->update_runtime_free_heap(sysState.esp32FreeHeap);
+            }
+            if (firstRun || sysState.esp32Uptime != lastSysState.esp32Uptime) {
+                uiUpdater->update_runtime_uptime(sysState.esp32Uptime);
+            }
+
+            if (firstRun || sysState.mqttConnected != lastSysState.mqttConnected) {
+                uiUpdater->update_network_ha_conn(sysState.mqttConnected);
+            }
+
+            lastSensorState = sensorState;
+            lastSysState = sysState;
+            firstRun = false;
+
+            uint32_t sleepMs = UITASK_SLEEP_TIME_MS;
+            if (uiManager != nullptr) {
                 uint32_t next = uiManager->run();
-                // Sleep only until LVGL's next timer is due; cap so queued messages
-                // are still handled promptly and floor at 1ms so we always yield.
                 sleepMs = next < 1 ? 1 : (next > UITASK_SLEEP_TIME_MS_MAX ? UITASK_SLEEP_TIME_MS_MAX : next);
             }
 #ifdef ENABLE_TASK_WATCHDOG
@@ -294,144 +349,6 @@ void UITask::run() {
             vTaskDelay(pdMS_TO_TICKS(sleepMs));
         }
     }
-}
-
-void UITask::dispatchMessage(const UIMessage& msg) {
-    if (msg.type < UI_MSG_COUNT) {
-        updateTable[msg.type](uiUpdater, msg);
-    }
-}
-
-// String array definition using X-macro
-#define X(name) #name,
-const char* UITask::UIMessageTypeNames[UI_MSG_COUNT] = {
-    UI_MESSAGE_TYPE_LIST
-};
-#undef X
-
-// Helper function to send to queue or log warning
-bool UITask::queueSendOrWarn(const UIMessage& msg) {
-    if(uiQueue == nullptr) {
-        logger.debug("UI queue not initialized");
-        return false;
-    }
-    if (xQueueSend(uiQueue, &msg, UI_QUEUE_WAIT_MAX_TIMES) != pdTRUE) {
-        logger.warningf("UI queue full, message dropped (%s)", UIMessageTypeNames[msg.type]);
-        return false;
-    }
-    return true;
-}
-
-// Enqueue UI update messages
-void UITask::update_pressure(float p) {
-    queueSendOrWarn(UIMessage{UI_PRESSURE, p});
-}
-void UITask::update_high_pressure_status(bool high) {
-    queueSendOrWarn(UIMessage{UI_HIGH_PRESSURE, high});
-}
-void UITask::update_co2(float value) {
-    queueSendOrWarn(UIMessage{UI_CO2, value});
-}
-void UITask::update_voc(float value) {
-    queueSendOrWarn(UIMessage{UI_VOC, value});
-}
-void UITask::update_no2(float value) {
-    queueSendOrWarn(UIMessage{UI_NO2, value});
-}
-void UITask::update_o3(float value) {
-    queueSendOrWarn(UIMessage{UI_O3, value});
-}
-void UITask::update_nox(float value) {
-    queueSendOrWarn(UIMessage{UI_NOX, value});
-}
-void UITask::update_co(float value) {
-    queueSendOrWarn(UIMessage{UI_CO, value});
-}
-void UITask::update_geiger_reading(int cpm, float usvh) {
-    queueSendOrWarn(UIMessage{UI_GEIGER_CPM, cpm});
-    queueSendOrWarn(UIMessage{UI_GEIGER_USVH, usvh});
-}
-void UITask::update_temp_humi(float temp, float humi) {
-    queueSendOrWarn(UIMessage{UI_TEMP, temp});
-    queueSendOrWarn(UIMessage{UI_HUMI, humi});
-}
-void UITask::update_fan_current(float amps, FanStatus fan_status) {
-    queueSendOrWarn(UIMessage{UI_FAN_CURRENT, amps});
-    queueSendOrWarn(UIMessage{UI_FAN_STATUS, static_cast<int>(fan_status)});
-}
-void UITask::update_compressor_amps(float amps) {
-    queueSendOrWarn(UIMessage{UI_COMPRESSOR_AMPS, amps});
-}
-void UITask::update_pump_amps(float amps) {
-    queueSendOrWarn(UIMessage{UI_PUMP_AMPS, amps});
-}
-void UITask::update_water_sensor(bool water_detected) {
-    queueSendOrWarn(UIMessage{UI_WATER_SENSOR, water_detected});
-}
-void UITask::update_pm_values(float v1, float v2, float v3, float v4) {
-    queueSendOrWarn(UIMessage{UI_PM1, v1});
-    queueSendOrWarn(UIMessage{UI_PM25, v2});
-    queueSendOrWarn(UIMessage{UI_PM4, v3});
-    queueSendOrWarn(UIMessage{UI_PM10, v4});
-}
-void UITask::update_wifi_status(bool connected, long rssi) {
-    queueSendOrWarn(UIMessage{UI_WIFI_STATUS, connected, static_cast<int8_t>(rssi)});
-}
-void UITask::update_sensor_status(bool connected) {
-    queueSendOrWarn(UIMessage{UI_SENSOR_STATUS, connected});
-}
-void UITask::set_brightness(uint8_t value) {
-    brightness.store(value);
-}
-
-// Complex/event methods (leave as stubs for now)
-void UITask::clearSensorReadings() {
-    queueSendOrWarn(UIMessage{UI_CLEAR_SENSOR_READINGS, 0});
-}
-void UITask::update_sps30_fan_interval(unsigned long fan_interval) {
-    queueSendOrWarn(UIMessage{UI_SPS30_FAN_INTERVAL, static_cast<int>(fan_interval)});
-}
-void UITask::update_sps30_fan_days(unsigned long fan_days) {
-    queueSendOrWarn(UIMessage{UI_SPS30_FAN_DAYS, static_cast<int>(fan_days)});
-}
-void UITask::update_sgp41_test_status(int ret_status) {
-    queueSendOrWarn(UIMessage{UI_SGP41_TEST_STATUS, ret_status});
-}
-void UITask::update_sgp41_test_value(uint16_t raw_value) {
-    queueSendOrWarn(UIMessage{UI_SGP41_TEST_VALUE, static_cast<int>(raw_value)});
-}
-void UITask::update_last_packet_time(uint32_t seconds_since_packet) {
-    queueSendOrWarn(UIMessage{UI_LAST_PACKET_TIME, static_cast<int>(seconds_since_packet)});
-}
-void UITask::update_runtime_free_heap(uint32_t free_heap) {
-    queueSendOrWarn(UIMessage{UI_RUNTIME_FREE_HEAP, static_cast<int>(free_heap)});
-}
-void UITask::update_runtime_uptime(unsigned long system_uptime) {
-    queueSendOrWarn(UIMessage{UI_RUNTIME_UPTIME, static_cast<int>(system_uptime)});
-}
-void UITask::update_sensorstack_uptime(uint32_t uptime) {
-    queueSendOrWarn(UIMessage{UI_SENSORSTACK_UPTIME, static_cast<int>(uptime)});
-}
-void UITask::update_sensorstack_ram(uint16_t ram) {
-    queueSendOrWarn(UIMessage{UI_SENSORSTACK_RAM, static_cast<int>(ram)});
-}
-void UITask::update_network_rssi(int8_t rssi) {
-    queueSendOrWarn(UIMessage{UI_NETWORK_RSSI, static_cast<int>(rssi)});
-}
-void UITask::update_network_ha_conn(bool ha_conn) {
-    queueSendOrWarn(UIMessage{UI_NETWORK_HA_CONN, ha_conn});
-}
-void UITask::update_sensorstack_firmware_state(int state) {
-    queueSendOrWarn(UIMessage{UI_SENSORSTACK_FIRMWARE_STATE, state});
-}
-void UITask::update_sensorstack_sensor_faults(int mask) {
-    queueSendOrWarn(UIMessage{UI_SENSORSTACK_SENSOR_FAULTS, mask});
-}
-void UITask::update_scd30_autocal(bool enabled) {
-    queueSendOrWarn(UIMessage{UI_SCD30_AUTOCAL, enabled});
-}
-void UITask::update_scd30_forcecal(uint16_t value) {
-    queueSendOrWarn(UIMessage{UI_SCD30_FORCECAL, static_cast<int>(value)});
 }
 
 void UITask::show_ota_popup() {
@@ -443,13 +360,6 @@ void UITask::show_ota_popup() {
     delete uiManager;
     uiManager = nullptr;
     uiUpdater = nullptr;
-    vTaskSuspendAll();
-    vQueueDelete(uiQueue);
-    uiQueue = nullptr;
-    vQueueDelete(uiStringQueue);
-    uiStringQueue = nullptr;
-    xTaskResumeAll();
-    brightness.store(255);
     if (tft) {
         tft->setBrightness(255);
         tft->fillScreen(TFT_BLACK);
@@ -465,16 +375,12 @@ void UITask::show_ota_popup() {
         tft->drawString("IN PROGRESS...", 160, 130);
         otaPopupDrawn.store(true);
     }
-    //delete tft; // Delete the TFT instance
-    //tft = nullptr; // Clear the TFT pointer
-    //delete touch; // Delete the touch instance
-    //touch = nullptr; // Clear the touch pointer
     vTaskSuspend(NULL); // self suspend
 }
 
 void UITask::queue_ota_popup() {
     logger.debug("UITask: Queue OTA popup");
-    queueSendOrWarn(UIMessage{UI_SHOW_OTA_POPUP, 0});
+    otaPopupRequested.store(true);
 }
 
 void UITask::prepare_for_ota() {
@@ -485,73 +391,26 @@ void UITask::prepare_for_ota() {
         while (!is_ota_popup_drawn()) {
             vTaskDelay(pdMS_TO_TICKS(10));
         }
-        logger.debug("Killing UITask: UITask has process self kill");
+        logger.debug("Killing UITask: UITask has processed self kill");
     }
 }
 
 void UITask::restore_after_ota() {
     logger.info("Resuming UITask");
-    vTaskResume(instance->taskHandle);
+    if (instance && instance->taskHandle) {
+        vTaskResume(instance->taskHandle);
 #ifdef ENABLE_TASK_WATCHDOG
-    WatchdogManager::addTask(instance->taskHandle);
+        WatchdogManager::addTask(instance->taskHandle);
 #endif
+    }
 }
 
 void UITask::SetPauseState(bool paused) {
-    if(paused) {
-        vTaskSuspend(UITask::getInstance().taskHandle);
+    if (instance && instance->taskHandle) {
+        if (paused) {
+            vTaskSuspend(instance->taskHandle);
+        } else {
+            vTaskResume(instance->taskHandle);
+        }
     }
-    else {
-        vTaskResume(UITask::getInstance().taskHandle);
-    }
 }
- 
-#define X(name) #name,
-const char* UITask::UIStringTypeNames[UI_STRING_COUNT] = {
-    UI_STRING_TYPE_LIST
-};
-#undef X
-
-const UITask::UIStringUpdateFunc UITask::stringUpdateTable[UI_STRING_COUNT] = {
-    [](IUIUpdater* u, const UIStringMessage& m) { u->update_ssid(m.value); },
-    [](IUIUpdater* u, const UIStringMessage& m) { u->update_ip(m.value); },
-    [](IUIUpdater* u, const UIStringMessage& m) { u->update_mac(m.value); },
-    [](IUIUpdater* u, const UIStringMessage& m) { u->update_fw_version(m.value); },
-};
-
-bool UITask::queueSendStringOrWarn(const UIStringMessage& msg) {
-    if (uiStringQueue == nullptr) {
-        logger.debug("UI string queue not initialized");
-        return false;
-    }
-    if (xQueueSend(uiStringQueue, &msg, UI_QUEUE_WAIT_MAX_TIMES) != pdTRUE) {
-        logger.warningf("UI string queue full, message dropped (%s)", UIStringTypeNames[msg.type]);
-        return false;
-    }
-    return true;
-}
-
-void UITask::update_ssid(const char* ssid) {
-    UIStringMessage msg;
-    msg.type = UI_STR_SSID;
-    snprintf(msg.value, UI_STRING_MAX_LEN + 1, "%s", ssid);
-    queueSendStringOrWarn(msg);
-}
-void UITask::update_ip(const char* ip) {
-    UIStringMessage msg;
-    msg.type = UI_STR_IP;
-    snprintf(msg.value, UI_STRING_MAX_LEN + 1, "%s", ip);
-    queueSendStringOrWarn(msg);
-}
-void UITask::update_mac(const char* mac) {
-    UIStringMessage msg;
-    msg.type = UI_STR_MAC;
-    snprintf(msg.value, UI_STRING_MAX_LEN + 1, "%s", mac);
-    queueSendStringOrWarn(msg);
-}
-void UITask::update_fw_version(const char* fw) {
-    UIStringMessage msg;
-    msg.type = UI_STR_FW_VERSION;
-    snprintf(msg.value, UI_STRING_MAX_LEN + 1, "%s", fw);
-    queueSendStringOrWarn(msg);
-} 

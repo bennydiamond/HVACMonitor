@@ -7,7 +7,7 @@ const int SCROLL_SPEED_MS_PX_SS = 5;
 
 UISensorStackTile::UISensorStackTile() :
 connected(false),
-firmware_state(0),
+firmware_state(SensorStackFirmwareState::Ok),
 sensor_faults(0),
 tile_obj(nullptr),
 version_label(nullptr),
@@ -117,7 +117,7 @@ void UISensorStackTile::update_sensor_status(bool connected) {
     }
 }
 
-void UISensorStackTile::update_firmware_state(int state) {
+void UISensorStackTile::update_firmware_state(SensorStackFirmwareState state) {
     firmware_state = state;
     refresh_status();
 }
@@ -128,17 +128,17 @@ void UISensorStackTile::update_sensor_faults(int mask) {
 }
 
 void UISensorStackTile::refresh_status() {
-    // Firmware state (1 updating, 2 firmware issue) takes precedence over sensor faults,
+    // Firmware state (Updating or Faulty) takes precedence over sensor faults,
     // which take precedence over the link state
     const char* icon;
     const char* text;
     char fault_text[32];
     lv_color_t color;
-    if (firmware_state == 2) {
+    if (firmware_state == SensorStackFirmwareState::Faulty) {
         icon = ICON_ALERT;
         text = "Firmware issue";
         color = COLOR_HIGH;
-    } else if (firmware_state == 1) {
+    } else if (firmware_state == SensorStackFirmwareState::Updating) {
         icon = ICON_UPDATE;
         text = "Updating FW";
         color = COLOR_HA_BLUE;

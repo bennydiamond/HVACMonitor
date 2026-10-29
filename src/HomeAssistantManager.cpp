@@ -3,9 +3,10 @@
 #include "NanoCommands.h"
 #include "RebootManager.h"
 #include "SensorDefines.h"
-#include "SharedDataAccessor.h"
+#include "SensorDataAccessor.h"
+#include "SystemStatusAccessor.h"
+#include "MainTaskEvents.h"
 #include "TaskPriorities.h"
-#include "UITask.h"
 #include <WiFi.h>
 #include <math.h>
 
@@ -570,169 +571,190 @@ void HomeAssistantManager::taskLoop() {
     bool connected = (WiFi.status() == WL_CONNECTED && _mqtt.isConnected());
     if (connected != _lastMqttConnected) {
       _lastMqttConnected = connected;
-      SharedDataAccessor shared;
-      shared.setMqttConnected(connected);
-      UITask::getInstance().update_network_ha_conn(connected);
+      SystemStatusAccessor status;
+      status->mqttConnected = connected;
     }
 
     if (connected) {
       drainLogQueue();
 
-      SharedStateData state;
+      SystemStatusData sysState;
       {
-        SharedDataAccessor shared;
-        state = *shared;
+        SystemStatusAccessor status;
+        sysState = *status;
+      }
+
+      SensorStateData sensorState;
+      {
+        SensorDataAccessor sensor;
+        sensorState = *sensor;
       }
 
       unsigned long currentTime = millis();
 
       // 1. Process control/polled values from other tasks to HA
-      if (state.scd30AutoCalVersion != _lastPublishedScd30AutoCalVersion) {
-        _scd30AutoCalSwitch.setState(state.scd30AutoCalState,
-                                     state.scd30AutoCalForce);
-        _lastPublishedScd30AutoCalVersion = state.scd30AutoCalVersion;
-      }
-      if (state.scd30ForceCalVersion != _lastPublishedScd30ForceCalVersion) {
-        _scd30ForceCalNumber.setState(state.scd30ForceCalValue,
-                                      state.scd30ForceCalForce);
-        _lastPublishedScd30ForceCalVersion = state.scd30ForceCalVersion;
-      }
-      if (state.backlightVersion != _lastPublishedBacklightVersion) {
-        _backlight.setState(state.backlightState);
-        if (state.backlightState && state.backlightBrightness > 0) {
-          _backlight.setBrightness(state.backlightBrightness);
+      if (!_hasPublishedScd30AutoCal || sysState.scd30AutoCalState != _lastPublishedScd30AutoCal || sysState.scd30AutoCalForce) {
+        _scd30AutoCalSwitch.setState(sysState.scd30AutoCalState,
+                                     sysState.scd30AutoCalForce);
+        _lastPublishedScd30AutoCal = sysState.scd30AutoCalState;
+        _hasPublishedScd30AutoCal = true;
+        if (sysState.scd30AutoCalForce) {
+          SystemStatusAccessor status;
+          status->scd30AutoCalForce = false;
         }
-        _lastPublishedBacklightVersion = state.backlightVersion;
       }
-      if (state.inactivityTimerDelayVersion !=
-          _lastPublishedInactivityDelayVersion) {
+      if (!_hasPublishedScd30ForceCal || sysState.scd30ForceCalValue != _lastPublishedScd30ForceCal || sysState.scd30ForceCalForce) {
+        _scd30ForceCalNumber.setState(sysState.scd30ForceCalValue,
+                                      sysState.scd30ForceCalForce);
+        _lastPublishedScd30ForceCal = sysState.scd30ForceCalValue;
+        _hasPublishedScd30ForceCal = true;
+        if (sysState.scd30ForceCalForce) {
+          SystemStatusAccessor status;
+          status->scd30ForceCalForce = false;
+        }
+      }
+      if (!_hasPublishedBacklight || sysState.backlightState != _lastPublishedBacklightState ||
+          sysState.backlightBrightness != _lastPublishedBacklightBrightness) {
+        _backlight.setState(sysState.backlightState);
+        if (sysState.backlightState && sysState.backlightBrightness > 0) {
+          _backlight.setBrightness(sysState.backlightBrightness);
+        }
+        _lastPublishedBacklightState = sysState.backlightState;
+        _lastPublishedBacklightBrightness = sysState.backlightBrightness;
+        _hasPublishedBacklight = true;
+      }
+      if (!_hasPublishedInactivityDelay || sysState.inactivityTimerDelay != _lastPublishedInactivityDelay || sysState.inactivityTimerDelayForce) {
         _inactivityTimerDelay.setState(
-            static_cast<int32_t>(state.inactivityTimerDelay),
-            state.inactivityTimerDelayForce);
-        _lastPublishedInactivityDelayVersion =
-            state.inactivityTimerDelayVersion;
+            static_cast<int32_t>(sysState.inactivityTimerDelay),
+            sysState.inactivityTimerDelayForce);
+        _lastPublishedInactivityDelay = sysState.inactivityTimerDelay;
+        _hasPublishedInactivityDelay = true;
+        if (sysState.inactivityTimerDelayForce) {
+          SystemStatusAccessor status;
+          status->inactivityTimerDelayForce = false;
+        }
       }
-      if (state.logLevelVersion != _lastPublishedLogLevelVersion) {
-        _logLevelSelect.setState(static_cast<int8_t>(state.logLevel));
-        _lastPublishedLogLevelVersion = state.logLevelVersion;
+      if (!_hasPublishedLogLevel || sysState.logLevel != _lastPublishedLogLevel) {
+        _logLevelSelect.setState(static_cast<int8_t>(sysState.logLevel));
+        _lastPublishedLogLevel = sysState.logLevel;
+        _hasPublishedLogLevel = true;
       }
 
       // 2. Publish sensor telemetry
-      if (state.sensorDataVersion != 0) {
-        publishDifferentialPressure(state.pressure, currentTime);
-        publishFilterPressure(state.filter_pressure, currentTime);
-        publishGeiger(state.cpm, currentTime);
-        publishTemperature(state.temp, currentTime);
-        publishHumidity(state.humi, currentTime);
-        publishFanCurrent(state.fan_amps, currentTime);
-        publishCO2(state.co2, currentTime);
-        publishCO(state.co_ppm, currentTime);
-        publishVOC(state.voc_index, currentTime);
-        publishNOx(state.nox_index, currentTime);
-        publishPM(state.pm1, state.pm25, state.pm4, state.pm10, currentTime);
-        publishCompressorCurrent(state.compressor_amps, currentTime);
-        publishGeothermalPumpCurrent(state.geothermal_pump_amps, currentTime);
-        publishLiquidLevel(state.liquid_level_sensor_state, currentTime);
-        publishHighPressure(state.high_pressure);
-        publishFan(state.fan_status);
-      }
+      publishDifferentialPressure(sensorState.pressure, currentTime);
+      publishFilterPressure(sensorState.filter_pressure, currentTime);
+      publishGeiger(sensorState.cpm, currentTime);
+      publishTemperature(sensorState.temp, currentTime);
+      publishHumidity(sensorState.humi, currentTime);
+      publishFanCurrent(sensorState.fan_amps, currentTime);
+      publishCO2(sensorState.co2, currentTime);
+      publishCO(sensorState.co_ppm, currentTime);
+      publishVOC(sensorState.voc_index, currentTime);
+      publishNOx(sensorState.nox_index, currentTime);
+      publishPM(sensorState.pm1, sensorState.pm25, sensorState.pm4, sensorState.pm10, currentTime);
+      publishCompressorCurrent(sensorState.compressor_amps, currentTime);
+      publishGeothermalPumpCurrent(sensorState.geothermal_pump_amps, currentTime);
+      publishLiquidLevel(sensorState.liquid_level_sensor_state, currentTime);
+      publishHighPressure(sensorState.high_pressure);
+      publishFan(sensorState.fan_status != FanStatus::Off);
 
       // 3. Publish ZMOD
-      if (state.zmodDataVersion != 0) {
-        publishO3(state.o3_conc_ug_per_m3, currentTime);
-        publishNO2(state.no2_conc_ug_per_m3, currentTime);
-        publishFastAQI(state.fast_aqi, currentTime);
-        publishEPAAQI(state.epa_aqi, currentTime);
-      } else {
-        publishZmodUnavailable(currentTime);
-      }
+      publishO3(sensorState.o3_conc_ug_per_m3, currentTime);
+      publishNO2(sensorState.no2_conc_ug_per_m3, currentTime);
+      publishFastAQI(sensorState.fast_aqi, currentTime);
+      publishEPAAQI(sensorState.epa_aqi, currentTime);
 
 #ifdef BMP280_ENABLED
-      if (state.bmpDataVersion != 0) {
-        publishBMP280Pressure(state.bmp_pressure_pa, currentTime);
-        publishBMP280Temperature(state.bmp_temp_c, currentTime);
+      if (!isnan(sensorState.bmp_pressure_pa)) {
+        publishBMP280Pressure(sensorState.bmp_pressure_pa, currentTime);
+      }
+      if (!isnan(sensorState.bmp_temp_c)) {
+        publishBMP280Temperature(sensorState.bmp_temp_c, currentTime);
       }
 #endif
 
 #ifdef AHT20_ENABLED
-      if (state.ahtDataVersion != 0) {
-        publishAHT20Temperature(state.aht_temp_c, currentTime);
-        publishAHT20Humidity(state.aht_humi_pct, currentTime);
+      if (!isnan(sensorState.aht_temp_c)) {
+        publishAHT20Temperature(sensorState.aht_temp_c, currentTime);
+      }
+      if (!isnan(sensorState.aht_humi_pct)) {
+        publishAHT20Humidity(sensorState.aht_humi_pct, currentTime);
       }
 #endif
 
       // 4. Publish WiFi
-      if (state.wifiStatusVersion != 0) {
+      if (sysState.wifiSsid[0] != '\0') {
         if (_lastWifiStatusPublishTime == 0 ||
             (currentTime - _lastWifiStatusPublishTime >
              WIFI_STATUS_FORCE_INTERVAL_MS) ||
-            state.wifiConnected != _lastPublishedWifiConnected ||
-            abs(state.wifiRssi - _lastPublishedWifiRssi) >=
+            sysState.wifiConnected != _lastPublishedWifiConnected ||
+            abs(sysState.wifiRssi - _lastPublishedWifiRssi) >=
                 WIFI_RSSI_DELTA_DBM ||
-            strcmp(state.wifiSsid, _lastPublishedWifiSSID) != 0 ||
-            strcmp(state.wifiIp, _lastPublishedWifiIP) != 0) {
-          _wifi_rssi.setValue(state.wifiRssi);
-          _wifi_ssid.setValue(state.wifiSsid);
-          _wifi_ip.setValue(state.wifiIp);
-          _lastPublishedWifiRssi = state.wifiRssi;
-          _lastPublishedWifiConnected = state.wifiConnected;
+            strcmp(sysState.wifiSsid, _lastPublishedWifiSSID) != 0 ||
+            strcmp(sysState.wifiIp, _lastPublishedWifiIP) != 0) {
+          _wifi_rssi.setValue(sysState.wifiRssi);
+          _wifi_ssid.setValue(sysState.wifiSsid);
+          _wifi_ip.setValue(sysState.wifiIp);
+          _lastPublishedWifiRssi = sysState.wifiRssi;
+          _lastPublishedWifiConnected = sysState.wifiConnected;
           snprintf(_lastPublishedWifiSSID, sizeof(_lastPublishedWifiSSID), "%s",
-                   state.wifiSsid);
+                   sysState.wifiSsid);
           snprintf(_lastPublishedWifiIP, sizeof(_lastPublishedWifiIP), "%s",
-                   state.wifiIp);
+                   sysState.wifiIp);
           _lastWifiStatusPublishTime = currentTime;
         }
       }
 
       // 5. Publish SensorStack health
-      if (state.sensorConnectionStatusVersion != 0) {
-        if (state.sensorConnectionStatus != _lastPublishedSensorConnected ||
-            _lastSensorStatusPublishTime == 0) {
-          _sensorStatus.setState(state.sensorConnectionStatus);
-          _lastPublishedSensorConnected = state.sensorConnectionStatus;
-          _lastSensorStatusPublishTime = currentTime;
+      if (sysState.sensorConnectionStatus != _lastPublishedSensorConnected ||
+          _lastSensorStatusPublishTime == 0) {
+        _sensorStatus.setState(sysState.sensorConnectionStatus);
+        _lastPublishedSensorConnected = sysState.sensorConnectionStatus;
+        _lastSensorStatusPublishTime = currentTime;
+      }
+      if (sysState.sensorStackVersionUnavailable) {
+        if (!_lastPublishedSensorStackVersion.equals("unavailable")) {
+          _sensorStackVersionSensor.setValue(nullptr);
+          _lastPublishedSensorStackVersion = "unavailable";
         }
+      } else if (sysState.sensorStackVersion[0] != '\0' &&
+                 !_lastPublishedSensorStackVersion.equals(
+                     sysState.sensorStackVersion)) {
+        _sensorStackVersionSensor.setValue(sysState.sensorStackVersion);
+        _lastPublishedSensorStackVersion = sysState.sensorStackVersion;
       }
-      if (state.sensorStackVersionCount != 0) {
-        if (state.sensorStackVersionUnavailable) {
-          if (!_lastPublishedSensorStackVersion.equals("unavailable")) {
-            _sensorStackVersionSensor.setValue(nullptr);
-            _lastPublishedSensorStackVersion = "unavailable";
-          }
-        } else if (!_lastPublishedSensorStackVersion.equals(
-                       state.sensorStackVersion)) {
-          _sensorStackVersionSensor.setValue(state.sensorStackVersion);
-          _lastPublishedSensorStackVersion = state.sensorStackVersion;
-        }
+
+      publishSensorStackUptimeHelper(sysState.sensorStackUptime,
+                                     sysState.sensorStackUptimeForce);
+      if (sysState.sensorStackUptimeForce) {
+        SystemStatusAccessor status;
+        status->sensorStackUptimeForce = false;
       }
-      if (state.sensorStackUptimeVersion != 0) {
-        publishSensorStackUptimeHelper(state.sensorStackUptime,
-                                       state.sensorStackUptimeForce);
-      }
-      if (state.sensorStackFreeRamVersion != 0) {
-        if (_lastSensorStackFreeRamPublishTime == 0 ||
-            (currentTime - _lastSensorStackFreeRamPublishTime >=
-             STEADY_INTERVAL_60S_MS)) {
-          _sensorStackFreeRamSensor.setValue(state.sensorStackFreeRam, true);
+
+      if (_lastSensorStackFreeRamPublishTime == 0 ||
+          (currentTime - _lastSensorStackFreeRamPublishTime >=
+           STEADY_INTERVAL_60S_MS)) {
+        if (sysState.sensorStackFreeRam > 0) {
+          _sensorStackFreeRamSensor.setValue(sysState.sensorStackFreeRam, true);
           _lastSensorStackFreeRamPublishTime = currentTime;
         }
       }
-      if (state.nanoResetCauseVersion != 0) {
-        _sensorStackResetCauseSensor.setValue(state.nanoResetCause);
+      if (sysState.nanoResetCause[0] != '\0') {
+        _sensorStackResetCauseSensor.setValue(sysState.nanoResetCause);
       }
 
       // 6. Publish ESP32 health
-      if (state.esp32HealthVersion != 0) {
+      if (sysState.esp32FreeHeap > 0) {
         if (_lastEsp32FreeRamPublishTime == 0 ||
             (currentTime - _lastEsp32FreeRamPublishTime >=
              STEADY_INTERVAL_60S_MS)) {
-          _esp32FreeRamSensor.setValue(state.esp32FreeHeap, true);
+          _esp32FreeRamSensor.setValue(sysState.esp32FreeHeap, true);
           _lastEsp32FreeRamPublishTime = currentTime;
         }
         if (_lastEsp32UptimePublishTime == 0 ||
             (currentTime - _lastEsp32UptimePublishTime >=
              STEADY_INTERVAL_60S_MS)) {
-          _esp32UptimeSensor.setValue(state.esp32Uptime);
+          _esp32UptimeSensor.setValue(sysState.esp32Uptime);
           _lastEsp32UptimePublishTime = currentTime;
         }
       }
@@ -827,6 +849,11 @@ void HomeAssistantManager::resetAllPublishTimes() {
   _fastAqiUnavailablePublished = false;
   _epaAqiUnavailablePublished = false;
   _zmodUnavailablePublished = false;
+  _hasPublishedScd30AutoCal = false;
+  _hasPublishedScd30ForceCal = false;
+  _hasPublishedBacklight = false;
+  _hasPublishedInactivityDelay = false;
+  _hasPublishedLogLevel = false;
 }
 
 void HomeAssistantManager::onMqttStateChanged(HAMqtt::ConnectionState state) {
@@ -889,8 +916,7 @@ void HomeAssistantManager::onMqttConnected() {
     return;
   logger.info("MQTT connected.");
   _instance->_lastMqttConnected = true;
-  SharedDataAccessor().setMqttConnected(true);
-  UITask::getInstance().update_network_ha_conn(true);
+  SystemStatusAccessor()->mqttConnected = true;
 
   if (_instance->_configurationUrl[0] == '\0' &&
       WiFi.status() == WL_CONNECTED) {
@@ -904,11 +930,15 @@ void HomeAssistantManager::onMqttConnected() {
   _instance->_wifi_ssid.setValue(WIFI_SSID);
   _instance->_wifi_ip.setValue(WiFi.localIP().toString().c_str());
 
-  uint8_t current_brightness = UITask::getInstance().get_brightness();
+  uint8_t current_brightness = 0;
+  {
+    SystemStatusAccessor status;
+    current_brightness = status->backlightBrightness;
+    status->backlightState = (current_brightness > 0);
+    status->backlightBrightness = current_brightness;
+  }
   _instance->_backlight.setState(current_brightness > 0, true);
   _instance->_backlight.setBrightness(current_brightness, true);
-  SharedDataAccessor().setBacklightState(current_brightness > 0,
-                                         current_brightness);
 
   ConfigManagerAccessor config;
   _instance->_inactivityTimerDelay.setState(config->getInactivityTimerDelay());
@@ -921,8 +951,7 @@ void HomeAssistantManager::onMqttDisconnected() {
     return;
   logger.warning("MQTT disconnected.");
   _instance->_lastMqttConnected = false;
-  SharedDataAccessor().setMqttConnected(false);
-  UITask::getInstance().update_network_ha_conn(false);
+  SystemStatusAccessor()->mqttConnected = false;
 }
 
 void HomeAssistantManager::publishDifferentialPressure(
@@ -1459,31 +1488,30 @@ void HomeAssistantManager::publishAHT20Humidity(float humi_pct,
 
 void HomeAssistantManager::onRebootCommand(HAButton *sender) {
   sender->setAvailability(false);
-  RebootManager::getInstance().requestReboot("Home Assistant MQTT command",
-                                             500);
+  MainTaskEventNotifier::getInstance().sendEvent(MainTaskEventNotifier::EVT_REBOOT_ESP32);
 }
 
 void HomeAssistantManager::onRebootSensorStackCommand(HAButton *sender) {
   logger.warning("Reboot command sent to SensorStack from Home Assistant.");
-  send_command_to_nano(CMD_REBOOT);
+  MainTaskEventNotifier::getInstance().sendEvent(MainTaskEventNotifier::EVT_REBOOT_NANO);
 }
 
 void HomeAssistantManager::onGetSps30InfoCommand(HAButton *sender) {
   logger.info(
       "Get SPS30 Info command sent to SensorStack from Home Assistant.");
-  send_command_to_nano(CMD_GET_SPS30_INFO);
+  MainTaskEventNotifier::getInstance().sendEvent(MainTaskEventNotifier::EVT_SPS30_GET_INFO);
 }
 
 void HomeAssistantManager::onGetSps30ManualCleanCommand(HAButton *sender) {
   logger.info("Get SPS30 Manual Fan Cleaning request sent to SensorStack from "
               "Home Assistant.");
-  send_command_to_nano(CMD_SPS30_CLEAN);
+  MainTaskEventNotifier::getInstance().sendEvent(MainTaskEventNotifier::EVT_SPS30_CLEAN);
 }
 
 void HomeAssistantManager::onGetSgp41SelftestCommand(HAButton *sender) {
   logger.info(
       "SGP41 Self-Test command sent to SensorStack from Home Assistant.");
-  send_command_to_nano(CMD_SGP41_TEST);
+  MainTaskEventNotifier::getInstance().sendEvent(MainTaskEventNotifier::EVT_SGP41_TEST);
 }
 
 void HomeAssistantManager::onLogLevelCommand(int8_t index, HASelect *sender) {
@@ -1502,7 +1530,7 @@ void HomeAssistantManager::onLogLevelCommand(int8_t index, HASelect *sender) {
     config->setLogLevel(level);
   }
   logger.setLogLevel(level);
-  SharedDataAccessor().setLogLevel(level);
+  SystemStatusAccessor()->logLevel = level;
   sender->setState(index);
 }
 
@@ -1512,8 +1540,11 @@ void HomeAssistantManager::onBrightnessCommand(uint8_t brightness,
     return;
   logger.infof("Backlight brightness %u command from Home Assistant.",
                brightness);
-  SharedDataAccessor().setBacklightState(brightness > 0, brightness);
-  UITask::getInstance().set_brightness(brightness);
+  {
+    SystemStatusAccessor status;
+    status->backlightState = (brightness > 0);
+    status->backlightBrightness = brightness;
+  }
   sender->setBrightness(brightness);
   if (brightness > 0 && !sender->getCurrentState()) {
     sender->setState(true);
@@ -1525,10 +1556,11 @@ void HomeAssistantManager::onStateCommand(bool state, HALight *sender) {
     return;
   logger.infof("Backlight state %s command from Home Assistant.",
                state ? "ON" : "OFF");
-  uint8_t curB = UITask::getInstance().get_brightness();
+  SystemStatusAccessor status;
+  uint8_t curB = status->backlightBrightness;
   uint8_t newB = state ? (curB == 0 ? 255 : curB) : 0;
-  SharedDataAccessor().setBacklightState(state, newB);
-  UITask::getInstance().set_brightness(newB);
+  status->backlightState = state;
+  status->backlightBrightness = newB;
   sender->setState(state);
 }
 
@@ -1537,8 +1569,9 @@ void HomeAssistantManager::onScd30AutoCalCommand(bool state, HASwitch *sender) {
     return;
   logger.infof("SCD30 AutoCalibration %s command from Home Assistant.",
                state ? "ON" : "OFF");
-  SharedDataAccessor().setScd30AutoCalState(state);
-  send_command_to_nano_with_param(CMD_SET_SCD30_AUTOCAL, state ? '1' : '0');
+  SystemStatusAccessor()->scd30AutoCalState = state;
+  MainTaskEventNotifier::getInstance().sendEvent(
+      state ? MainTaskEventNotifier::EVT_SCD30_AUTOCAL_ON : MainTaskEventNotifier::EVT_SCD30_AUTOCAL_OFF);
 }
 
 void HomeAssistantManager::onScd30ForceCalCommand(HANumeric number,
@@ -1556,12 +1589,8 @@ void HomeAssistantManager::onScd30ForceCalCommand(HANumeric number,
   uint16_t ppm_value = static_cast<uint16_t>(ppm_raw);
   logger.infof("SCD30 Force Calibration to %u ppm command from Home Assistant.",
                ppm_value);
-  SharedDataAccessor().setScd30ForceCalValue(ppm_value);
-
-  char cmd_with_param[8];
-  snprintf(cmd_with_param, sizeof(cmd_with_param), "%c%u",
-           CMD_SET_SCD30_FORCECAL, ppm_value);
-  send_command_to_nano_str(cmd_with_param);
+  SystemStatusAccessor()->scd30ForceCalTarget = ppm_value;
+  MainTaskEventNotifier::getInstance().sendEvent(MainTaskEventNotifier::EVT_SCD30_FORCECAL);
 }
 
 void HomeAssistantManager::onInactivityTimerDelayCommand(HANumeric number,
@@ -1581,7 +1610,11 @@ void HomeAssistantManager::onInactivityTimerDelayCommand(HANumeric number,
     }
     ConfigManagerAccessor config;
     config->setInactivityTimerDelay(delay);
-    SharedDataAccessor().setInactivityTimerDelay(delay, true);
+    {
+      SystemStatusAccessor status;
+      status->inactivityTimerDelay = delay;
+      status->inactivityTimerDelayForce = true;
+    }
     sender->setState(delay);
     logger.infof(
         "Inactivity timer delay updated to %d seconds via Home Assistant",

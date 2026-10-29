@@ -34,21 +34,17 @@ public:
     void sendCommandWithParam(char cmd, char param);
     void sendCommandStr(const char* data_str);
 
-    // Blocking query helpers
-    bool querySps30InfoBlocking(uint32_t timeout_ms = 2000);
-    bool runSgp41TestBlocking(uint32_t timeout_ms = 4000);
-
     // Flashing & Maintenance Control
     void setSuspended(bool suspended);
     bool isSuspended() const { return _suspended; }
     void restartInitSequence();
 
     static uint8_t calculateChecksum(const char* data_str);
+    void readAndProcessSerial();
 
     enum InitCmd { CMD_INIT_NONE, CMD_INIT_VERSION, CMD_INIT_HEALTH, CMD_INIT_SPS30_INFO, CMD_INIT_SCD30_INFO };
 
 private:
-    void readAndProcessSerial();
     void processPacket(char* packet);
     static bool strEndsWith(const char* str, const char* suffix);
 
@@ -63,10 +59,6 @@ private:
     char _serial_rx_buffer[256];
     size_t _serial_rx_len;
     bool _valid_packet_start_received;
-
-    // Query response caching
-    volatile bool _sps30_info_response_received;
-    volatile bool _sgp41_test_response_received;
 
     // Init sequence & timing state
     int _current_init_command_index;

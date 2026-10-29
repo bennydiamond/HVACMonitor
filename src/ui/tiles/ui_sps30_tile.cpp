@@ -47,8 +47,6 @@ lv_obj_t* UISPS30Tile::create_tile(lv_obj_t* parent_tv) {
     lv_label_set_text(btn_label, "Manual Clean");
     lv_obj_center(btn_label);
     
-
-    
     return tile;
 }
 
@@ -67,6 +65,7 @@ void UISPS30Tile::update_sps30_fan_days(unsigned long fan_days) {
 void UISPS30Tile::manual_clean_cb(lv_event_t* e) {
     MainTaskEventNotifier::getInstance().sendEvent(MainTaskEventNotifier::EVT_SPS30_CLEAN);
 }
+
 void UISPS30Tile::set_visible(bool visible) {
     if (tile_obj) {
         if (visible) {

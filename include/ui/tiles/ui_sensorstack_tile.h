@@ -2,6 +2,7 @@
 #define UI_SENSORSTACK_TILE_H
 
 #include "../ui_common.h"
+#include "SensorStackFirmwareState.h"
 
 class UISensorStackTile {
 public:
@@ -12,7 +13,7 @@ public:
     void update_sensorstack_uptime(uint32_t uptime);
     void update_sensorstack_ram(uint16_t ram);
     void update_sensor_status(bool connected);
-    void update_firmware_state(int state); // SensorStackFirmwareState as int
+    void update_firmware_state(SensorStackFirmwareState state);
     void update_sensor_faults(int mask);   // SENSOR_FAULT_* bits
     void update_fw_version(const char* fw);
     void set_visible(bool visible);
@@ -20,7 +21,7 @@ private:
     void refresh_status();
 
     bool connected;
-    int firmware_state;
+    SensorStackFirmwareState firmware_state;
     int sensor_faults;
     lv_obj_t* tile_obj;
     lv_obj_t* version_label;

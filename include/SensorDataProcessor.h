@@ -12,7 +12,8 @@
 #include <stdint.h>
 
 // Forward declarations
-class UITask;
+#include "FanStatus.h"
+
 class FilterPressureTracker;
 class SensorTask;
 
@@ -25,7 +26,7 @@ public:
   SensorDataProcessor();
   ~SensorDataProcessor() = default;
 
-  void begin(UITask *ui, FilterPressureTracker *filterTracker,
+  void begin(FilterPressureTracker *filterTracker,
              SensorTask *sensorTask);
 
   // Parses raw payload string and processes sensor data
@@ -62,7 +63,6 @@ public:
   bool isWaterDetected() const { return _live_water_detected; }
 
 private:
-  UITask *_ui;
   FilterPressureTracker *_filterTracker;
   SensorTask *_sensorTask;
 

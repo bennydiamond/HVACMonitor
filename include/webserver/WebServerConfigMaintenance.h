@@ -11,11 +11,11 @@ const char *config_maintenance_html =
 <div class="config-section"><h2>SPS30 Particulate Sensor Maintenance</h2>
 <p style="color:var(--text-muted);margin-bottom:15px">Trigger manual fan high-speed acceleration cycle to blow out accumulated dust, or query sensor hardware diagnostics.</p>
 <div class="config-row"><div class="config-label">Manual Fan Clean:</div><div class="config-input" style="color:var(--text-muted);font-size:14px">Runs fan at max speed for 10 seconds</div><button class="config-button" onclick="triggerAction('sps30_clean','sps30_clean_btn','sps30_clean_status')" id="sps30_clean_btn">Start Clean</button></div><div id="sps30_clean_status" class="status"></div>
-<div class="config-row"><div class="config-label">SPS30 Hardware Info:</div><div class="config-input" style="color:var(--text-muted);font-size:14px">Query firmware version, clean interval, and status</div><button class="config-button" onclick="triggerAction('sps30_info','sps30_info_btn','sps30_info_status')" id="sps30_info_btn">Query Info</button></div><div id="sps30_info_status" class="status"></div>
+<div class="config-row"><div class="config-label">SPS30 Hardware Info:</div><div class="config-input" id="sps30_info_val" style="font-size:14px">%SPS30_INFO%</div><button class="config-button" onclick="triggerAction('sps30_info','sps30_info_btn','sps30_info_status','sps30_info_val')" id="sps30_info_btn">Query Info</button></div><div id="sps30_info_status" class="status"></div>
 </div>
 <div class="config-section"><h2>SGP41 Gas Sensor Diagnostics</h2>
 <p style="color:var(--text-muted);margin-bottom:15px">Run sensor element conditioning and internal circuit self-test on the SGP41 sensor.</p>
-<div class="config-row"><div class="config-label">SGP41 Self-Test:</div><div class="config-input" style="color:var(--text-muted);font-size:14px">Run sensor element conditioning & internal circuit test</div><button class="config-button" onclick="triggerAction('sgp41_test','sgp41_test_btn','sgp41_test_status')" id="sgp41_test_btn">Run Test</button></div><div id="sgp41_test_status" class="status"></div>
+<div class="config-row"><div class="config-label">SGP41 Self-Test:</div><div class="config-input" id="sgp41_test_val" style="font-size:14px">%SGP41_RESULT%</div><button class="config-button" onclick="triggerAction('sgp41_test','sgp41_test_btn','sgp41_test_status','sgp41_test_val')" id="sgp41_test_btn">Run Test</button></div><div id="sgp41_test_status" class="status"></div>
 </div>
 <div class="config-section"><h2>Sensor Hub Stack Management</h2>
 <p style="color:var(--text-muted);margin-bottom:15px">Reboot the Arduino Nano sensor co-processor stack over the UART communication bridge.</p>

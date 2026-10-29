@@ -19,12 +19,7 @@ extern const lv_color_t COLOR_HA_BLUE;
 extern const lv_color_t COLOR_DISCONNECTED;
 extern const lv_color_t COLOR_DEFAULT_ICON;
 
-// Enum for Fan Status used across UI and main logic
-enum FanStatus {
-    FAN_STATUS_OFF,
-    FAN_STATUS_NORMAL,
-    FAN_STATUS_ALERT
-};
+#include "FanStatus.h"
 
 // Struct to group fan alert icons for blinking
 typedef struct {

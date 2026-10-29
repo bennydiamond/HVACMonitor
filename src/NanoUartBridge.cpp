@@ -42,8 +42,7 @@ static const NanoUartBridge::InitCmd s_init_cmds[] = {
 NanoUartBridge::NanoUartBridge()
     : _statusManager(nullptr), _dataProcessor(nullptr), _sensorTask(nullptr),
       _serial_rx_len(0), _valid_packet_start_received(false),
-      _sps30_info_response_received(false),
-      _sgp41_test_response_received(false), _current_init_command_index(0),
+      _current_init_command_index(0),
       _init_sequence_active(true), _last_init_command_time(0),
       _last_health_check_time(0), _last_health_request_time(0),
       _health_request_pending(false), _last_sensor_query_time(0),
@@ -165,38 +164,6 @@ bool NanoUartBridge::strEndsWith(const char *str, const char *suffix) {
   if (len_suf > len_str)
     return false;
   return strcmp(str + len_str - len_suf, suffix) == 0;
-}
-
-bool NanoUartBridge::querySps30InfoBlocking(uint32_t timeout_ms) {
-  _sps30_info_response_received = false;
-  sendCommand(CMD_GET_SPS30_INFO);
-  uint32_t start = millis();
-  while (millis() - start < timeout_ms) {
-#ifdef ENABLE_TASK_WATCHDOG
-    WatchdogManager::reset();
-#endif
-    readAndProcessSerial();
-    if (_sps30_info_response_received)
-      return true;
-    vTaskDelay(pdMS_TO_TICKS(10));
-  }
-  return false;
-}
-
-bool NanoUartBridge::runSgp41TestBlocking(uint32_t timeout_ms) {
-  _sgp41_test_response_received = false;
-  sendCommand(CMD_SGP41_TEST);
-  uint32_t start = millis();
-  while (millis() - start < timeout_ms) {
-#ifdef ENABLE_TASK_WATCHDOG
-    WatchdogManager::reset();
-#endif
-    readAndProcessSerial();
-    if (_sgp41_test_response_received)
-      return true;
-    vTaskDelay(pdMS_TO_TICKS(10));
-  }
-  return false;
 }
 
 void NanoUartBridge::readAndProcessSerial() {
@@ -375,7 +342,6 @@ void NanoUartBridge::processPacket(char *packet) {
     if (_statusManager) {
       _statusManager->processSps30InfoPayload(payload);
     }
-    _sps30_info_response_received = true;
     if (_init_sequence_active &&
         s_init_cmds[_current_init_command_index] == CMD_INIT_SPS30_INFO) {
       _current_init_command_index++;
@@ -392,7 +358,6 @@ void NanoUartBridge::processPacket(char *packet) {
     if (_statusManager) {
       _statusManager->processSgp41TestPayload(payload);
     }
-    _sgp41_test_response_received = true;
     break;
   }
   case RSP_SCD30_INFO: {
@@ -654,16 +619,4 @@ void send_command_to_nano_str(const char *data_str) {
   if (NanoUartBridge::getInstance()) {
     NanoUartBridge::getInstance()->sendCommandStr(data_str);
   }
-}
-
-bool query_sps30_info_blocking(uint32_t timeout_ms) {
-  return NanoUartBridge::getInstance()
-             ? NanoUartBridge::getInstance()->querySps30InfoBlocking(timeout_ms)
-             : false;
-}
-
-bool run_sgp41_test_blocking(uint32_t timeout_ms) {
-  return NanoUartBridge::getInstance()
-             ? NanoUartBridge::getInstance()->runSgp41TestBlocking(timeout_ms)
-             : false;
 }

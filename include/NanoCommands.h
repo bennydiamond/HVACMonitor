@@ -60,8 +60,3 @@ struct SGP41TestResult {
   int ret_status = -1;
   uint16_t raw_value = 0;
 };
-
-const SPS30DeviceInfo& get_sps30_device_info();
-const SGP41TestResult& get_sgp41_test_result();
-bool query_sps30_info_blocking(uint32_t timeout_ms = SensorDefines::SPS30_INFO_TIMEOUT_MS);
-bool run_sgp41_test_blocking(uint32_t timeout_ms = SensorDefines::SGP41_TEST_TIMEOUT_MS);

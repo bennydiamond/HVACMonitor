@@ -58,7 +58,7 @@ class UI : public IUIManager, public IUIUpdater {
     void update_sensorstack_ram(uint16_t) override;
     void update_network_rssi(int8_t) override;
     void update_network_ha_conn(bool) override;
-    void update_sensorstack_firmware_state(int state) override;
+    void update_sensorstack_firmware_state(SensorStackFirmwareState state) override;
     void update_sensorstack_sensor_faults(int mask) override;
     void update_last_packet_time(uint32_t) override;
     void update_ssid(const char* ssid) override;

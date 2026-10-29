@@ -5,23 +5,14 @@
 #include <stdbool.h>
 #include "NanoCommands.h"
 #include "LiveDashboardData.h"
-
-// Forward declarations
-class UITask;
-
-// Health of the SensorStack firmware itself (as opposed to the UART link)
-enum class SensorStackFirmwareState : uint8_t {
-    Ok = 0,        // Application present (or no evidence otherwise)
-    Updating = 1,  // Firmware update in progress
-    Faulty = 2     // urboot is waiting on the UART: no valid application
-};
+#include "SensorStackFirmwareState.h"
 
 class SensorStackStatusManager {
 public:
     SensorStackStatusManager();
     ~SensorStackStatusManager() = default;
 
-    void begin(UITask* ui);
+    void begin();
 
     // Invoked by NanoUartBridge on connection & health telemetry
     void onPacketReceived();
@@ -58,9 +49,6 @@ public:
     uint8_t getResetCauseCode() const { return _reset_cause_code; }
     const char* getResetCauseStr() const;
 
-    const SPS30DeviceInfo& getSps30DeviceInfo() const { return _sps30_device_info; }
-    const SGP41TestResult& getSgp41TestResult() const { return _sgp41_test_result_data; }
-
     // Dashboard population
     void populateDashboardData(LiveDashboardData& data) const;
 
@@ -70,8 +58,6 @@ public:
     static const char* resetCauseToString(uint8_t code);
 
 private:
-    UITask* _ui;
-
     bool _connected;
     unsigned long _last_packet_time;
     unsigned long _nano_boot_millis;
@@ -81,7 +67,4 @@ private:
     bool _first_health_packet_received;
     SensorStackFirmwareState _firmware_state;
     uint8_t _sensor_fault_mask;
-
-    SPS30DeviceInfo _sps30_device_info;
-    SGP41TestResult _sgp41_test_result_data;
 };
