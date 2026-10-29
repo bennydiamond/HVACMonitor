@@ -647,19 +647,27 @@ void HomeAssistantManager::taskLoop() {
 
       // 2. Publish sensor telemetry
       if (isFresh(sensorState.nano_updated_ms)) {
+        // Read once, so the config lock isn't held while publishing
+        float fanOffThreshold, compressorOffThreshold, pumpOffThreshold;
+        {
+          ConfigManagerAccessor config;
+          fanOffThreshold = config->getFanOffCurrentThreshold();
+          compressorOffThreshold = config->getCompressorOffCurrentThreshold();
+          pumpOffThreshold = config->getPumpOffCurrentThreshold();
+        }
         publishDifferentialPressure(sensorState.pressure, currentTime);
         publishFilterPressure(sensorState.filter_pressure, currentTime);
         publishGeiger(sensorState.cpm, currentTime);
         publishTemperature(sensorState.temp, currentTime);
         publishHumidity(sensorState.humi, currentTime);
-        publishFanCurrent(sensorState.fan_amps, currentTime);
+        publishFanCurrent(sensorState.fan_amps, fanOffThreshold, currentTime);
         publishCO2(sensorState.co2, currentTime);
         publishCO(sensorState.co_ppm, currentTime);
         publishVOC(sensorState.voc_index, currentTime);
         publishNOx(sensorState.nox_index, currentTime);
         publishPM(sensorState.pm1, sensorState.pm25, sensorState.pm4, sensorState.pm10, currentTime);
-        publishCompressorCurrent(sensorState.compressor_amps, currentTime);
-        publishGeothermalPumpCurrent(sensorState.geothermal_pump_amps, currentTime);
+        publishCompressorCurrent(sensorState.compressor_amps, compressorOffThreshold, currentTime);
+        publishGeothermalPumpCurrent(sensorState.geothermal_pump_amps, pumpOffThreshold, currentTime);
         publishLiquidLevel(sensorState.liquid_level_sensor_state, currentTime);
         publishHighPressure(sensorState.high_pressure);
         publishFan(sensorState.fan_status != FanStatus::Off);
@@ -954,8 +962,12 @@ void HomeAssistantManager::onMqttConnected() {
   _instance->_backlight.setState(current_brightness > 0, true);
   _instance->_backlight.setBrightness(current_brightness, true);
 
-  ConfigManagerAccessor config;
-  _instance->_inactivityTimerDelay.setState(config->getInactivityTimerDelay());
+  uint32_t inactivity_delay;
+  {
+    ConfigManagerAccessor config;
+    inactivity_delay = config->getInactivityTimerDelay();
+  }
+  _instance->_inactivityTimerDelay.setState(inactivity_delay);
 
   _instance->resetAllPublishTimes();
 }
@@ -1071,10 +1083,8 @@ void HomeAssistantManager::publishHumidity(float humi,
   }
 }
 
-void HomeAssistantManager::publishFanCurrent(float amps,
+void HomeAssistantManager::publishFanCurrent(float amps, float fan_thresh,
                                              unsigned long currentTime) {
-  ConfigManagerAccessor config;
-  float fan_thresh = config->getFanOffCurrentThreshold();
   bool is_first = (_lastAmpsPublishTime == 0);
   bool fan_state_changed =
       !is_first && ((amps > fan_thresh) != (_lastPublishedAmps > fan_thresh));
@@ -1199,11 +1209,10 @@ void HomeAssistantManager::publishPM(float pm1, float pm25, float pm4,
 }
 
 void HomeAssistantManager::publishCompressorCurrent(float compressor_amps,
+                                                    float thresh,
                                                     unsigned long currentTime) {
   if (isnan(compressor_amps))
     return;
-  ConfigManagerAccessor config;
-  float thresh = config->getCompressorOffCurrentThreshold();
   bool is_first = (_lastCompressorAmpsPublishTime == 0);
   bool state_changed = !is_first && ((compressor_amps > thresh) !=
                                      (_lastPublishedCompressorAmps > thresh));
@@ -1221,11 +1230,9 @@ void HomeAssistantManager::publishCompressorCurrent(float compressor_amps,
 }
 
 void HomeAssistantManager::publishGeothermalPumpCurrent(
-    float geothermal_pump_amps, unsigned long currentTime) {
+    float geothermal_pump_amps, float thresh, unsigned long currentTime) {
   if (isnan(geothermal_pump_amps))
     return;
-  ConfigManagerAccessor config;
-  float thresh = config->getPumpOffCurrentThreshold();
   bool is_first = (_lastGeothermalPumpAmpsPublishTime == 0);
   bool state_changed =
       !is_first && ((geothermal_pump_amps > thresh) !=
@@ -1620,18 +1627,24 @@ void HomeAssistantManager::onInactivityTimerDelayCommand(HANumeric number,
                       "Assistant: %d (allowed %d-%d)",
                       delay, ConfigLimits::MIN_INACTIVITY_DELAY_S,
                       ConfigLimits::MAX_INACTIVITY_DELAY_S);
-      ConfigManagerAccessor config;
-      sender->setState(static_cast<int32_t>(config->getInactivityTimerDelay()),
-                       true);
+      uint32_t current_delay;
+      {
+        ConfigManagerAccessor config;
+        current_delay = config->getInactivityTimerDelay();
+      }
+      sender->setState(static_cast<int32_t>(current_delay), true);
       return;
     }
-    ConfigManagerAccessor config;
-    config->setInactivityTimerDelay(delay);
+    {
+      ConfigManagerAccessor config;
+      config->setInactivityTimerDelay(delay);
+    }
     {
       SystemStatusAccessor status;
       status->inactivityTimerDelay = delay;
       status->inactivityTimerDelayForce = true;
     }
+    // Locks released first: publishing can block on the network
     sender->setState(delay);
     logger.infof(
         "Inactivity timer delay updated to %d seconds via Home Assistant",

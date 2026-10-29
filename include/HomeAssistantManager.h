@@ -201,14 +201,14 @@ private:
     void publishGeiger(int cpm, unsigned long currentTime);
     void publishTemperature(float temp, unsigned long currentTime);
     void publishHumidity(float humi, unsigned long currentTime);
-    void publishFanCurrent(float amps, unsigned long currentTime);
+    void publishFanCurrent(float amps, float off_threshold, unsigned long currentTime);
     void publishCO2(float co2, unsigned long currentTime);
     void publishCO(float co_ppm, unsigned long currentTime);
     void publishVOC(int32_t voc_index, unsigned long currentTime);
     void publishNOx(int32_t nox_index, unsigned long currentTime);
     void publishPM(float pm1, float pm25, float pm4, float pm10, unsigned long currentTime);
-    void publishCompressorCurrent(float compressor_amps, unsigned long currentTime);
-    void publishGeothermalPumpCurrent(float geothermal_pump_amps, unsigned long currentTime);
+    void publishCompressorCurrent(float compressor_amps, float off_threshold, unsigned long currentTime);
+    void publishGeothermalPumpCurrent(float geothermal_pump_amps, float off_threshold, unsigned long currentTime);
     void publishLiquidLevel(bool liquid_level_sensor_state, unsigned long currentTime);
     void publishO3(float o3, unsigned long currentTime);
     void publishNO2(float no2, unsigned long currentTime);
