@@ -26,11 +26,15 @@ namespace SystemStatusDefaults {
 
 struct SystemStatusData {
     // Control & configuration settings polled across tasks (MqttTask, WebServer, SensorStack, UITask)
+    // SCD30 calibration as confirmed by the SensorStack. Each *Seq is incremented on
+    // every reply to a change request (applied, refused or unconfirmed): consumers
+    // compare it with the last one they saw and republish/redraw even when the value
+    // did not change, which reverts a control showing the refused request.
     bool scd30AutoCalState = SystemStatusDefaults::SCD30_AUTOCAL_STATE;
-    bool scd30AutoCalForce = false;
+    uint8_t scd30AutoCalSeq = 0;
 
     uint16_t scd30ForceCalValue = SystemStatusDefaults::SCD30_FORCECAL_VALUE;
-    bool scd30ForceCalForce = false;
+    uint8_t scd30ForceCalSeq = 0;
     uint16_t scd30ForceCalTarget = 0; // Target ppm when requesting a forced recalibration
 
     bool backlightState = SystemStatusDefaults::BACKLIGHT_STATE;

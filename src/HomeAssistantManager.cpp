@@ -596,25 +596,23 @@ void HomeAssistantManager::taskLoop() {
       unsigned long currentTime = millis();
 
       // 1. Process control/polled values from other tasks to HA
-      if (!_hasPublishedScd30AutoCal || sysState.scd30AutoCalState != _lastPublishedScd30AutoCal || sysState.scd30AutoCalForce) {
-        _scd30AutoCalSwitch.setState(sysState.scd30AutoCalState,
-                                     sysState.scd30AutoCalForce);
+      // A new reply from the Nano is published with force, so Home Assistant's
+      // control reverts even when a refused request left the value unchanged
+      bool autoCalReply = sysState.scd30AutoCalSeq != _lastSeenScd30AutoCalSeq;
+      if (!_hasPublishedScd30AutoCal || autoCalReply ||
+          sysState.scd30AutoCalState != _lastPublishedScd30AutoCal) {
+        _scd30AutoCalSwitch.setState(sysState.scd30AutoCalState, autoCalReply);
         _lastPublishedScd30AutoCal = sysState.scd30AutoCalState;
+        _lastSeenScd30AutoCalSeq = sysState.scd30AutoCalSeq;
         _hasPublishedScd30AutoCal = true;
-        if (sysState.scd30AutoCalForce) {
-          SystemStatusAccessor status;
-          status->scd30AutoCalForce = false;
-        }
       }
-      if (!_hasPublishedScd30ForceCal || sysState.scd30ForceCalValue != _lastPublishedScd30ForceCal || sysState.scd30ForceCalForce) {
-        _scd30ForceCalNumber.setState(sysState.scd30ForceCalValue,
-                                      sysState.scd30ForceCalForce);
+      bool forceCalReply = sysState.scd30ForceCalSeq != _lastSeenScd30ForceCalSeq;
+      if (!_hasPublishedScd30ForceCal || forceCalReply ||
+          sysState.scd30ForceCalValue != _lastPublishedScd30ForceCal) {
+        _scd30ForceCalNumber.setState(sysState.scd30ForceCalValue, forceCalReply);
         _lastPublishedScd30ForceCal = sysState.scd30ForceCalValue;
+        _lastSeenScd30ForceCalSeq = sysState.scd30ForceCalSeq;
         _hasPublishedScd30ForceCal = true;
-        if (sysState.scd30ForceCalForce) {
-          SystemStatusAccessor status;
-          status->scd30ForceCalForce = false;
-        }
       }
       if (!_hasPublishedBacklight || sysState.backlightState != _lastPublishedBacklightState ||
           sysState.backlightBrightness != _lastPublishedBacklightBrightness) {

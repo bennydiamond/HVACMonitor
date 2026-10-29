@@ -42,8 +42,10 @@ private:
     // Tracking last published control values to HA
     bool _hasPublishedScd30AutoCal = false;
     bool _lastPublishedScd30AutoCal = false;
+    uint8_t _lastSeenScd30AutoCalSeq = 0;
     bool _hasPublishedScd30ForceCal = false;
     uint16_t _lastPublishedScd30ForceCal = 0;
+    uint8_t _lastSeenScd30ForceCalSeq = 0;
     bool _hasPublishedBacklight = false;
     bool _lastPublishedBacklightState = false;
     uint8_t _lastPublishedBacklightBrightness = 0;

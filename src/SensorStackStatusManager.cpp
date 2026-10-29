@@ -198,16 +198,16 @@ void SensorStackStatusManager::setScd30Info(bool auto_cal, uint16_t force_cal) {
     }
 }
 
-void SensorStackStatusManager::setScd30AutoCalState(bool auto_cal, bool force) {
+void SensorStackStatusManager::setScd30AutoCalState(bool auto_cal) {
     SystemStatusAccessor shared;
     shared->scd30AutoCalState = auto_cal;
-    shared->scd30AutoCalForce = force;
+    shared->scd30AutoCalSeq++;
 }
 
-void SensorStackStatusManager::setScd30ForceCalValue(uint16_t force_cal, bool force) {
+void SensorStackStatusManager::setScd30ForceCalValue(uint16_t force_cal) {
     SystemStatusAccessor shared;
     shared->scd30ForceCalValue = force_cal;
-    shared->scd30ForceCalForce = force;
+    shared->scd30ForceCalSeq++;
 }
 
 bool SensorStackStatusManager::processHealthPayload(char* payload, int* out_first_time_flag) {
@@ -383,8 +383,7 @@ bool SensorStackStatusManager::processScd30AutoCalPayload(char* payload) {
         // The state the SensorStack applied is unknown: republish the last confirmed one
         logger.warningf("SCD30 AutoCalibration could not be confirmed: SetResult=%d, ReadResult=%d",
                         set_result, read_result);
-        SystemStatusAccessor shared;
-        shared->scd30AutoCalForce = true;
+        SystemStatusAccessor()->scd30AutoCalSeq++;
         return true;
     }
     if (set_result != 0) {
@@ -394,8 +393,8 @@ bool SensorStackStatusManager::processScd30AutoCalPayload(char* payload) {
         logger.debugf("SCD30 AutoCalibration Set: SetResult=%d, ReadResult=%d, ActualState=%s",
                       set_result, read_result, actual_state ? "ON" : "OFF");
     }
-    // Forced, so Home Assistant's control also reverts when the change was refused
-    setScd30AutoCalState(actual_state != 0, true);
+    // Also reverts the controls when the change was refused
+    setScd30AutoCalState(actual_state != 0);
     return true;
 }
 
@@ -413,13 +412,12 @@ bool SensorStackStatusManager::processScd30ForceCalPayload(char* payload) {
     if (set_result == 0 && read_result == 0 && SensorDefines::isValidForceCal(actual_value)) {
         logger.debugf("SCD30 Force Calibration Set: SetResult=%d, ReadResult=%d, ActualValue=%u ppm",
                       set_result, read_result, actual_value);
-        setScd30ForceCalValue(actual_value, true);
+        setScd30ForceCalValue(actual_value);
     } else {
         logger.warningf("SCD30 Force Calibration rejected or failed: SetResult=%d, ReadResult=%d, Value=%u ppm",
                         set_result, read_result, actual_value);
-        // Revert Home Assistant's control to the last confirmed value
-        SystemStatusAccessor shared;
-        shared->scd30ForceCalForce = true;
+        // Revert the controls to the last confirmed value
+        SystemStatusAccessor()->scd30ForceCalSeq++;
     }
     return true;
 }
