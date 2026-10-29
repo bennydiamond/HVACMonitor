@@ -32,7 +32,10 @@ public:
     
     // Get sensor status
     bool isInitialized() const { return initialized_; }
-    bool isHealthy() const { return healthy_; }
+    // Initialized, and a measurement completed recently
+    bool isHealthy() const {
+        return initialized_ && millis() - last_data_time_ < MAX_DATA_GAP_MS;
+    }
     
     // Handle connection status changes from SensorTask
     void onConnectionStatusChanged(bool connected);
@@ -50,6 +53,7 @@ private:
     bool healthy_;
     bool new_data_available_;
     unsigned long last_measurement_time_;
+    unsigned long last_data_time_ = 0; // Initialization or last completed measurement
     bool nano_connected_;
     bool nano_reboot_detected_;
     bool previous_nano_connected_;
@@ -65,6 +69,7 @@ private:
     
 private:
     static const unsigned long MEASUREMENT_INTERVAL_MS = 4050; // Just a bit over 4000ms, standby time of BMP280
+    static const unsigned long MAX_DATA_GAP_MS = 3 * MEASUREMENT_INTERVAL_MS;
     static const unsigned long INIT_RETRY_INTERVAL_MS = 5000;
     
     // Helper methods

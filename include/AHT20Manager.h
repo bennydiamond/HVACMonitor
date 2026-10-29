@@ -39,6 +39,9 @@ public:
     
     // Handle connection status changes
     void onConnectionStatusChanged(bool connected);
+
+    // Initialized, and its last reads succeeded
+    bool isHealthy() const { return initialized && healthy; }
     
     // Handle Nano reboot detection
     void onNanoReboot();

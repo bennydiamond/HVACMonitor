@@ -3,6 +3,7 @@
 #include "Logger.h"
 #include "SerialMutex.h"
 #include "I2CBridge.h"
+#include "SensorDataAccessor.h"
 #ifdef ENABLE_TASK_WATCHDOG
 #include "WatchdogManager.h"
 #endif
@@ -128,6 +129,63 @@ void SensorTask::notifyConnectionStatus(bool connected, bool firstTimeFlag) {
     }
     
     xTaskNotify(taskHandle, notifyBits, eSetValueWithOverwrite);
+}
+
+// Publishes the I2C bridge sensors' health once a second. Rewritten every time,
+// not only on change, since SensorStackStatusManager clears the shared readings
+// (and these flags) when the SensorStack goes down. A sensor that turns unhealthy
+// also has its readings cleared, so they are not shown as current.
+void SensorTask::publishSensorHealth() {
+    static unsigned long lastPublishMs = 0;
+    static bool zmodWasOk = false;
+#ifdef BMP280_ENABLED
+    static bool bmpWasOk = false;
+#endif
+#ifdef AHT20_ENABLED
+    static bool ahtWasOk = false;
+#endif
+    if (millis() - lastPublishMs < SENSOR_HEALTH_PUBLISH_INTERVAL_MS) {
+        return;
+    }
+    lastPublishMs = millis();
+
+    const bool zmodOk = ZMOD4510Manager::getInstance().isHealthy();
+#ifdef BMP280_ENABLED
+    const bool bmpOk = BMP280Manager::getInstance().isHealthy();
+#endif
+#ifdef AHT20_ENABLED
+    const bool ahtOk = AHT20Manager::getInstance().isHealthy();
+#endif
+
+    SensorDataAccessor shared;
+    const SensorStateData defaults;
+    shared->zmod_ok = zmodOk;
+    if (zmodWasOk && !zmodOk) {
+        logger.warning("ZMOD4510 not responding; its readings are cleared.");
+        shared->o3_conc_ug_per_m3 = defaults.o3_conc_ug_per_m3;
+        shared->no2_conc_ug_per_m3 = defaults.no2_conc_ug_per_m3;
+        shared->fast_aqi = defaults.fast_aqi;
+        shared->epa_aqi = defaults.epa_aqi;
+    }
+    zmodWasOk = zmodOk;
+#ifdef BMP280_ENABLED
+    shared->bmp_ok = bmpOk;
+    if (bmpWasOk && !bmpOk) {
+        logger.warning("BMP280 not responding; its readings are cleared.");
+        shared->bmp_pressure_pa = defaults.bmp_pressure_pa;
+        shared->bmp_temp_c = defaults.bmp_temp_c;
+    }
+    bmpWasOk = bmpOk;
+#endif
+#ifdef AHT20_ENABLED
+    shared->aht_ok = ahtOk;
+    if (ahtWasOk && !ahtOk) {
+        logger.warning("AHT20 not responding; its readings are cleared.");
+        shared->aht_temp_c = defaults.aht_temp_c;
+        shared->aht_humi_pct = defaults.aht_humi_pct;
+    }
+    ahtWasOk = ahtOk;
+#endif
 }
 
 void SensorTask::taskFunction(void* parameter) {
@@ -259,6 +317,7 @@ void SensorTask::taskLoop() {
                 }
             }
         }
+        publishSensorHealth();
 #ifdef ENABLE_TASK_WATCHDOG
         WatchdogManager::reset();
 #endif

@@ -36,7 +36,8 @@ public:
     
     // Get sensor status
     bool isInitialized() const { return initialized_; }
-    bool isHealthy() const { return healthy_; }
+    // Initialized, and its measurement cycles are not failing
+    bool isHealthy() const { return healthy_ && !sensor.isFailing(); }
     
     // Handle connection status changes from SensorTask
     void onConnectionStatusChanged(bool connected);

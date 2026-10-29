@@ -652,6 +652,14 @@ void HomeAssistantManager::taskLoop() {
       if (faults & SensorDefines::SENSOR_FAULT_SCD30) unknown |= GROUP_SCD30;
       if (faults & SensorDefines::SENSOR_FAULT_SPS30) unknown |= GROUP_SPS30;
       if (faults & SensorDefines::SENSOR_FAULT_SGP41) unknown |= GROUP_SGP41;
+      // I2C bridge sensors that are not initialized or keep failing
+      if (!sensorState.zmod_ok) unknown |= GROUP_ZMOD;
+#ifdef BMP280_ENABLED
+      if (!sensorState.bmp_ok) unknown |= GROUP_BMP280;
+#endif
+#ifdef AHT20_ENABLED
+      if (!sensorState.aht_ok) unknown |= GROUP_AHT20;
+#endif
       updateUnknownGroups(unknown);
       const uint8_t live = GROUP_ALL & ~unknown;
 

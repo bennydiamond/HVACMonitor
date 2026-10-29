@@ -72,6 +72,8 @@ public:
 private:
     static void taskFunction(void* parameter);
     void taskLoop();
+    void publishSensorHealth();
+    static constexpr unsigned long SENSOR_HEALTH_PUBLISH_INTERVAL_MS = 1000;
     
     ZMOD4510Values latestZMOD4510Values;
 #ifdef BMP280_ENABLED

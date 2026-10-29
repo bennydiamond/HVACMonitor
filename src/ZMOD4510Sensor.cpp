@@ -53,6 +53,7 @@ bool ZMOD4510Sensor::init() {
         return false;
     }
     
+    consecutive_errors = 0;
     logger.info("ZMOD4510: sensor initialized successfully");
     return true;
 }
@@ -89,9 +90,14 @@ void ZMOD4510Sensor::process() {
                 }
                 state = STATE_MEASURING;
                 measurement_start_time = millis();
-            } else if (start_failures++ == 0) {
-                logger.errorf("ZMOD4510: Starting measurement failed; retrying every %u ms",
-                              (unsigned)ZMOD4510_NO2_O3_SAMPLE_TIME);
+            } else {
+                if (consecutive_errors < MAX_CONSECUTIVE_ERRORS) {
+                    consecutive_errors++;
+                }
+                if (start_failures++ == 0) {
+                    logger.errorf("ZMOD4510: Starting measurement failed; retrying every %u ms",
+                                  (unsigned)ZMOD4510_NO2_O3_SAMPLE_TIME);
+                }
             }
             break;
 
@@ -108,11 +114,15 @@ void ZMOD4510Sensor::process() {
             
         case STATE_READING_RESULTS:
             if (read_and_verify()) {
+                consecutive_errors = 0;
                 delay(1);  // Allow for context switch
                 processResults();
                 new_data_available = true;
                 state = STATE_DATA_READY;
             } else {
+                if (consecutive_errors < MAX_CONSECUTIVE_ERRORS) {
+                    consecutive_errors++;
+                }
                 memset(adc_result, 0, sizeof(adc_result));
                 latest_results.valid = false;
                 new_data_available = false;

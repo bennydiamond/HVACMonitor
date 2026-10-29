@@ -33,6 +33,16 @@ struct SensorStateData {
     bool high_pressure = false;
     FanStatus fan_status = FanStatus::Off;
 
+    // Health of the I2C bridge sensors, from SensorTask: false while a sensor is not
+    // initialized or its reads keep failing (its readings are then cleared)
+    bool zmod_ok = false;
+#ifdef BMP280_ENABLED
+    bool bmp_ok = false;
+#endif
+#ifdef AHT20_ENABLED
+    bool aht_ok = false;
+#endif
+
     // ZMOD4510 Gas & AQI
     float o3_conc_ug_per_m3 = -1.0f;
     float no2_conc_ug_per_m3 = -1.0f;

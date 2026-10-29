@@ -41,6 +41,9 @@ public:
     // Set temperature and humidity values from external sensor
     void setEnvironmentalData(float temperature_degc, float humidity_pct);
 
+    // Several measurement cycles in a row failed to start or to read back
+    bool isFailing() const { return consecutive_errors >= MAX_CONSECUTIVE_ERRORS; }
+
 private:
     enum State {
         STATE_IDLE,
@@ -77,6 +80,8 @@ private:
     // A failed start is retried once per sample period, not on every process() call
     uint32_t start_failures;
     unsigned long last_start_attempt;
+    static constexpr uint8_t MAX_CONSECUTIVE_ERRORS = 3;
+    uint8_t consecutive_errors = 0; // Failed starts and reads since the last good read
     
     // Helper methods
     int detect_and_configure();

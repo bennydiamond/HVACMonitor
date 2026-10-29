@@ -54,6 +54,7 @@ void BMP280Manager::process() {
             if (sensor_.hasValue()) {
                 new_data_available_ = true;
                 last_measurement_time_ = millis();
+                last_data_time_ = last_measurement_time_;
                 state_ = STATE_DATA_READY;
                 logger.debug("BMP280Manager: Measurement complete");
             }
@@ -107,6 +108,7 @@ void BMP280Manager::attemptInitialization() {
         if (sensor_.begin()) {
             initialized_ = true;
             healthy_ = true;
+            last_data_time_ = millis();
             state_ = STATE_IDLE;
             logger.info("BMP280Manager: Sensor initialization successful");
         } else {
