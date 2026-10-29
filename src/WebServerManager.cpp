@@ -1334,7 +1334,7 @@ void WebServerManager::handleConfigUpdate() {
           config->setInactivityTimerDelay(intVal);
           SystemStatusAccessor shared;
           shared->inactivityTimerDelay = intVal;
-          shared->inactivityTimerDelayForce = true;
+          shared->inactivityTimerDelaySeq++;
         } else {
           ok = false;
         }

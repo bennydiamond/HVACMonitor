@@ -45,7 +45,10 @@ struct SystemStatusData {
     uint8_t backlightBrightness = SystemStatusDefaults::BACKLIGHT_BRIGHTNESS;
 
     int inactivityTimerDelay = SystemStatusDefaults::INACTIVITY_TIMER_DELAY;
-    bool inactivityTimerDelayForce = false;
+    // Incremented to have MqttTask republish with force (same pattern as the SCD30
+    // *Seq counters: each consumer compares with the last value it saw, nothing is
+    // cleared, so a request can't be lost between a read and a clear)
+    uint8_t inactivityTimerDelaySeq = 0;
 
     AppLogLevel logLevel = SystemStatusDefaults::LOG_LEVEL;
 
@@ -54,7 +57,7 @@ struct SystemStatusData {
     char sensorStackVersion[SystemStatusDefaults::SENSOR_STACK_VERSION_BUFFER_SIZE] = {0};
     bool sensorStackVersionUnavailable = false;
     uint32_t sensorStackUptime = 0;
-    bool sensorStackUptimeForce = false;
+    uint8_t sensorStackUptimeSeq = 0; // Incremented to force a republish
     uint16_t sensorStackFreeRam = 0;
     char nanoResetCause[SystemStatusDefaults::NANO_RESET_CAUSE_BUFFER_SIZE] = {0};
     uint32_t sensorStackSecondsSincePacket = 0;

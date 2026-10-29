@@ -73,6 +73,8 @@ private:
     uint8_t _lastPublishedBacklightBrightness = 0;
     bool _hasPublishedInactivityDelay = false;
     int _lastPublishedInactivityDelay = 0;
+    uint8_t _lastSeenInactivityDelaySeq = 0;
+    uint8_t _lastSeenSensorStackUptimeSeq = 0;
     bool _hasPublishedLogLevel = false;
     AppLogLevel _lastPublishedLogLevel = APP_LOG_INFO;
     bool _lastMqttConnected = false;

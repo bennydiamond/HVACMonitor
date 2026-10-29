@@ -133,7 +133,7 @@ void SensorStackStatusManager::setConnected(bool connected) {
         shared->sensorConnectionStatus = false;
         shared->sensorStackVersionUnavailable = true;
         shared->sensorStackUptime = 0;
-        shared->sensorStackUptimeForce = true;
+        shared->sensorStackUptimeSeq++;
     }
 }
 

@@ -626,16 +626,14 @@ void HomeAssistantManager::taskLoop() {
         _lastPublishedBacklightBrightness = sysState.backlightBrightness;
         _hasPublishedBacklight = true;
       }
-      if (!_hasPublishedInactivityDelay || sysState.inactivityTimerDelay != _lastPublishedInactivityDelay || sysState.inactivityTimerDelayForce) {
+      bool inactivityForce = sysState.inactivityTimerDelaySeq != _lastSeenInactivityDelaySeq;
+      if (!_hasPublishedInactivityDelay || inactivityForce ||
+          sysState.inactivityTimerDelay != _lastPublishedInactivityDelay) {
         _inactivityTimerDelay.setState(
-            static_cast<int32_t>(sysState.inactivityTimerDelay),
-            sysState.inactivityTimerDelayForce);
+            static_cast<int32_t>(sysState.inactivityTimerDelay), inactivityForce);
         _lastPublishedInactivityDelay = sysState.inactivityTimerDelay;
+        _lastSeenInactivityDelaySeq = sysState.inactivityTimerDelaySeq;
         _hasPublishedInactivityDelay = true;
-        if (sysState.inactivityTimerDelayForce) {
-          SystemStatusAccessor status;
-          status->inactivityTimerDelayForce = false;
-        }
       }
       if (!_hasPublishedLogLevel || sysState.logLevel != _lastPublishedLogLevel) {
         _logLevelSelect.setState(static_cast<int8_t>(sysState.logLevel));
@@ -774,12 +772,10 @@ void HomeAssistantManager::taskLoop() {
         _lastPublishedSensorStackVersion = sysState.sensorStackVersion;
       }
 
-      publishSensorStackUptimeHelper(sysState.sensorStackUptime,
-                                     sysState.sensorStackUptimeForce);
-      if (sysState.sensorStackUptimeForce) {
-        SystemStatusAccessor status;
-        status->sensorStackUptimeForce = false;
-      }
+      publishSensorStackUptimeHelper(
+          sysState.sensorStackUptime,
+          sysState.sensorStackUptimeSeq != _lastSeenSensorStackUptimeSeq);
+      _lastSeenSensorStackUptimeSeq = sysState.sensorStackUptimeSeq;
 
       if (_lastSensorStackFreeRamPublishTime == 0 ||
           (currentTime - _lastSensorStackFreeRamPublishTime >=
@@ -1798,7 +1794,7 @@ void HomeAssistantManager::onInactivityTimerDelayCommand(HANumeric number,
     {
       SystemStatusAccessor status;
       status->inactivityTimerDelay = delay;
-      status->inactivityTimerDelayForce = true;
+      status->inactivityTimerDelaySeq++;
     }
     // Locks released first: publishing can block on the network
     sender->setState(delay);
