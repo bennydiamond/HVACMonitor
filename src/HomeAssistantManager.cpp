@@ -1039,8 +1039,9 @@ void HomeAssistantManager::publishGeiger(int cpm, unsigned long currentTime) {
   bool geiger_cpm_steady =
       (currentTime - _lastCpmPublishTime >= STEADY_INTERVAL_30S_MS &&
        cpm != _lastPublishedCpm);
+  // Published at once when the count crosses the threshold, then at the usual pace
   bool geiger_cpm_spike =
-      (cpm >= GEIGER_CPM_SPIKE_THRESHOLD && cpm != _lastPublishedCpm);
+      (cpm >= GEIGER_CPM_SPIKE_THRESHOLD && _lastPublishedCpm < GEIGER_CPM_SPIKE_THRESHOLD);
   if (is_first || geiger_cpm_steady || geiger_cpm_spike ||
       (currentTime - _lastCpmPublishTime > FORCE_PUBLISH_INTERVAL_MS)) {
     _geiger_cpm.setValue(static_cast<uint16_t>(cpm), true);
@@ -1154,7 +1155,8 @@ void HomeAssistantManager::publishVOC(int32_t voc_index,
   }
   _vocUnavailablePublished = false;
   bool is_first = (_lastVocPublishTime == 0);
-  bool voc_fast = (abs(voc_index - _lastPublishedVocIndex) >= VOC_FAST_DELTA);
+  bool voc_fast = (currentTime - _lastVocPublishTime >= FAST_INTERVAL_10S_MS &&
+                   abs(voc_index - _lastPublishedVocIndex) >= VOC_FAST_DELTA);
   bool voc_steady =
       (currentTime - _lastVocPublishTime >= STEADY_INTERVAL_60S_MS &&
        abs(voc_index - _lastPublishedVocIndex) >= VOC_STEADY_DELTA);
@@ -1178,7 +1180,8 @@ void HomeAssistantManager::publishNOx(int32_t nox_index,
   }
   _noxUnavailablePublished = false;
   bool is_first = (_lastNOxPublishTime == 0);
-  bool nox_fast = (abs(nox_index - _lastPublishedNOxIndex) >= NOX_FAST_DELTA);
+  bool nox_fast = (currentTime - _lastNOxPublishTime >= FAST_INTERVAL_10S_MS &&
+                   abs(nox_index - _lastPublishedNOxIndex) >= NOX_FAST_DELTA);
   bool nox_steady =
       (currentTime - _lastNOxPublishTime >= STEADY_INTERVAL_60S_MS &&
        abs(nox_index - _lastPublishedNOxIndex) >= NOX_STEADY_DELTA);
@@ -1195,10 +1198,11 @@ void HomeAssistantManager::publishPM(float pm1, float pm25, float pm4,
   if (isnan(pm1) || isnan(pm25) || isnan(pm4) || isnan(pm10))
     return;
   bool is_first = (_lastPmPublishTime == 0);
-  bool pm_fast = (fabs(pm1 - _lastPublishedPm1_0) >= PM_FAST_DELTA ||
-                  fabs(pm25 - _lastPublishedPm2_5) >= PM_FAST_DELTA ||
-                  fabs(pm4 - _lastPublishedPm4_0) >= PM_FAST_DELTA ||
-                  fabs(pm10 - _lastPublishedPm10_0) >= PM_FAST_DELTA);
+  bool pm_fast = (currentTime - _lastPmPublishTime >= FAST_INTERVAL_10S_MS &&
+                  (fabs(pm1 - _lastPublishedPm1_0) >= PM_FAST_DELTA ||
+                   fabs(pm25 - _lastPublishedPm2_5) >= PM_FAST_DELTA ||
+                   fabs(pm4 - _lastPublishedPm4_0) >= PM_FAST_DELTA ||
+                   fabs(pm10 - _lastPublishedPm10_0) >= PM_FAST_DELTA));
   bool pm_steady =
       (currentTime - _lastPmPublishTime >= STEADY_INTERVAL_60S_MS &&
        (fabs(pm1 - _lastPublishedPm1_0) >= PM_STEADY_DELTA ||
