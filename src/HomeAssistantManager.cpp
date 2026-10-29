@@ -1570,11 +1570,13 @@ void HomeAssistantManager::onStateCommand(bool state, HALight *sender) {
     return;
   logger.infof("Backlight state %s command from Home Assistant.",
                state ? "ON" : "OFF");
-  SystemStatusAccessor status;
-  uint8_t curB = status->backlightBrightness;
-  uint8_t newB = state ? (curB == 0 ? 255 : curB) : 0;
-  status->backlightState = state;
-  status->backlightBrightness = newB;
+  {
+    SystemStatusAccessor status;
+    uint8_t curB = status->backlightBrightness;
+    status->backlightState = state;
+    status->backlightBrightness = state ? (curB == 0 ? 255 : curB) : 0;
+  }
+  // Publishing can block on the network: never with a shared lock held
   sender->setState(state);
 }
 

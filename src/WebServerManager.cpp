@@ -894,13 +894,15 @@ void WebServerManager::handleConfigUpdate() {
       }
 
       if (received) {
-        DiagnosticDataAccessor diag;
         char val_buf[128];
-        snprintf(val_buf, sizeof(val_buf),
-                 "v%u.%u | Clean: %lud (%lus) | %s (just now)",
-                 diag->sps30.fwMajor, diag->sps30.fwMinor,
-                 diag->sps30.fanDays, diag->sps30.fanInterval,
-                 diag->sps30.statusReg == 0 ? "OK" : "Fan Warning");
+        {
+          DiagnosticDataAccessor diag;
+          snprintf(val_buf, sizeof(val_buf),
+                   "v%u.%u | Clean: %lud (%lus) | %s (just now)",
+                   diag->sps30.fwMajor, diag->sps30.fwMinor,
+                   diag->sps30.fanDays, diag->sps30.fanInterval,
+                   diag->sps30.statusReg == 0 ? "OK" : "Fan Warning");
+        }
         char json[256];
         snprintf(json, sizeof(json),
                  "{\"status\":\"ok\",\"message\":\"SPS30 info query successful.\",\"value\":\"%s\"}",
@@ -939,13 +941,16 @@ void WebServerManager::handleConfigUpdate() {
       }
 
       if (received) {
-        DiagnosticDataAccessor diag;
         char val_buf[96];
-        bool passed = (diag->sgp41.retStatus == 0 &&
-                       diag->sgp41.rawValue == SensorDefines::SGP41_TEST_PASSED_RAW_VALUE);
-        snprintf(val_buf, sizeof(val_buf),
-                 "%s (0x%04X) (just now)",
-                 passed ? "PASSED" : "FAILED", diag->sgp41.rawValue);
+        bool passed;
+        {
+          DiagnosticDataAccessor diag;
+          passed = (diag->sgp41.retStatus == 0 &&
+                    diag->sgp41.rawValue == SensorDefines::SGP41_TEST_PASSED_RAW_VALUE);
+          snprintf(val_buf, sizeof(val_buf),
+                   "%s (0x%04X) (just now)",
+                   passed ? "PASSED" : "FAILED", diag->sgp41.rawValue);
+        }
         char json[256];
         snprintf(json, sizeof(json),
                  "{\"status\":\"ok\",\"message\":\"SGP41 self-test %s.\",\"value\":\"%s\"}",
@@ -2119,9 +2124,14 @@ void WebServerManager::handleConfigSystem() {
 }
 
 void WebServerManager::handleConfigMaintenance() {
-  SystemStatusAccessor shared;
-  bool autoCalState = shared->scd30AutoCalState;
-  uint16_t forceCalValue = shared->scd30ForceCalValue;
+  // Copied, so the lock isn't held while the page streams to the client
+  bool autoCalState;
+  uint16_t forceCalValue;
+  {
+    SystemStatusAccessor shared;
+    autoCalState = shared->scd30AutoCalState;
+    forceCalValue = shared->scd30ForceCalValue;
+  }
   if (forceCalValue == 0)
     forceCalValue = SensorDefines::SCD30_FORCECAL_MIN_PPM;
 
