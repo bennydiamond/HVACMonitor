@@ -75,7 +75,7 @@ struct SystemStatusData {
     uint32_t esp32FreeHeap = 0;
     uint32_t esp32Uptime = 0;
 
-    // MQTT connection status
+    // MQTT connection status (written by MqttTask only)
     bool mqttConnected = false;
 };
 

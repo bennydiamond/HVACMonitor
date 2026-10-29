@@ -77,7 +77,8 @@ private:
     uint8_t _lastSeenSensorStackUptimeSeq = 0;
     bool _hasPublishedLogLevel = false;
     AppLogLevel _lastPublishedLogLevel = APP_LOG_INFO;
-    bool _lastMqttConnected = false;
+    // Written by MqttTask, read by other tasks through isMqttConnected()
+    std::atomic<bool> _lastMqttConnected{false};
 
     // Dedicated task functions
     static void taskFunction(void* pvParameters);

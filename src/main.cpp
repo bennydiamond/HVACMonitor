@@ -337,15 +337,6 @@ void loop() {
     update_wifi_status();
   }
 
-  static bool previous_mqtt_connect_status = false;
-
-  bool ha_conn = haManager.isMqttConnected();
-
-  if (previous_mqtt_connect_status != ha_conn) {
-    previous_mqtt_connect_status = ha_conn;
-    SystemStatusAccessor()->mqttConnected = ha_conn;
-  }
-
   static bool mqtt_stall_reported = false;
   if (haManager.msSinceMqttTaskHeartbeat() > MQTT_TASK_STALL_TIMEOUT_MS &&
       !mqtt_stall_reported) {
@@ -405,7 +396,6 @@ void loop() {
       wifi_retry_attempts = 0;
     }
     update_wifi_status();
-    SystemStatusAccessor()->mqttConnected = ha_conn;
   }
 
   if (millis() - last_debug_update_time > DEBUG_UPDATE_INTERVAL_MS) {
