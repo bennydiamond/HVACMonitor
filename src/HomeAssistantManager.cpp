@@ -647,6 +647,11 @@ void HomeAssistantManager::taskLoop() {
                            sysState.sensorStackFirmwareState == SensorStackFirmwareState::Ok &&
                            sensorState.nano_updated_ms != 0;
       uint8_t unknown = stackUp ? 0 : GROUP_ALL;
+      // Sensors the SensorStack reports as not responding
+      const uint8_t faults = sysState.sensorStackSensorFaults;
+      if (faults & SensorDefines::SENSOR_FAULT_SCD30) unknown |= GROUP_SCD30;
+      if (faults & SensorDefines::SENSOR_FAULT_SPS30) unknown |= GROUP_SPS30;
+      if (faults & SensorDefines::SENSOR_FAULT_SGP41) unknown |= GROUP_SGP41;
       updateUnknownGroups(unknown);
       const uint8_t live = GROUP_ALL & ~unknown;
 
