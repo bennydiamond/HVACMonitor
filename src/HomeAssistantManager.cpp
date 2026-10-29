@@ -808,7 +808,6 @@ void HomeAssistantManager::taskLoop() {
       }
     }
 
-    _taskHeartbeatMs.store(millis() | 1); // Never 0 once running
     vTaskDelay(pdMS_TO_TICKS(50));
   }
 }

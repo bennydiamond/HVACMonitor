@@ -50,12 +50,10 @@ const int DEBUG_UPDATE_INTERVAL_MS = 5000;
 const int STACK_CHECK_INTERVAL_MS = 60000;
 
 // Task watchdog timeout. Longer during setup() (Wi-Fi, sensors, tasks starting).
-// MQTT runs in its own task, off the watchdog: see MQTT_TASK_STALL_TIMEOUT_MS.
+// MqttTask is not watched: its network calls (DNS lookup, a slow write on a weak
+// link) can legitimately block longer, which must not reboot the device.
 const uint32_t WATCHDOG_TIMEOUT_S = 10;
 const uint32_t WATCHDOG_SETUP_TIMEOUT_S = 30;
-// MqttTask's network calls can block for a while (DNS, a slow write on a weak link)
-// but never this long: a heartbeat older than this means the task is stuck
-const uint32_t MQTT_TASK_STALL_TIMEOUT_MS = 120000;
 
 unsigned long last_wifi_check_time = 0;
 unsigned long last_debug_update_time = 0;
@@ -336,14 +334,6 @@ void loop() {
     update_wifi_status();
   }
 
-  static bool mqtt_stall_reported = false;
-  if (haManager.msSinceMqttTaskHeartbeat() > MQTT_TASK_STALL_TIMEOUT_MS &&
-      !mqtt_stall_reported) {
-    mqtt_stall_reported = true;
-    logger.errorf("MQTT task stuck for more than %lu s; rebooting.",
-                  (unsigned long)(MQTT_TASK_STALL_TIMEOUT_MS / 1000));
-    RebootManager::getInstance().requestReboot("MQTT task stuck");
-  }
   otaManager.handle();
 
   static unsigned long lastHeapCheck = 0;

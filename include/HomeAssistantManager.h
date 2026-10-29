@@ -33,25 +33,9 @@ public:
 
     bool isMqttConnected();
 
-    // Milliseconds since MqttTask last completed a pass (0 before it started)
-    uint32_t msSinceMqttTaskHeartbeat() const {
-        uint32_t beat = _taskHeartbeatMs.load();
-        if (beat == 0) {
-            return 0;
-        }
-        // Signed: the stored beat can be 1 ms ahead of this millis() (it is
-        // stored as millis() | 1, and MqttTask may store it in between)
-        int32_t age = static_cast<int32_t>(millis() - beat);
-        return age > 0 ? static_cast<uint32_t>(age) : 0;
-    }
-
 private:
     // FreeRTOS Task
     TaskHandle_t _taskHandle = nullptr;
-    // millis() at the end of MqttTask's last pass. MqttTask is not on the task
-    // watchdog: its network calls can legitimately block for longer than its
-    // timeout (DNS lookup, writes on a weak link), which must not reboot the device
-    std::atomic<uint32_t> _taskHeartbeatMs{0};
 
     char _firmwareVersion[32] = {0};
     char _configurationUrl[56] = {0};
