@@ -27,7 +27,8 @@ UI::UI()
     : tileview(nullptr), status_bar(nullptr), tileManager(nullptr),
       fan_icon_label(nullptr), air_filter_icon_label(nullptr),
       wifi_icon_label(nullptr), ha_icon_label(nullptr),
-      sensor_icon_label(nullptr), high_pressure_blink_timer(nullptr) {
+      sensor_icon_label(nullptr), motion_icon_label(nullptr),
+      high_pressure_blink_timer(nullptr) {
   logger.info("UI top class created");
 }
 
@@ -39,6 +40,7 @@ UI::~UI() {
   lv_obj_del(wifi_icon_label);
   lv_obj_del(ha_icon_label);
   lv_obj_del(sensor_icon_label);
+  lv_obj_del(motion_icon_label);
   lv_obj_del(air_filter_icon_label);
   lv_obj_del(status_bar);
   lv_timer_del(high_pressure_blink_timer);
@@ -281,6 +283,15 @@ void UI::create_status_bar() {
   lv_obj_set_style_pad_ver(status_bar, 10, 0);
   lv_obj_set_scroll_dir(status_bar, LV_DIR_NONE);
 
+  // Floating top-left motion sensor indicator (ignores flex layout)
+  motion_icon_label = lv_label_create(status_bar);
+  lv_obj_add_flag(motion_icon_label, LV_OBJ_FLAG_FLOATING);
+  lv_obj_align(motion_icon_label, LV_ALIGN_TOP_MID, 0, -8);
+  lv_obj_set_style_text_font(motion_icon_label, &mdi_30, 0);
+  lv_label_set_text(motion_icon_label, ICON_MOTION_SENSOR);
+  lv_obj_set_style_text_color(motion_icon_label, COLOR_DEFAULT_ICON, 0);
+  lv_obj_set_style_opa(motion_icon_label, LV_OPA_40, 0);
+
   fan_icon_label = lv_label_create(status_bar);
   lv_obj_set_style_text_font(fan_icon_label, &mdi_30, 0);
   lv_label_set_text(fan_icon_label, ICON_FAN);
@@ -366,6 +377,23 @@ void UI::update_sensor_status(bool connected) {
   refresh_sensor_icon();
   if (tileManager)
     tileManager->update_sensor_status(connected);
+}
+
+void UI::update_motion_status(bool motion_detected, bool ready, bool calibrating) {
+  if (!motion_icon_label) return;
+  if (calibrating) {
+    ui_set_text_color(motion_icon_label, COLOR_MID);
+    lv_obj_set_style_opa(motion_icon_label, LV_OPA_COVER, 0);
+  } else if (!ready) {
+    ui_set_text_color(motion_icon_label, lv_color_hex(0x404040));
+    lv_obj_set_style_opa(motion_icon_label, LV_OPA_50, 0);
+  } else if (motion_detected) {
+    ui_set_text_color(motion_icon_label, COLOR_HA_BLUE);
+    lv_obj_set_style_opa(motion_icon_label, LV_OPA_COVER, 0);
+  } else {
+    ui_set_text_color(motion_icon_label, COLOR_DEFAULT_ICON);
+    lv_obj_set_style_opa(motion_icon_label, LV_OPA_40, 0);
+  }
 }
 
 void UI::refresh_sensor_icon(void) {

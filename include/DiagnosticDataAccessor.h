@@ -27,10 +27,38 @@ struct SCD30QueryData {
     uint16_t forceCalValue = 0;
 };
 
+struct MotionDiagnosticData {
+    bool enabled = true;
+    bool calibrating = false;
+    bool ready = false;
+    bool motionDetected = false;
+    float intensity = 0.0f;
+    float threshold = 0.0f;
+    char profile[24] = "lightweight";
+    char trafficMode[24] = "ping";
+    uint8_t motionOnHits = 4;
+    uint8_t motionOffHits = 3;
+
+    // Rates (pps) & link diagnostics
+    float csiCallbackRate = 0.0f;
+    float csiAcceptedRate = 0.0f;
+    float csiAdmittedRate = 0.0f;
+    float csiFilteredRate = 0.0f;
+    float csiMissingRate = 0.0f;
+    float csiExcessRate = 0.0f;
+    float csiStaleRate = 0.0f;
+    float csiOutOfOrderRate = 0.0f;
+    float csiOccupancy = 0.0f;
+    float generatorRate = 0.0f;
+    int8_t wifiRssi = 0;
+    uint8_t wifiChannel = 0;
+};
+
 struct DiagnosticData {
     SPS30QueryData sps30;
     SGP41QueryData sgp41;
     SCD30QueryData scd30;
+    MotionDiagnosticData motion;
 };
 
 /**

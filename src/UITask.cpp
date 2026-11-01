@@ -187,6 +187,13 @@ void UITask::run() {
                 }
             }
 
+            if (firstRun || sensorState.motion_detected != lastSensorState.motion_detected ||
+                sensorState.motion_ready != lastSensorState.motion_ready ||
+                sensorState.motion_calibrating != lastSensorState.motion_calibrating) {
+                uiUpdater->update_motion_status(sensorState.motion_detected, sensorState.motion_ready,
+                                                sensorState.motion_calibrating);
+            }
+
             // Everything is redrawn with the first packet after the readings were cleared
             const bool redraw = firstRun ||
                 (readingsCleared && sensorState.nano_updated_ms != lastSensorState.nano_updated_ms);

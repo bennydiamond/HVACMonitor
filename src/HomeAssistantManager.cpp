@@ -147,6 +147,9 @@ HomeAssistantManager::HomeAssistantManager()
                                    HASensorNumber::PrecisionP2),
       _liquidLevelSensor("liquid_level" RANDOM_SUFFIX),
       _sensorStackResetCauseSensor("sensorStack_reset_cause" RANDOM_SUFFIX),
+      _motionSensor("motion" RANDOM_SUFFIX),
+      _motionIntensitySensor("motion_intensity" RANDOM_SUFFIX,
+                             HASensorNumber::PrecisionP1),
       _inactivityTimerDelay("inactivity_timer_delay" RANDOM_SUFFIX,
                             HANumber::PrecisionP0),
       _getSps30InfoButton("get_sps30_info" RANDOM_SUFFIX),
@@ -316,6 +319,16 @@ void HomeAssistantManager::initMqtt() {
   _sensorStackResetCauseSensor.setName("Sensor Stack Reset Cause");
   _sensorStackResetCauseSensor.setIcon("mdi:restart-alert");
   _sensorStackResetCauseSensor.setEntityCategory(entity_category_diagnostic);
+
+  _motionSensor.setName("Motion");
+  _motionSensor.setDeviceClass("motion");
+  _motionSensor.setIcon("mdi:motion-sensor");
+  _motionSensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
+
+  _motionIntensitySensor.setName("Motion Intensity");
+  _motionIntensitySensor.setIcon("mdi:run-fast");
+  _motionIntensitySensor.setUnitOfMeasurement("%");
+  _motionIntensitySensor.setExpireAfter(SENSOR_EXPIRE_TIMEOUT_S);
 
   _backlight.setName("Screen Backlight");
   _backlight.setIcon("mdi:brightness-6");
@@ -729,6 +742,10 @@ void HomeAssistantManager::taskLoop() {
       }
 #endif
 
+      // Publish ESPectre Motion
+      publishMotion(sensorState.motion_detected, sensorState.motion_intensity,
+                    sensorState.motion_ready, currentTime);
+
       // 4. Publish WiFi
       if (sysState.wifiSsid[0] != '\0') {
         if (_lastWifiStatusPublishTime == 0 ||
@@ -893,6 +910,8 @@ void HomeAssistantManager::publishGroupsUnknown(uint8_t groups) {
     _liquidLevelSensor.setUnknown();
     _highPressureSensor.setUnknown();
     _fanStatus.setUnknown();
+    _motionSensor.setState(false, true);
+    _motionIntensitySensor.HASensor::setValue(nullptr);
   }
   if (groups & GROUP_SCD30) {
     _temperatureSensor.HASensor::setValue(nullptr);
@@ -1361,6 +1380,32 @@ void HomeAssistantManager::publishGeothermalPumpCurrent(
     _geothermalPumpCurrentSensor.setValue(geothermal_pump_amps, true);
     _lastPublishedGeothermalPumpAmps = geothermal_pump_amps;
     _lastGeothermalPumpAmpsPublishTime = currentTime;
+  }
+}
+
+void HomeAssistantManager::publishMotion(bool motion, float intensity, bool ready,
+                                        unsigned long currentTime) {
+  bool is_first = (_lastMotionPublishTime == 0);
+  float intensity_pct = intensity * 100.0f;
+  if (intensity_pct < 0.0f) intensity_pct = 0.0f;
+  if (intensity_pct > 100.0f) intensity_pct = 100.0f;
+
+  bool motion_changed = (motion != _lastPublishedMotion);
+  bool intensity_changed =
+      (fabsf(intensity_pct - _lastPublishedMotionIntensity) >= 1.0f);
+  bool force = (currentTime - _lastMotionPublishTime > FORCE_PUBLISH_INTERVAL_MS);
+
+  if (is_first || motion_changed || intensity_changed || force) {
+    if (!ready) {
+      _motionSensor.setState(false, true);
+      _motionIntensitySensor.setValue(0.0f, true);
+    } else {
+      _motionSensor.setState(motion, true);
+      _motionIntensitySensor.setValue(intensity_pct, true);
+    }
+    _lastPublishedMotion = motion;
+    _lastPublishedMotionIntensity = intensity_pct;
+    _lastMotionPublishTime = currentTime;
   }
 }
 

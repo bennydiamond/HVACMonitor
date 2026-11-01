@@ -28,6 +28,7 @@ public:
     virtual void update_wifi_status(bool connected, int8_t rssi) = 0;
     virtual void update_ha_status(bool connected) = 0;
     virtual void update_sensor_status(bool connected) = 0;
+    virtual void update_motion_status(bool motion_detected, bool ready, bool calibrating) = 0;
     virtual void update_co2(float co2_ppm) = 0;
     virtual void update_voc(int32_t voc_index) = 0;
     virtual void update_no2(float no2_ppb) = 0;

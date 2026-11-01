@@ -39,6 +39,7 @@ class UI : public IUIManager, public IUIUpdater {
     void update_wifi_status(bool connected, int8_t rssi) override;
     void update_ha_status(bool connected) override;
     void update_sensor_status(bool connected) override;
+    void update_motion_status(bool motion_detected, bool ready, bool calibrating) override;
     void update_co2(float co2_ppm) override;
     void update_voc(int32_t voc_index) override;
     void update_no2(float no2_ppb) override;
@@ -98,6 +99,7 @@ private:
     lv_obj_t* wifi_icon_label = nullptr;
     lv_obj_t* ha_icon_label = nullptr;
     lv_obj_t* sensor_icon_label = nullptr;
+    lv_obj_t* motion_icon_label = nullptr;
     lv_timer_t* high_pressure_blink_timer = nullptr;
     lv_timer_t* sensor_firmware_blink_timer = nullptr;
     // Last SensorStack link and firmware state, combined into the status bar icon

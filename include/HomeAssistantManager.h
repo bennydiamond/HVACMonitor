@@ -141,6 +141,8 @@ private:
     HASensorNumber _geothermalPumpCurrentSensor;
     HABinarySensorWithUnknown _liquidLevelSensor;
     HASensor _sensorStackResetCauseSensor;
+    HABinarySensor _motionSensor;
+    HASensorNumber _motionIntensitySensor;
     HANumber _inactivityTimerDelay;
     HAButton _getSps30InfoButton;
     HAButton _Sps30ManualCleanButton;
@@ -231,8 +233,12 @@ private:
     unsigned long _lastGeothermalPumpAmpsPublishTime = 0;
     unsigned long _lastLiquidLevelPublishTime = 0;
     unsigned long _lastInactivityTimerDelayPublishTime = 0;
+    unsigned long _lastMotionPublishTime = 0;
+    bool _lastPublishedMotion = false;
+    float _lastPublishedMotionIntensity = -1.0f;
 
     // Private sensor publish helpers
+    void publishMotion(bool motion, float intensity, bool ready, unsigned long currentTime);
     void publishDifferentialPressure(float pressure, unsigned long currentTime);
     void publishFilterPressure(float filter_pressure, unsigned long currentTime);
     void publishGeiger(int cpm, unsigned long currentTime);

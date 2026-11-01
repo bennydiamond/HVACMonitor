@@ -158,3 +158,9 @@ CONFIG_ADC_DISABLE_DAC=y
 
 # --- Strip Unused SHA-512 Software Implementation ---
 CONFIG_MBEDTLS_SHA512_C=n
+
+# --- ESPectre Direct HTTP / Multi-thread Support ---
+CONFIG_LWIP_MAX_SOCKETS=12
+CONFIG_ESPECTRE_SDK_ENABLE_DIRECT=y
+CONFIG_ESP_WIFI_CSI_ENABLED=y
+

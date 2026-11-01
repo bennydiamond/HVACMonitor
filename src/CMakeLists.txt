@@ -24,6 +24,7 @@ idf_component_register(
         fatfs
         sdmmc
         vfs
+        espectre
 )
 
 target_compile_definitions(${COMPONENT_LIB} PUBLIC
@@ -42,6 +43,10 @@ target_compile_options(${COMPONENT_LIB} PRIVATE
 target_link_libraries(${COMPONENT_LIB} PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/../lib/zmod4510/lib_no2_o3.a"
 )
+
+if(TARGET __idf_espectre)
+    target_include_directories(__idf_espectre PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../managed_components/espressif__mdns/include")
+endif()
 
 # Compress web assets before compiling source files in ESP-IDF / lean_idf5
 set(WEB_ASSETS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../web")

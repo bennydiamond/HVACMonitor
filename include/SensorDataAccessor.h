@@ -58,6 +58,12 @@ struct SensorStateData {
     float aht_temp_c = NAN;
     float aht_humi_pct = NAN;
 #endif
+
+    // Wi-Fi CSI Motion Sensing (ESPectre)
+    bool motion_detected = false;
+    float motion_intensity = 0.0f;
+    bool motion_ready = false;
+    bool motion_calibrating = false;
 };
 
 /**

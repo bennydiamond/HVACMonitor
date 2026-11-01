@@ -6,3 +6,6 @@
 	path = HVAC_NanoSensorHub/urboot
 	url = git@github.com:bennydiamond/urboot.git
 	branch = hvac-magic-boot
+[submodule "submodules/espectre"]
+	path = submodules/espectre
+	url = https://github.com/francescopace/espectre.git

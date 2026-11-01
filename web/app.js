@@ -161,3 +161,89 @@ if (document.readyState === 'loading') {
   initRangeHints();
 }
 
+let motionPollInterval = null;
+function fetchMotionStatus() {
+  fetch("/api/motion")
+    .then(res => {
+      if (!res.ok) throw new Error(res.status);
+      return res.json();
+    })
+    .then(data => {
+      updateMotionData(data);
+    })
+    .catch(err => {
+      console.warn("Motion poll error:", err);
+    });
+}
+
+function startMotionPolling() {
+  fetchMotionStatus();
+  if (!motionPollInterval) {
+    motionPollInterval = setInterval(fetchMotionStatus, 1000);
+  }
+}
+
+function updateMotionData(d) {
+  if (!d) return;
+  const t = (id, text) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  };
+
+  const badge = document.getElementById("motion_state_badge");
+  const val = document.getElementById("motion_state_val");
+  const sub = document.getElementById("motion_state_sub");
+
+  if (!d.enabled) {
+    if (badge) { badge.className = "pill pill-info"; badge.textContent = "Disabled"; }
+    if (val) val.textContent = "Disabled";
+    if (sub) sub.textContent = "Sensing services are disarmed";
+  } else if (d.calibrating) {
+    if (badge) { badge.className = "pill pill-warmup"; badge.textContent = "Calibrating"; }
+    if (val) val.textContent = "Calibrating...";
+    if (sub) sub.textContent = "Collecting baseline CSI noise profile";
+  } else if (!d.ready) {
+    if (badge) { badge.className = "pill pill-warn"; badge.textContent = "Not Ready"; }
+    if (val) val.textContent = "Waiting...";
+    if (sub) sub.textContent = "Awaiting valid Wi-Fi CSI stream";
+  } else {
+    if (d.motion) {
+      if (badge) { badge.className = "pill pill-danger"; badge.textContent = "Detected"; }
+      if (val) val.textContent = "Motion Detected";
+    } else {
+      if (badge) { badge.className = "pill pill-good"; badge.textContent = "Clear"; }
+      if (val) val.textContent = "Motion Clear";
+    }
+    if (sub) sub.textContent = "Detector: " + (d.profile || "unknown") + " | Ready";
+  }
+
+  const calBadge = document.getElementById("motion_cal_badge");
+  if (calBadge) {
+    calBadge.className = d.calibrating ? "pill pill-warmup" : "pill pill-info";
+    calBadge.textContent = d.calibrating ? "Calibrating" : "Idle";
+  }
+  const intensityPct = (typeof d.intensity === 'number') ? (d.intensity * 100).toFixed(1) : "0.0";
+  t("motion_intensity_val", intensityPct);
+  if (typeof d.threshold === 'number') {
+    t("motion_threshold_sub", "Threshold: " + d.threshold.toFixed(4));
+  }
+
+  t("diag_cal_active", d.calibrating ? "Active" : "Disabled");
+  if (d.diag) {
+    t("diag_csi_cb", (d.diag.callback_rate || 0).toFixed(1) + " pps");
+    t("diag_csi_acc", (d.diag.accepted_rate || 0).toFixed(1) + " pps");
+    t("diag_csi_adm", (d.diag.admitted_rate || 0).toFixed(1) + " pps");
+    t("diag_csi_filt", (d.diag.filtered_rate || 0).toFixed(1) + " pps");
+    t("diag_csi_miss", (d.diag.missing_rate || 0).toFixed(1) + " pps");
+    t("diag_csi_excess", (d.diag.excess_rate || 0).toFixed(1) + " pps");
+    t("diag_csi_stale", (d.diag.stale_rate || 0).toFixed(1) + " pps");
+    t("diag_csi_ooo", (d.diag.out_of_order_rate || 0).toFixed(1) + " pps");
+    t("diag_csi_occ", ((d.diag.occupancy || 0) * 100).toFixed(1) + " %");
+    t("diag_gen_rate", (d.diag.generator_rate || 0).toFixed(1) + " pps");
+    if (typeof d.diag.rssi === 'number') {
+      t("diag_wifi_link", d.diag.rssi + " dBm (Ch " + (d.diag.channel || "?") + ")");
+    }
+  }
+}
+
+

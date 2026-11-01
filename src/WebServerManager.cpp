@@ -27,7 +27,9 @@
 #include "webserver/WebServerAssets.h"
 #include "webserver/WebServerConfigClimate.h"
 #include "webserver/WebServerConfigMaintenance.h"
+#include "webserver/WebServerConfigMotion.h"
 #include "webserver/WebServerConfigSystem.h"
+#include "ESpectreManager.h"
 #include "webserver/WebServerConfigTabs.h"
 #include "webserver/WebServerConfigTabsExtra.h"
 #include "webserver/WebServerDashboard.h"
@@ -241,6 +243,8 @@ void WebServerManager::init(const char *firmware_version) {
   server.on("/config/climate", HTTP_GET, handleConfigClimate);
   server.on("/config/system", HTTP_GET, handleConfigSystem);
   server.on("/config/maintenance", HTTP_GET, handleConfigMaintenance);
+  server.on("/config/motion", HTTP_GET, handleConfigMotion);
+  server.on("/api/motion", HTTP_GET, handleApiMotion);
   server.on("/config/update", HTTP_POST, handleConfigUpdate);
 
   server.on(
@@ -992,6 +996,12 @@ void WebServerManager::handleConfigUpdate() {
                                                  RebootManager::WEB_REBOOT_DELAY_MS);
       return;
     }
+    if (action == "motion_recalibrate") {
+      logger.info("ESPectre baseline recalibration requested via Web Server");
+      ESpectreManager::getInstance().triggerRecalibration();
+      server.send(200, "text/plain", "ESPectre recalibration started");
+      return;
+    }
     server.send(400, "text/plain", "Unknown action");
     return;
   }
@@ -1420,6 +1430,47 @@ void WebServerManager::handleConfigUpdate() {
           MainTaskEventNotifier::getInstance().requestScd30ForceCal(ppm);
           logger.infof("SCD30 Force Calibration to %u ppm requested via Web Server",
                        ppm);
+        } else {
+          ok = false;
+        }
+      } else if (section == "motion") {
+        if (type == "enabled") {
+          if (parseStrictInt(valueStr, intVal, 0, 1)) {
+            ESpectreManager::getInstance().setSensingEnabled(intVal == 1);
+          } else {
+            ok = false;
+          }
+        } else if (type == "profile") {
+          if (!ESpectreManager::getInstance().setDetectionProfile(valueStr.c_str())) {
+            ok = false;
+            errorMsg = "Invalid detection profile";
+          }
+        } else if (type == "traffic_mode") {
+          if (!ESpectreManager::getInstance().setTrafficMode(valueStr.c_str())) {
+            ok = false;
+            errorMsg = "Invalid CSI traffic mode";
+          }
+        } else if (type == "threshold") {
+          if (parseStrictFloat(valueStr, floatVal, 0.001f, 1.0f)) {
+            if (!ESpectreManager::getInstance().setThreshold(floatVal)) {
+              ok = false;
+              errorMsg = "Failed to set motion threshold";
+            }
+          } else {
+            ok = false;
+          }
+        } else if (type == "on_hits") {
+          if (parseStrictInt(valueStr, intVal, 1, 20)) {
+            ESpectreManager::getInstance().setMotionHits(intVal, ESpectreManager::getInstance().getMotionOffHits());
+          } else {
+            ok = false;
+          }
+        } else if (type == "off_hits") {
+          if (parseStrictInt(valueStr, intVal, 1, 20)) {
+            ESpectreManager::getInstance().setMotionHits(ESpectreManager::getInstance().getMotionOnHits(), intVal);
+          } else {
+            ok = false;
+          }
         } else {
           ok = false;
         }
@@ -2222,6 +2273,111 @@ void WebServerManager::handleConfigMaintenance() {
                    return false;
                  });
   logger.info("Served sensor maintenance config page");
+}
+
+void WebServerManager::handleConfigMotion() {
+  bool armed = ESpectreManager::getInstance().isSensingEnabled();
+  const char *profile = ESpectreManager::getInstance().getDetectionProfile();
+  const char *traffic = ESpectreManager::getInstance().getTrafficMode();
+  float threshold = ESpectreManager::getInstance().getThreshold();
+  uint8_t onHits = ESpectreManager::getInstance().getMotionOnHits();
+  uint8_t offHits = ESpectreManager::getInstance().getMotionOffHits();
+
+  streamTemplate(config_motion_html,
+                 [&](const char *key, char *buf, size_t len) -> bool {
+                   if (strcmp(key, "FIRMWARE_VERSION") == 0) {
+                     snprintf(buf, len, "%s", _firmware_version);
+                     return true;
+                   }
+                   if (strcmp(key, "MOTION_ENABLED_ON_SEL") == 0) {
+                     if (armed) snprintf(buf, len, " selected");
+                     return true;
+                   }
+                   if (strcmp(key, "MOTION_ENABLED_OFF_SEL") == 0) {
+                     if (!armed) snprintf(buf, len, " selected");
+                     return true;
+                   }
+                   if (strcmp(key, "PROFILE_LW_SEL") == 0) {
+                     if (strcmp(profile, "lightweight") == 0) snprintf(buf, len, " selected");
+                     return true;
+                   }
+                   if (strcmp(key, "PROFILE_HA_SEL") == 0) {
+                     if (strcmp(profile, "high_accuracy") == 0) snprintf(buf, len, " selected");
+                     return true;
+                   }
+                   if (strcmp(key, "TRAFFIC_PING_SEL") == 0) {
+                     if (strcmp(traffic, "ping") == 0) snprintf(buf, len, " selected");
+                     return true;
+                   }
+                   if (strcmp(key, "TRAFFIC_DNS_SEL") == 0) {
+                     if (strcmp(traffic, "dns") == 0) snprintf(buf, len, " selected");
+                     return true;
+                   }
+                   if (strcmp(key, "TRAFFIC_DNS_TCP_SEL") == 0) {
+                     if (strcmp(traffic, "dns_tcp") == 0) snprintf(buf, len, " selected");
+                     return true;
+                   }
+                   if (strcmp(key, "TRAFFIC_RAW_SEL") == 0) {
+                     if (strcmp(traffic, "wifi_raw") == 0) snprintf(buf, len, " selected");
+                     return true;
+                   }
+                   if (strcmp(key, "TRAFFIC_EXT_SEL") == 0) {
+                     if (strcmp(traffic, "external") == 0) snprintf(buf, len, " selected");
+                     return true;
+                   }
+                   if (strcmp(key, "THRESHOLD") == 0) {
+                     snprintf(buf, len, "%.4f", threshold);
+                     return true;
+                   }
+                   if (strcmp(key, "ON_HITS") == 0) {
+                     snprintf(buf, len, "%u", onHits);
+                     return true;
+                   }
+                   if (strcmp(key, "OFF_HITS") == 0) {
+                     snprintf(buf, len, "%u", offHits);
+                     return true;
+                   }
+                   return false;
+                 });
+  logger.info("Served motion config page");
+}
+
+void WebServerManager::handleApiMotion() {
+  size_t freeHeap = HeapStats::freeHeap();
+  if (freeHeap < MIN_FREE_HEAP_STATUS_BYTES) {
+    server.send(503, "application/json", "{\"error\":\"low memory\"}");
+    return;
+  }
+
+  MotionDiagnosticData m;
+  {
+    DiagnosticDataAccessor diag;
+    m = diag->motion;
+  }
+
+  char json[768];
+  snprintf(json, sizeof(json),
+           "{\"enabled\":%s,\"calibrating\":%s,\"ready\":%s,\"motion\":%s,"
+           "\"intensity\":%.4f,\"threshold\":%.4f,\"profile\":\"%s\",\"traffic_mode\":\"%s\","
+           "\"on_hits\":%u,\"off_hits\":%u,"
+           "\"diag\":{\"callback_rate\":%.1f,\"accepted_rate\":%.1f,\"admitted_rate\":%.1f,"
+           "\"filtered_rate\":%.1f,\"missing_rate\":%.1f,\"excess_rate\":%.1f,"
+           "\"stale_rate\":%.1f,\"out_of_order_rate\":%.1f,\"occupancy\":%.3f,"
+           "\"generator_rate\":%.1f,\"rssi\":%d,\"channel\":%u}}",
+           m.enabled ? "true" : "false",
+           m.calibrating ? "true" : "false",
+           m.ready ? "true" : "false",
+           m.motionDetected ? "true" : "false",
+           m.intensity, m.threshold, m.profile, m.trafficMode,
+           m.motionOnHits, m.motionOffHits,
+           m.csiCallbackRate, m.csiAcceptedRate, m.csiAdmittedRate,
+           m.csiFilteredRate, m.csiMissingRate, m.csiExcessRate,
+           m.csiStaleRate, m.csiOutOfOrderRate, m.csiOccupancy,
+           m.generatorRate, m.wifiRssi, m.wifiChannel);
+
+  server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  server.sendHeader("Pragma", "no-cache");
+  server.send(200, "application/json", json);
 }
 
 void WebServerManager::handleNotFound() {

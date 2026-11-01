@@ -41,6 +41,7 @@
 #define ICON_WIFI_STRENGTH_3    "\xF3\xB0\xA4\xA5"  // U+F0925
 #define ICON_WIFI_STRENGTH_4    "\xF3\xB0\xA4\xA8"  // U+F0928
 #define ICON_AIR_FILTER         "\xF3\xB0\xB5\x83"  // U+F0D43
+#define ICON_MOTION_SENSOR      "\xF3\xB0\xB6\x91"  // U+F0D91 (mdi-motion-sensor)
 
 // Debug screens
 #define ICON_INFO               "\xF3\xB1\xB1\xAA"  // U+F1C6A

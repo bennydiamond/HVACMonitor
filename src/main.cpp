@@ -29,6 +29,7 @@
 #include "TaskPriorities.h"
 #include "UITask.h"
 #include "WebServerManager.h"
+#include "ESpectreManager.h"
 #include "ZMOD4510Sensor.h"
 #include "LiveDashboardData.h"
 #include "secrets.h"
@@ -254,6 +255,7 @@ void setup() {
   }
 
   setup_wifi();
+  ESpectreManager::getInstance().init();
   haManager.init(firmwareVersion());
   webServerManager.init(firmwareVersion());
   otaManager.init();
@@ -356,6 +358,7 @@ void loop() {
   }
 
   otaManager.handle();
+  ESpectreManager::getInstance().loop();
 
   static unsigned long lastHeapCheck = 0;
   static size_t cached_free_heap = 0;

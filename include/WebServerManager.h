@@ -24,4 +24,6 @@ private:
     static void handleConfigClimate();
     static void handleConfigSystem();
     static void handleConfigMaintenance();
+    static void handleConfigMotion();
+    static void handleApiMotion();
 };
