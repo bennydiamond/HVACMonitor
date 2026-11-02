@@ -10,6 +10,7 @@
 #include <Update.h>
 #include <WiFi.h>
 #include <cerrno>
+#include <cinttypes>
 #include <cmath>
 #include <cstdlib>
 #include <esp_flash.h>
@@ -28,8 +29,13 @@
 #include "webserver/WebServerConfigClimate.h"
 #include "webserver/WebServerConfigMaintenance.h"
 #include "webserver/WebServerConfigMotion.h"
+#include "webserver/WebServerConfigCoredump.h"
 #include "webserver/WebServerConfigSystem.h"
 #include "ESpectreManager.h"
+#include <esp_app_desc.h>
+#include <esp_core_dump.h>
+#include <esp_ota_ops.h>
+#include <esp_partition.h>
 #include "webserver/WebServerConfigTabs.h"
 #include "webserver/WebServerConfigTabsExtra.h"
 #include "webserver/WebServerDashboard.h"
@@ -245,6 +251,10 @@ void WebServerManager::init(const char *firmware_version) {
   server.on("/config/maintenance", HTTP_GET, handleConfigMaintenance);
   server.on("/config/motion", HTTP_GET, handleConfigMotion);
   server.on("/api/motion", HTTP_GET, handleApiMotion);
+  server.on("/config/coredump", HTTP_GET, handleConfigCoredump);
+  server.on("/api/coredump/info", HTTP_GET, handleApiCoredumpInfo);
+  server.on("/api/coredump/download", HTTP_GET, handleApiCoredumpDownload);
+  server.on("/api/coredump/erase", HTTP_POST, handleApiCoredumpErase);
   server.on("/config/update", HTTP_POST, handleConfigUpdate);
 
   server.on(
@@ -2378,6 +2388,248 @@ void WebServerManager::handleApiMotion() {
   server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   server.sendHeader("Pragma", "no-cache");
   server.send(200, "application/json", json);
+}
+
+void WebServerManager::handleConfigCoredump() {
+  streamTemplate(config_coredump_html,
+                 [&](const char *key, char *buf, size_t len) -> bool {
+                   if (strcmp(key, "FIRMWARE_VERSION") == 0) {
+                     snprintf(buf, len, "%s", _firmware_version);
+                     return true;
+                   }
+                   return false;
+                 });
+  logger.info("Served coredump diagnostics config page");
+}
+
+void WebServerManager::handleApiCoredumpInfo() {
+  size_t freeHeap = HeapStats::freeHeap();
+  if (freeHeap < MIN_FREE_HEAP_STATUS_BYTES) {
+    server.send(503, "application/json", "{\"error\":\"low memory\"}");
+    return;
+  }
+
+  const esp_app_desc_t *running_desc = esp_app_get_description();
+  const esp_partition_t *running_part = esp_ota_get_running_partition();
+  char running_sha[65] = {0};
+  esp_app_get_elf_sha256(running_sha, sizeof(running_sha));
+
+  const esp_partition_t *other_part = esp_ota_get_next_update_partition(NULL);
+  esp_app_desc_t other_desc = {};
+  char other_sha[65] = {0};
+  bool has_other_desc = false;
+  if (other_part != NULL) {
+    if (esp_ota_get_partition_description(other_part, &other_desc) == ESP_OK) {
+      has_other_desc = true;
+      for (int i = 0; i < 32; i++) {
+        snprintf(&other_sha[i * 2], 3, "%02x", other_desc.app_elf_sha256[i]);
+      }
+    }
+  }
+
+  esp_err_t check_err = esp_core_dump_image_check();
+  size_t dump_addr = 0;
+  size_t dump_size = 0;
+  esp_err_t get_err = esp_core_dump_image_get(&dump_addr, &dump_size);
+  bool has_dump = (check_err == ESP_OK && get_err == ESP_OK && dump_size > 0);
+
+  if (!has_dump) {
+    char json[512];
+    snprintf(json, sizeof(json),
+             "{\"has_dump\":false,"
+             "\"running_part\":\"%s\","
+             "\"running_version\":\"%s\","
+             "\"running_sha256\":\"%s\","
+             "\"ota_part\":\"%s\","
+             "\"ota_version\":\"%s\","
+             "\"ota_sha256\":\"%s\"}",
+             running_part ? running_part->label : "unknown",
+             running_desc ? running_desc->version : "",
+             running_sha,
+             (other_part && has_other_desc) ? other_part->label : "",
+             has_other_desc ? other_desc.version : "",
+             other_sha);
+    server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    server.sendHeader("Pragma", "no-cache");
+    server.send(200, "application/json", json);
+    return;
+  }
+
+  esp_core_dump_summary_t *summary =
+      (esp_core_dump_summary_t *)malloc(sizeof(esp_core_dump_summary_t));
+  if (!summary) {
+    server.send(503, "application/json", "{\"error\":\"out of memory\"}");
+    return;
+  }
+
+  memset(summary, 0, sizeof(esp_core_dump_summary_t));
+  esp_err_t sum_err = esp_core_dump_get_summary(summary);
+  if (sum_err != ESP_OK) {
+    free(summary);
+    server.send(500, "application/json",
+                "{\"error\":\"failed to retrieve summary\"}");
+    return;
+  }
+
+  char panic_reason[200] = {0};
+  esp_core_dump_get_panic_reason(panic_reason, sizeof(panic_reason));
+
+  char clean_panic[256] = {0};
+  size_t c_idx = 0;
+  for (size_t i = 0; panic_reason[i] && c_idx < sizeof(clean_panic) - 2; i++) {
+    if (panic_reason[i] == '"' || panic_reason[i] == '\\') {
+      clean_panic[c_idx++] = '\\';
+      clean_panic[c_idx++] = panic_reason[i];
+    } else if (panic_reason[i] == '\r' || panic_reason[i] == '\n') {
+      clean_panic[c_idx++] = ' ';
+    } else if ((uint8_t)panic_reason[i] >= 32 && (uint8_t)panic_reason[i] <= 126) {
+      clean_panic[c_idx++] = panic_reason[i];
+    }
+  }
+
+  char task_name[20] = {0};
+  strlcpy(task_name, summary->exc_task, sizeof(task_name));
+  for (char *p = task_name; *p; p++) {
+    if (*p == '"' || *p == '\\' || *p < 32 || *p > 126) *p = '_';
+  }
+
+  char dump_sha[65] = {0};
+  strlcpy(dump_sha, (const char *)summary->app_elf_sha256, sizeof(dump_sha));
+
+  const char *origin = "orphaned";
+  const char *fw_version = "Unknown (prior version)";
+  const char *fw_partition = "N/A";
+
+  size_t dump_sha_len = strlen(dump_sha);
+  if (dump_sha_len > 0 && strncasecmp(dump_sha, running_sha, dump_sha_len) == 0) {
+    origin = "current";
+    fw_version = running_desc ? running_desc->version : "unknown";
+    fw_partition = running_part ? running_part->label : "active";
+  } else if (dump_sha_len > 0 && has_other_desc &&
+             strncasecmp(dump_sha, other_sha, dump_sha_len) == 0) {
+    origin = "other_bank";
+    fw_version = other_desc.version;
+    fw_partition = other_part ? other_part->label : "inactive";
+  }
+
+  char bt_buf[384] = "[]";
+  if (summary->exc_bt_info.depth > 0) {
+    size_t bt_pos = 0;
+    bt_buf[bt_pos++] = '[';
+    for (uint32_t i = 0; i < summary->exc_bt_info.depth && i < 16; i++) {
+      if (i > 0 && bt_pos < sizeof(bt_buf) - 1) bt_buf[bt_pos++] = ',';
+      bt_pos += snprintf(bt_buf + bt_pos, sizeof(bt_buf) - bt_pos,
+                         "\"0x%08" PRIx32 "\"", summary->exc_bt_info.bt[i]);
+    }
+    if (bt_pos < sizeof(bt_buf) - 1) {
+      bt_buf[bt_pos++] = ']';
+      bt_buf[bt_pos] = '\0';
+    }
+  }
+
+  char json[1536];
+  snprintf(json, sizeof(json),
+           "{\"has_dump\":true,"
+           "\"dump_size\":%u,"
+           "\"panic_reason\":\"%s\","
+           "\"crashing_task\":\"%s\","
+           "\"pc\":\"0x%08" PRIx32 "\","
+           "\"excvaddr\":\"0x%08" PRIx32 "\","
+           "\"exccause\":%" PRIu32 ","
+           "\"backtrace\":%s,"
+           "\"backtrace_corrupted\":%s,"
+           "\"dump_sha256\":\"%s\","
+           "\"origin\":\"%s\","
+           "\"firmware_version\":\"%s\","
+           "\"firmware_partition\":\"%s\","
+           "\"running_part\":\"%s\","
+           "\"running_version\":\"%s\","
+           "\"running_sha256\":\"%s\","
+           "\"ota_part\":\"%s\","
+           "\"ota_version\":\"%s\","
+           "\"ota_sha256\":\"%s\"}",
+           (unsigned int)dump_size,
+           clean_panic,
+           task_name,
+           summary->exc_pc,
+#if __XTENSA__
+           summary->ex_info.exc_vaddr,
+           summary->ex_info.exc_cause,
+#else
+           0U,
+           0U,
+#endif
+           bt_buf,
+           summary->exc_bt_info.corrupted ? "true" : "false",
+           dump_sha,
+           origin,
+           fw_version,
+           fw_partition,
+           running_part ? running_part->label : "unknown",
+           running_desc ? running_desc->version : "",
+           running_sha,
+           (other_part && has_other_desc) ? other_part->label : "",
+           has_other_desc ? other_desc.version : "",
+           other_sha);
+
+  free(summary);
+
+  server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  server.sendHeader("Pragma", "no-cache");
+  server.send(200, "application/json", json);
+}
+
+void WebServerManager::handleApiCoredumpDownload() {
+  if (esp_core_dump_image_check() != ESP_OK) {
+    server.send(404, "text/plain", "No valid crash dump found in flash");
+    return;
+  }
+  const esp_partition_t *core_part = esp_partition_find_first(
+      ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_COREDUMP, NULL);
+  if (!core_part) {
+    server.send(404, "text/plain", "Coredump partition not found");
+    return;
+  }
+  size_t dump_addr = 0;
+  size_t dump_size = 0;
+  if (esp_core_dump_image_get(&dump_addr, &dump_size) != ESP_OK || dump_size == 0) {
+    server.send(404, "text/plain", "Invalid core dump image size");
+    return;
+  }
+
+  server.sendHeader("Content-Type", "application/octet-stream");
+  server.sendHeader("Content-Disposition", "attachment; filename=\"coredump.bin\"");
+  server.sendHeader("Connection", "close");
+  server.setContentLength(dump_size);
+  server.send(200, "application/octet-stream", "");
+
+  uint8_t chunk[1024];
+  size_t offset = 0;
+  size_t remaining = dump_size;
+  while (remaining > 0) {
+    size_t to_read = (remaining > sizeof(chunk)) ? sizeof(chunk) : remaining;
+    if (esp_partition_read(core_part, offset, chunk, to_read) != ESP_OK) {
+      break;
+    }
+    server.sendContent((const char *)chunk, to_read);
+    offset += to_read;
+    remaining -= to_read;
+  }
+  logger.infof("Streamed coredump.bin (%u bytes) to client", (unsigned int)dump_size);
+}
+
+void WebServerManager::handleApiCoredumpErase() {
+  esp_err_t err = esp_core_dump_image_erase();
+  if (err == ESP_OK) {
+    logger.info("Erased flash coredump partition via Web UI");
+    server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    server.send(200, "application/json",
+                "{\"success\":true,\"message\":\"Crash dump erased successfully\"}");
+  } else {
+    logger.errorf("Failed to erase flash coredump partition (err %d)", err);
+    server.send(500, "application/json",
+                "{\"success\":false,\"error\":\"Failed to erase crash dump\"}");
+  }
 }
 
 void WebServerManager::handleNotFound() {

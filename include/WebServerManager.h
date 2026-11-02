@@ -26,4 +26,8 @@ private:
     static void handleConfigMaintenance();
     static void handleConfigMotion();
     static void handleApiMotion();
+    static void handleConfigCoredump();
+    static void handleApiCoredumpInfo();
+    static void handleApiCoredumpDownload();
+    static void handleApiCoredumpErase();
 };
